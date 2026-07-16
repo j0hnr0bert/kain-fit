@@ -479,6 +479,38 @@ function TodayPage() {
     return "Magandang gabi";
   }, []);
 
+  const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  const placeholderExamples = useMemo(
+    () => [
+      "150g chicken adobo and 200g cooked rice",
+      "3 eggs and 2 slices of bread",
+      "250g raw chicken breast",
+      "1 cup oatmeal with banana",
+      "200g grilled salmon and salad",
+    ],
+    [],
+  );
+  useEffect(() => {
+    const t = window.setInterval(
+      () => setPlaceholderIdx((i) => (i + 1) % placeholderExamples.length),
+      4000,
+    );
+    return () => window.clearInterval(t);
+  }, [placeholderExamples.length]);
+
+  function formatEntryTime(iso: string | undefined) {
+    if (!iso) return "";
+    try {
+      return new Date(iso).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return "";
+    }
+  }
+
   return (
     <div className="min-h-[100dvh] bg-background pb-24">
       <HighDemandBanner />
