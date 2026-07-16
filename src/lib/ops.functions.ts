@@ -200,11 +200,13 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
     const globalCounts = await getGlobalAiCounts().catch(() => ({ today: 0, month: 0 }));
     const dailyAlertHit =
       settings.daily_ai_call_alert > 0 && globalCounts.today >= settings.daily_ai_call_alert;
+    const activeBanner = await computeActiveBanner();
 
     return {
       capacity,
       breaker,
       settings,
+      activeBanner,
       globals: {
         aiCallsToday: globalCounts.today,
         aiCallsMonth: globalCounts.month,
