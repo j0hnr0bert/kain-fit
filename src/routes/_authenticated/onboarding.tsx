@@ -1,14 +1,30 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, Sparkles } from "lucide-react";
-import { track } from "@/lib/analytics";
 
+// The personal questionnaire has been removed. Any deep link to /onboarding
+// (older builds, cached history) now silently marks the account as onboarded
+// and forwards to /today.
 export const Route = createFileRoute("/_authenticated/onboarding")({
-  component: Onboarding,
+  component: OnboardingRedirect,
 });
+
+function OnboardingRedirect() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    (async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (u.user) {
+        await supabase
+          .from("profiles")
+          .update({ onboarded: true })
+          .eq("user_id", u.user.id);
+      }
+      navigate({ to: "/today", replace: true });
+    })();
+  }, [navigate]);
+  return <div className="min-h-[100dvh] bg-background" />;
+}
 
 type Activity = "sedentary" | "light" | "moderate" | "very_active";
 type Sex = "male" | "female" | "prefer_not_to_say";

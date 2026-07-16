@@ -66,15 +66,22 @@ function AuthPage() {
     }
 
     const displayName = data.user.email?.split("@")[0] ?? "KainFit user";
+    // New accounts skip the personal questionnaire entirely — mark as
+    // onboarded so nothing bounces them to /onboarding. Existing rows are
+    // preserved because ignoreDuplicates skips the upsert when a profile
+    // already exists.
     await supabase
       .from("profiles")
       .upsert(
-        { user_id: data.user.id, display_name: displayName },
+        { user_id: data.user.id, display_name: displayName, onboarded: true },
         { onConflict: "user_id", ignoreDuplicates: true },
       );
+    // Ensure previously-created accounts that never finished onboarding
+    // also skip the (now-removed) questionnaire.
+    await supabase.from("profiles").update({ onboarded: true }).eq("user_id", data.user.id);
 
     if (isNewAccount) track("signup_completed", {});
-    navigate({ to: isNewAccount ? "/onboarding" : "/today", replace: true });
+    navigate({ to: "/today", replace: true });
   }
 
   async function handleOAuth(provider: "google" | "apple") {
