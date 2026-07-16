@@ -361,6 +361,58 @@ function TodayPage() {
     return g;
   }, [entries]);
 
+  async function recalcRow(idx: number, next: PendingItem) {
+    editedRef.current = true;
+    setPending((p) => p!.map((it, i) => (i === idx ? next : it)));
+    setRecalcingRows((s) => {
+      const n = new Set(s);
+      n.add(idx);
+      return n;
+    });
+    try {
+      const prep =
+        next.preparation === "raw" || next.preparation === "cooked"
+          ? next.preparation
+          : "estimated";
+      const out = await recalcFn({
+        data: {
+          display_name: next.display_name,
+          normalized_name: next.normalized_name,
+          quantity: Number(next.quantity),
+          unit: next.unit,
+          preparation: prep,
+        },
+      });
+      setPending((p) =>
+        p
+          ? p.map((it, i) =>
+              i === idx
+                ? {
+                    ...it,
+                    calories: out.calories,
+                    protein_g: out.protein_g,
+                    carbs_g: out.carbs_g,
+                    fat_g: out.fat_g,
+                    data_source: out.data_source,
+                    confidence: out.confidence,
+                    is_estimate: out.is_estimate,
+                  }
+                : it,
+            )
+          : p,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not recalculate.";
+      toast.error(msg);
+    } finally {
+      setRecalcingRows((s) => {
+        const n = new Set(s);
+        n.delete(idx);
+        return n;
+      });
+    }
+  }
+
   const greeting = useMemo(() => {
     const h = new Date().getHours();
     if (h < 12) return "Magandang umaga";
