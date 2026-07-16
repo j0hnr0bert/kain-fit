@@ -14,7 +14,171 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      food_entries: {
+        Row: {
+          calories: number
+          carbs_g: number
+          confidence: number | null
+          created_at: string
+          data_source: string
+          display_name: string
+          fat_g: number
+          id: string
+          is_estimate: boolean
+          logged_at: string
+          meal_type: string
+          normalized_name: string | null
+          original_input: string | null
+          preparation: string | null
+          protein_g: number
+          quantity: number
+          unit: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          calories?: number
+          carbs_g?: number
+          confidence?: number | null
+          created_at?: string
+          data_source?: string
+          display_name: string
+          fat_g?: number
+          id?: string
+          is_estimate?: boolean
+          logged_at?: string
+          meal_type?: string
+          normalized_name?: string | null
+          original_input?: string | null
+          preparation?: string | null
+          protein_g?: number
+          quantity?: number
+          unit?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          calories?: number
+          carbs_g?: number
+          confidence?: number | null
+          created_at?: string
+          data_source?: string
+          display_name?: string
+          fat_g?: number
+          id?: string
+          is_estimate?: boolean
+          logged_at?: string
+          meal_type?: string
+          normalized_name?: string | null
+          original_input?: string | null
+          preparation?: string | null
+          protein_g?: number
+          quantity?: number
+          unit?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          activity_level: string | null
+          age: number | null
+          created_at: string
+          display_name: string | null
+          height_cm: number | null
+          id: string
+          onboarded: boolean
+          preferred_language: string | null
+          preferred_units: string | null
+          sex: string | null
+          updated_at: string
+          user_id: string
+          weight_kg: number | null
+        }
+        Insert: {
+          activity_level?: string | null
+          age?: number | null
+          created_at?: string
+          display_name?: string | null
+          height_cm?: number | null
+          id?: string
+          onboarded?: boolean
+          preferred_language?: string | null
+          preferred_units?: string | null
+          sex?: string | null
+          updated_at?: string
+          user_id: string
+          weight_kg?: number | null
+        }
+        Update: {
+          activity_level?: string | null
+          age?: number | null
+          created_at?: string
+          display_name?: string | null
+          height_cm?: number | null
+          id?: string
+          onboarded?: boolean
+          preferred_language?: string | null
+          preferred_units?: string | null
+          sex?: string | null
+          updated_at?: string
+          user_id?: string
+          weight_kg?: number | null
+        }
+        Relationships: []
+      }
+      saved_foods: {
+        Row: {
+          calories: number
+          carbs_g: number
+          created_at: string
+          default_quantity: number
+          default_unit: string
+          fat_g: number
+          food_name: string
+          id: string
+          last_used_at: string | null
+          normalized_name: string | null
+          protein_g: number
+          source: string | null
+          usage_count: number
+          user_id: string
+        }
+        Insert: {
+          calories?: number
+          carbs_g?: number
+          created_at?: string
+          default_quantity?: number
+          default_unit?: string
+          fat_g?: number
+          food_name: string
+          id?: string
+          last_used_at?: string | null
+          normalized_name?: string | null
+          protein_g?: number
+          source?: string | null
+          usage_count?: number
+          user_id: string
+        }
+        Update: {
+          calories?: number
+          carbs_g?: number
+          created_at?: string
+          default_quantity?: number
+          default_unit?: string
+          fat_g?: number
+          food_name?: string
+          id?: string
+          last_used_at?: string | null
+          normalized_name?: string | null
+          protein_g?: number
+          source?: string | null
+          usage_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
