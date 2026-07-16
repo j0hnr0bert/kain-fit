@@ -1,5 +1,5 @@
-import { createFileRoute, useNavigate, useSearch, Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { createFileRoute, useNavigate, useSearch } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
@@ -22,13 +22,47 @@ function AuthPage() {
   const { mode: initialMode } = useSearch({ from: "/auth" });
   const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">(initialMode);
-  const [method, setMethod] = useState<"choose" | "email" | "phone">("choose");
+  const [method, setMethod] = useState<"choose" | "email" | "phone">(
+    initialMode === "signup" ? "email" : "choose",
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user) navigate({ to: "/today", replace: true });
+    });
+  }, [navigate]);
+
+  const passwordHint = useMemo(() => getPasswordHint(password), [password]);
+
+  function updateMode(nextMode: "signin" | "signup") {
+    setMode(nextMode);
+    setFormError("");
+    if (nextMode === "signup") setMethod("email");
+  }
+
+  async function continueAfterAuth(isNewAccount: boolean) {
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) {
+      throw new Error("Account created, but we couldn't start your session. Please sign in.");
+    }
+
+    const displayName = data.user.email?.split("@")[0] ?? "KainFit user";
+    await supabase
+      .from("profiles")
+      .upsert(
+        { user_id: data.user.id, display_name: displayName },
+        { onConflict: "user_id", ignoreDuplicates: true },
+      );
+
+    navigate({ to: isNewAccount ? "/onboarding" : "/today", replace: true });
+  }
 
   async function handleOAuth(provider: "google" | "apple") {
     setLoading(true);
@@ -49,37 +83,60 @@ function AuthPage() {
     }
   }
 
-  async function handleEmail(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleEmail(e?: React.FormEvent) {
+    e?.preventDefault();
+    setFormError("");
+
+    if (mode === "signup" && passwordHint) {
+      setFormError(passwordHint);
+      return;
+    }
+
     setLoading(true);
     try {
       if (mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
-          options: { emailRedirectTo: window.location.origin },
+          options: {
+            emailRedirectTo: window.location.origin,
+            data: { display_name: email.trim().split("@")[0] },
+          },
         });
         if (error) throw error;
         if (data.session) {
-          navigate({ to: "/today", replace: true });
-        } else {
-          toast.success("Check your email to confirm your account, then sign in.");
-          setMode("signin");
+          await continueAfterAuth(true);
+          return;
         }
+
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (!signInError && signInData.session) {
+          await continueAfterAuth(true);
+          return;
+        }
+
+        toast.success("Account created. Please sign in to continue.");
+        setMode("signin");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
         if (error) throw error;
-        navigate({ to: "/today", replace: true });
+        await continueAfterAuth(false);
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong");
+      const message = friendlyAuthError(err);
+      setFormError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handlePhoneSend(e: React.FormEvent) {
-    e.preventDefault();
+  async function handlePhoneSend(e?: React.FormEvent) {
+    e?.preventDefault();
+    setFormError("");
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({ phone });
@@ -87,21 +144,26 @@ function AuthPage() {
       setOtpSent(true);
       toast.success("Code sent to your phone");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not send code");
+      const message = friendlyAuthError(err);
+      setFormError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
   }
 
-  async function handlePhoneVerify(e: React.FormEvent) {
-    e.preventDefault();
+  async function handlePhoneVerify(e?: React.FormEvent) {
+    e?.preventDefault();
+    setFormError("");
     setLoading(true);
     try {
       const { error } = await supabase.auth.verifyOtp({ phone, token: otp, type: "sms" });
       if (error) throw error;
-      navigate({ to: "/today", replace: true });
+      await continueAfterAuth(mode === "signup");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Invalid code");
+      const message = friendlyAuthError(err);
+      setFormError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -110,6 +172,7 @@ function AuthPage() {
   return (
     <div className="min-h-[100dvh] bg-background px-6 pt-6 pb-10 flex flex-col">
       <button
+        type="button"
         onClick={() => (method === "choose" ? navigate({ to: "/" }) : setMethod("choose"))}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground w-fit -ml-2 px-2 py-1"
       >
@@ -128,6 +191,7 @@ function AuthPage() {
         {method === "choose" && (
           <div className="space-y-3">
             <Button
+              type="button"
               onClick={() => handleOAuth("apple")}
               disabled={loading}
               className="w-full h-12 rounded-2xl bg-foreground text-background hover:bg-foreground/90"
@@ -135,6 +199,7 @@ function AuthPage() {
               Continue with Apple
             </Button>
             <Button
+              type="button"
               onClick={() => handleOAuth("google")}
               disabled={loading}
               variant="outline"
@@ -143,6 +208,7 @@ function AuthPage() {
               Continue with Google
             </Button>
             <Button
+              type="button"
               onClick={() => setMethod("email")}
               variant="outline"
               className="w-full h-12 rounded-2xl"
@@ -150,6 +216,7 @@ function AuthPage() {
               <Mail className="mr-2 h-4 w-4" /> Continue with email
             </Button>
             <Button
+              type="button"
               onClick={() => setMethod("phone")}
               variant="outline"
               className="w-full h-12 rounded-2xl"
@@ -167,11 +234,29 @@ function AuthPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} className="h-12 rounded-xl" />
+              <Input id="password" type="password" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} className="h-12 rounded-xl" />
+              {mode === "signup" && (
+                <p className="text-xs text-muted-foreground">
+                  Use 8+ characters with uppercase, lowercase, and a number.
+                </p>
+              )}
             </div>
-            <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
-              {mode === "signup" ? "Create account" : "Sign in"}
+            {formError && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {formError}
+              </div>
+            )}
+            <Button type="button" onClick={() => handleEmail()} disabled={loading || (mode === "signup" && Boolean(passwordHint))} className="w-full h-12 rounded-2xl">
+              {loading ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
             </Button>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <Button type="button" onClick={() => handleOAuth("apple")} disabled={loading} variant="outline" className="h-11 rounded-xl">
+                Apple
+              </Button>
+              <Button type="button" onClick={() => handleOAuth("google")} disabled={loading} variant="outline" className="h-11 rounded-xl">
+                Google
+              </Button>
+            </div>
           </form>
         )}
 
@@ -180,9 +265,17 @@ function AuthPage() {
             <div className="space-y-2">
               <Label htmlFor="phone">Phone number</Label>
               <Input id="phone" type="tel" placeholder="+639171234567" required value={phone} onChange={(e) => setPhone(e.target.value)} className="h-12 rounded-xl" />
+              <p className="text-xs text-muted-foreground">
+                Enter a Philippine mobile number in +63 format.
+              </p>
             </div>
-            <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
-              Send code
+            {formError && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {formError}
+              </div>
+            )}
+            <Button type="button" onClick={() => handlePhoneSend()} disabled={loading} className="w-full h-12 rounded-2xl">
+              {loading ? "Sending…" : "Send code"}
             </Button>
           </form>
         )}
@@ -193,8 +286,13 @@ function AuthPage() {
               <Label htmlFor="otp">Verification code</Label>
               <Input id="otp" inputMode="numeric" required value={otp} onChange={(e) => setOtp(e.target.value)} className="h-12 rounded-xl text-center tracking-widest text-lg" />
             </div>
-            <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
-              Verify & continue
+            {formError && (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                {formError}
+              </div>
+            )}
+            <Button type="button" onClick={() => handlePhoneVerify()} disabled={loading} className="w-full h-12 rounded-2xl">
+              {loading ? "Verifying…" : "Verify & continue"}
             </Button>
           </form>
         )}
@@ -202,15 +300,47 @@ function AuthPage() {
         <div className="mt-6 text-center text-sm text-muted-foreground">
           {mode === "signup" ? (
             <>Already have an account?{" "}
-              <button onClick={() => setMode("signin")} className="text-primary font-medium">Sign in</button>
+              <button type="button" onClick={() => updateMode("signin")} className="text-primary font-medium">Sign in</button>
             </>
           ) : (
             <>New here?{" "}
-              <button onClick={() => setMode("signup")} className="text-primary font-medium">Create account</button>
+              <button type="button" onClick={() => updateMode("signup")} className="text-primary font-medium">Create account</button>
             </>
           )}
         </div>
       </div>
     </div>
   );
+}
+
+function getPasswordHint(password: string) {
+  if (!password) return "";
+  if (password.length < 8) return "Password must be at least 8 characters.";
+  if (!/[a-z]/.test(password)) return "Add at least one lowercase letter.";
+  if (!/[A-Z]/.test(password)) return "Add at least one uppercase letter.";
+  if (!/\d/.test(password)) return "Add at least one number.";
+  return "";
+}
+
+function friendlyAuthError(err: unknown) {
+  const message = err instanceof Error ? err.message : "Something went wrong";
+  const lower = message.toLowerCase();
+
+  if (lower.includes("weak_password") || lower.includes("password")) {
+    return "Use a stronger password that has not appeared in a data breach.";
+  }
+  if (lower.includes("invalid login credentials")) {
+    return "Email or password is incorrect.";
+  }
+  if (lower.includes("already registered") || lower.includes("already been registered")) {
+    return "This email already has an account. Sign in instead.";
+  }
+  if (lower.includes("unsupported phone provider") || lower.includes("phone provider")) {
+    return "Phone OTP is not active yet. Please use email, Google, or Apple for now.";
+  }
+  if (lower.includes("email not confirmed")) {
+    return "Please confirm your email first, then sign in.";
+  }
+
+  return message;
 }
