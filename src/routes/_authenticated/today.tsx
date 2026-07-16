@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { parseFood } from "@/lib/food.functions";
+import { parseFood, recalcItem } from "@/lib/food.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -86,9 +86,12 @@ function TodayPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const parseFn = useServerFn(parseFood);
+  const recalcFn = useServerFn(recalcItem);
   const [input, setInput] = useState("");
   const [parsing, setParsing] = useState(false);
   const [pending, setPending] = useState<PendingItem[] | null>(null);
+  const [recalcingRows, setRecalcingRows] = useState<Set<number>>(new Set());
+  const anyRecalcing = recalcingRows.size > 0;
   const [originalInput, setOriginalInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -295,6 +298,7 @@ function TodayPage() {
 
   async function confirmAdd() {
     if (!pending) return;
+    if (anyRecalcing) return;
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
     if (editedRef.current) track("food_edited_before_confirmation", { number_of_items: pending.length });
