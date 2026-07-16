@@ -784,24 +784,43 @@ function PendingRow({
         <NumCell label="F" value={item.fat_g} onChange={(v) => onChange({ ...item, fat_g: v })} editing={editing} />
       </div>
       {editing && (
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <label className="text-xs text-muted-foreground">
-            Quantity
-            <Input
-              type="number"
-              value={item.quantity}
-              onChange={(e) => onChange({ ...item, quantity: Number(e.target.value) })}
-              className="mt-1 h-10 rounded-xl"
-            />
-          </label>
-          <label className="text-xs text-muted-foreground">
-            Unit
-            <Input
-              value={item.unit}
-              onChange={(e) => onChange({ ...item, unit: e.target.value })}
-              className="mt-1 h-10 rounded-xl"
-            />
-          </label>
+        <div className="mt-3 space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-xs text-muted-foreground">
+              Quantity
+              <Input
+                type="number"
+                value={draftQty}
+                onChange={(e) => setDraftQty(Number(e.target.value))}
+                className="mt-1 h-10 rounded-xl"
+              />
+            </label>
+            <label className="text-xs text-muted-foreground">
+              Unit
+              <Input
+                value={draftUnit}
+                onChange={(e) => setDraftUnit(e.target.value)}
+                className="mt-1 h-10 rounded-xl"
+              />
+            </label>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            disabled={
+              recalcing ||
+              (draftQty === item.quantity && draftUnit === item.unit) ||
+              !(draftQty >= 0) ||
+              !draftUnit.trim()
+            }
+            onClick={() => {
+              onRecalc({ ...item, quantity: draftQty, unit: draftUnit.trim() });
+              setEditing(false);
+            }}
+            className="w-full h-9 rounded-xl"
+          >
+            Recalculate with new amount
+          </Button>
         </div>
       )}
       <div className="mt-3 flex items-center gap-2 text-[11px] flex-wrap">
