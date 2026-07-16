@@ -86,9 +86,13 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "apple-mobile-web-app-title", content: "KainFit" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
       { property: "og:title", content: "KainFit — The fastest way to track what you eat" },
-      { property: "og:description", content: "AI-assisted macro tracker built for Filipino eating habits." },
+      { property: "og:description", content: "Fast, accurate macro tracking built for the way Filipinos eat. Log meals in English, Filipino, or Taglish." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
+      { name: "twitter:title", content: "KainFit — The fastest way to track what you eat" },
+      { name: "twitter:description", content: "Fast, accurate macro tracking built for the way Filipinos eat. Log meals in English, Filipino, or Taglish." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5705deea-2862-41c5-878c-418570f45632/id-preview-48185eb4--a3562033-69db-44b1-944e-ae2901ace288.lovable.app-1784188930228.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5705deea-2862-41c5-878c-418570f45632/id-preview-48185eb4--a3562033-69db-44b1-944e-ae2901ace288.lovable.app-1784188930228.png" },
     ],
     links: [
       {
