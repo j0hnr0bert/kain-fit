@@ -475,3 +475,50 @@ function csvCell(v: unknown): string {
   if (/[",\n]/.test(s)) return `"${s}"`;
   return s;
 }
+
+// Founder-only view of anonymous demo quota state.
+// Returns only: session id, successful count, remaining, last success time,
+// and last rate-limit reason. Never includes food text, IPs, or auth data.
+export const getDemoUsage = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await ensureAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as unknown as {
+      from: (t: string) => {
+        select: (c: string) => {
+          order: (
+            col: string,
+            opts: { ascending: boolean },
+          ) => {
+            limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
+          };
+        };
+      };
+    };
+    const { DEMO_PARSE_LIMIT } = await import("./food.functions");
+    const { data } = await admin
+      .from("demo_usage")
+      .select("session_id,count,last_success_at,last_reason,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(200);
+    const rows = (data ?? []) as Array<{
+      session_id: string;
+      count: number;
+      last_success_at: string | null;
+      last_reason: string | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+    return {
+      limit: DEMO_PARSE_LIMIT,
+      sessions: rows.map((r) => ({
+        session_id: r.session_id,
+        used: Math.min(DEMO_PARSE_LIMIT, r.count),
+        remaining: Math.max(0, DEMO_PARSE_LIMIT - r.count),
+        last_success_at: r.last_success_at,
+        last_reason: r.last_reason,
+        updated_at: r.updated_at,
+      })),
+    };
+  });
