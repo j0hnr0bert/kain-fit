@@ -1,4 +1,6 @@
-import { createFileRoute, useNavigate, useServerFn } from "@tanstack/react-start";
+import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,7 +39,7 @@ type PendingItem = {
   normalized_name: string;
   quantity: number;
   unit: string;
-  preparation: string | null;
+  preparation?: string | null;
   meal_type: Entry["meal_type"];
   calories: number;
   protein_g: number;
@@ -47,7 +49,7 @@ type PendingItem = {
   confidence: number;
   is_estimate: boolean;
   clarification_needed: boolean;
-  clarification_question: string | null;
+  clarification_question?: string | null;
 };
 
 function mealFromHour(h: number): Entry["meal_type"] {
@@ -186,6 +188,8 @@ function TodayPage() {
   }
 
   async function deleteEntry(entry: Entry) {
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u.user?.id;
     const { error } = await supabase.from("food_entries").delete().eq("id", entry.id);
     if (error) {
       toast.error(error.message);
@@ -196,8 +200,9 @@ function TodayPage() {
       action: {
         label: "Undo",
         onClick: async () => {
+          if (!uid) return;
           const { id, ...rest } = entry;
-          await supabase.from("food_entries").insert({ ...rest });
+          await supabase.from("food_entries").insert({ ...rest, user_id: uid });
           qc.invalidateQueries({ queryKey: ["entries", "today"] });
         },
       },
