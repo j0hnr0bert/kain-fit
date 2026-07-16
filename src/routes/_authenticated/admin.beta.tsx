@@ -1,12 +1,16 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBetaMetrics, exportBetaCsv, getDemoUsage } from "@/lib/beta.functions";
+import { getOpsSnapshot, updateOpsSetting } from "@/lib/ops.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { track } from "@/lib/analytics";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/_authenticated/admin/beta")({
   head: () => ({ meta: [{ title: "Founder dashboard — KainFit" }, { name: "robots", content: "noindex" }] }),
@@ -14,9 +18,12 @@ export const Route = createFileRoute("/_authenticated/admin/beta")({
 });
 
 function AdminBetaPage() {
+  const qc = useQueryClient();
   const fetchMetrics = useServerFn(getBetaMetrics);
   const exportFn = useServerFn(exportBetaCsv);
   const fetchDemoUsage = useServerFn(getDemoUsage);
+  const fetchOps = useServerFn(getOpsSnapshot);
+  const setOps = useServerFn(updateOpsSetting);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["beta-metrics"],
@@ -29,6 +36,61 @@ function AdminBetaPage() {
     queryFn: () => fetchDemoUsage(),
     retry: false,
   });
+
+  const { data: ops } = useQuery({
+    queryKey: ["ops-snapshot"],
+    queryFn: () => fetchOps(),
+    retry: false,
+    refetchInterval: 5_000,
+  });
+
+  const [bannerDraft, setBannerDraft] = useState<string>("");
+  const [allowanceDraft, setAllowanceDraft] = useState<string>("");
+  useEffect(() => {
+    if (ops?.settings) {
+      setBannerDraft(ops.settings.high_demand_banner ?? "");
+      setAllowanceDraft(String(ops.settings.demo_allowance ?? 3));
+    }
+  }, [ops?.settings.high_demand_banner, ops?.settings.demo_allowance]);
+
+  async function toggle(key: "pause_demo" | "pause_ai" | "db_only_mode", value: boolean) {
+    try {
+      await setOps({ data: { key, value } });
+      await qc.invalidateQueries({ queryKey: ["ops-snapshot"] });
+      toast.success(`${key} → ${value ? "on" : "off"}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
+
+  async function saveAllowance() {
+    const n = Number(allowanceDraft);
+    if (!Number.isFinite(n) || n < 0 || n > 50) {
+      toast.error("Allowance must be 0–50");
+      return;
+    }
+    try {
+      await setOps({ data: { key: "demo_allowance", value: n } });
+      await qc.invalidateQueries({ queryKey: ["ops-snapshot"] });
+      toast.success("Demo allowance updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
+
+  async function saveBanner() {
+    if (bannerDraft.length > 200) {
+      toast.error("Banner must be under 200 chars");
+      return;
+    }
+    try {
+      await setOps({ data: { key: "high_demand_banner", value: bannerDraft } });
+      await qc.invalidateQueries({ queryKey: ["ops-snapshot"] });
+      toast.success("Banner updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
 
   const [exporting, setExporting] = useState<null | "metrics" | "feedback">(null);
 
