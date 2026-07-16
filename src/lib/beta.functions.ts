@@ -22,6 +22,7 @@ const ALLOWED_EVENTS = [
   "saved_meal_repeated",
   "feedback_submitted",
   "app_returned",
+  "admin_dashboard_viewed",
 ] as const;
 
 const eventSchema = z.object({
