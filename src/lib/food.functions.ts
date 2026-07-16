@@ -239,13 +239,32 @@ export const parseFood = createServerFn({ method: "POST" })
     return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
   .handler(async ({ data, context }) => {
-    const { singleFlight, allowBurst, getGlobalAiCounts, getUserDailyAiCount } = await import("./ai-guard.server");
+    const {
+      singleFlight,
+      allowBurst,
+      getGlobalAiCounts,
+      getUserDailyAiCount,
+      getUserDailySubmissionCount,
+    } = await import("./ai-guard.server");
     const { readOpsSettings } = await import("./ops-settings.server");
     const settings = await readOpsSettings();
     if (settings.pause_ai || settings.db_only_mode) {
       throw new Error(
         "AI_UNAVAILABLE: KainFit's calculator is temporarily paused. You can still edit, delete, or add entries manually.",
       );
+    }
+    // Beta submission cap: PHT-day counted successful submissions per user.
+    if (settings.beta_limits_enabled && settings.beta_daily_submission_cap > 0) {
+      const used = await getUserDailySubmissionCount(context.userId);
+      if (used >= settings.beta_daily_submission_cap) {
+        throw new Error(
+          "BETA_LIMIT: You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.",
+        );
+      }
+    }
+    // Enforce founder-tunable per-submission length cap.
+    if (settings.beta_max_input_length > 0 && data.input.length > settings.beta_max_input_length) {
+      throw new Error(`Description is too long (max ${settings.beta_max_input_length} characters).`);
     }
     // Global monthly cap: hard stop above configured ceiling.
     if (settings.monthly_ai_call_cap > 0) {
@@ -270,9 +289,20 @@ export const parseFood = createServerFn({ method: "POST" })
       throw new Error("AI_BUSY: Too many requests. Please wait a moment and try again.");
     }
     const key = `parse:user:${context.userId}:${buildCacheKey(data.input, data.mealHint)}`;
-    return mapGuardErrors(() =>
+    const result = await mapGuardErrors(() =>
       singleFlight(key, () => resolveWithCache(data.input, data.mealHint)),
     );
+    // Founder-tunable cap on how many foods a single submission can produce.
+    if (
+      settings.beta_max_foods_per_submission > 0 &&
+      Array.isArray(result.items) &&
+      result.items.length > settings.beta_max_foods_per_submission
+    ) {
+      throw new Error(
+        `BETA_LIMIT: Too many foods in one entry — max ${settings.beta_max_foods_per_submission}. Please split it up.`,
+      );
+    }
+    return result;
   });
 
 // Translates internal guard errors into user-visible messages.

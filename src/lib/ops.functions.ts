@@ -246,6 +246,10 @@ const SETTABLE_KEYS = [
   "user_daily_ai_cap",
   "monthly_ai_call_cap",
   "daily_ai_call_alert",
+  "beta_limits_enabled",
+  "beta_daily_submission_cap",
+  "beta_max_input_length",
+  "beta_max_foods_per_submission",
 ] as const;
 
 const updateSchema = z.object({
@@ -295,6 +299,24 @@ export const updateOpsSetting = createServerFn({ method: "POST" })
       case "daily_ai_call_alert":
         if (t !== "number" || (data.value as number) < 0 || (data.value as number) > 10_000_000) {
           throw new Error("Daily alert threshold out of range");
+        }
+        break;
+      case "beta_limits_enabled":
+        if (t !== "boolean") throw new Error("Invalid value: expected boolean");
+        break;
+      case "beta_daily_submission_cap":
+        if (t !== "number" || (data.value as number) < 0 || (data.value as number) > 500) {
+          throw new Error("Daily submission cap must be 0–500");
+        }
+        break;
+      case "beta_max_input_length":
+        if (t !== "number" || (data.value as number) < 10 || (data.value as number) > 2000) {
+          throw new Error("Input length must be 10–2000");
+        }
+        break;
+      case "beta_max_foods_per_submission":
+        if (t !== "number" || (data.value as number) < 1 || (data.value as number) > 50) {
+          throw new Error("Max foods per submission must be 1–50");
         }
         break;
     }
