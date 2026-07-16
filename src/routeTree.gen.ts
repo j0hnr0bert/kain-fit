@@ -17,6 +17,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedTodayRouteImport } from './routes/_authenticated/today'
+import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
 import { Route as AuthenticatedAdminBetaRouteImport } from './routes/_authenticated/admin.beta'
@@ -60,6 +61,11 @@ const AuthenticatedTodayRoute = AuthenticatedTodayRouteImport.update({
   path: '/today',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedOnboardingRoute = AuthenticatedOnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
@@ -85,6 +91,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/today': typeof AuthenticatedTodayRoute
   '/admin/beta': typeof AuthenticatedAdminBetaRoute
 }
@@ -97,6 +104,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/history': typeof AuthenticatedHistoryRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
+  '/profile': typeof AuthenticatedProfileRoute
   '/today': typeof AuthenticatedTodayRoute
   '/admin/beta': typeof AuthenticatedAdminBetaRoute
 }
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
+  '/_authenticated/profile': typeof AuthenticatedProfileRoute
   '/_authenticated/today': typeof AuthenticatedTodayRoute
   '/_authenticated/admin/beta': typeof AuthenticatedAdminBetaRoute
 }
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/history'
     | '/onboarding'
+    | '/profile'
     | '/today'
     | '/admin/beta'
   fileRoutesByTo: FileRoutesByTo
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/history'
     | '/onboarding'
+    | '/profile'
     | '/today'
     | '/admin/beta'
   id:
@@ -150,6 +161,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/_authenticated/history'
     | '/_authenticated/onboarding'
+    | '/_authenticated/profile'
     | '/_authenticated/today'
     | '/_authenticated/admin/beta'
   fileRoutesById: FileRoutesById
@@ -222,6 +234,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTodayRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/profile': {
+      id: '/_authenticated/profile'
+      path: '/profile'
+      fullPath: '/profile'
+      preLoaderRoute: typeof AuthenticatedProfileRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/onboarding': {
       id: '/_authenticated/onboarding'
       path: '/onboarding'
@@ -249,6 +268,7 @@ declare module '@tanstack/react-router' {
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
+  AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
   AuthenticatedTodayRoute: typeof AuthenticatedTodayRoute
   AuthenticatedAdminBetaRoute: typeof AuthenticatedAdminBetaRoute
 }
@@ -256,6 +276,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
+  AuthenticatedProfileRoute: AuthenticatedProfileRoute,
   AuthenticatedTodayRoute: AuthenticatedTodayRoute,
   AuthenticatedAdminBetaRoute: AuthenticatedAdminBetaRoute,
 }
