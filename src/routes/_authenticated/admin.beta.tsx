@@ -469,6 +469,22 @@ function AdminBetaPage() {
                         Save
                       </Button>
                     </div>
+                    <div className="p-4 flex items-center gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <div className="text-sm font-medium">Pre-warm parse cache</div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Seeds the shared cache with common Filipino inputs so the first few users hit the cache instead of the AI. Safe to run anytime; entries already cached are skipped.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={runWarm}
+                        disabled={warming}
+                        className="rounded-xl"
+                      >
+                        {warming ? <Loader2 className="h-4 w-4 animate-spin" /> : "Warm now"}
+                      </Button>
+                    </div>
                   </div>
 
                   <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
