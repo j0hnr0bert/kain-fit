@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      demo_usage: {
+        Row: {
+          count: number
+          created_at: string
+          last_reason: string | null
+          last_success_at: string | null
+          session_id: string
+          updated_at: string
+        }
+        Insert: {
+          count?: number
+          created_at?: string
+          last_reason?: string | null
+          last_success_at?: string | null
+          session_id: string
+          updated_at?: string
+        }
+        Update: {
+          count?: number
+          created_at?: string
+          last_reason?: string | null
+          last_success_at?: string | null
+          session_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       feedback_submissions: {
         Row: {
           accuracy_rating: number | null
@@ -340,6 +367,15 @@ export type Database = {
           _event_properties: Json
         }
         Returns: undefined
+      }
+      mark_demo_success: { Args: { _sid: string }; Returns: undefined }
+      release_demo_slot: {
+        Args: { _reason: string; _sid: string }
+        Returns: undefined
+      }
+      reserve_demo_slot: {
+        Args: { _limit: number; _sid: string }
+        Returns: number
       }
       submit_feedback: {
         Args: {
