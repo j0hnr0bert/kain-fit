@@ -28,7 +28,7 @@ import { track, getAcquisitionSource } from "@/lib/analytics";
 import { BetaBadge } from "@/components/BetaBadge";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
-import { parseFoodDemo, getDemoStatus } from "@/lib/food.functions";
+import { parseFoodDemo, getDemoStatus, recalcItemDemo } from "@/lib/food.functions";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import {
   Tooltip,
@@ -97,6 +97,7 @@ function DemoPage() {
   const navigate = useNavigate();
   const parseFn = useServerFn(parseFoodDemo);
   const statusFn = useServerFn(getDemoStatus);
+  const recalcFn = useServerFn(recalcItemDemo);
   const inputRef = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<DemoEntry[]>([]);
   const [input, setInput] = useState("");
@@ -105,6 +106,10 @@ function DemoPage() {
   const [lastInput, setLastInput] = useState("");
   const [pending, setPending] = useState<PendingItem[] | null>(null);
   const [pendingOriginalInput, setPendingOriginalInput] = useState("");
+  // Row indices currently being recalculated (preparation / edit changes).
+  // Prevents adding to the day while nutrition values are stale.
+  const [recalcingRows, setRecalcingRows] = useState<Set<number>>(new Set());
+  const anyRecalcing = recalcingRows.size > 0;
   const [remaining, setRemaining] = useState<number | null>(null);
   const [limitReached, setLimitReached] = useState(false);
   const [signupPrompt, setSignupPrompt] = useState(false);
@@ -221,6 +226,7 @@ function DemoPage() {
 
   function confirmAdd() {
     if (!pending) return;
+    if (anyRecalcing) return;
     const added: DemoEntry[] = pending.map((i, idx) => ({
       id: `d-${Date.now()}-${idx}`,
       meal: i.meal_type,
@@ -244,6 +250,58 @@ function DemoPage() {
     setPendingOriginalInput("");
     setInput("");
     toast.success("Added to demo day");
+  }
+
+  async function recalcRow(idx: number, next: PendingItem) {
+    // Optimistically update label/quantity fields, then fetch new macros.
+    setPending((p) => p!.map((it, i) => (i === idx ? next : it)));
+    setRecalcingRows((s) => {
+      const n = new Set(s);
+      n.add(idx);
+      return n;
+    });
+    try {
+      const prep =
+        next.preparation === "raw" || next.preparation === "cooked"
+          ? next.preparation
+          : "estimated";
+      const out = await recalcFn({
+        data: {
+          display_name: next.display_name,
+          normalized_name: next.normalized_name,
+          quantity: Number(next.quantity),
+          unit: next.unit,
+          preparation: prep,
+        },
+      });
+      setPending((p) =>
+        p
+          ? p.map((it, i) =>
+              i === idx
+                ? {
+                    ...it,
+                    calories: out.calories,
+                    protein_g: out.protein_g,
+                    carbs_g: out.carbs_g,
+                    fat_g: out.fat_g,
+                    data_source: out.data_source,
+                    confidence: out.confidence,
+                    is_estimate: out.is_estimate,
+                  }
+                : it,
+            )
+          : p,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not recalculate.";
+      toast.error(msg);
+    } finally {
+      setRecalcingRows((s) => {
+        const n = new Set(s);
+        n.delete(idx);
+        return n;
+      });
+    }
   }
 
   function remove(id: string) {
@@ -507,6 +565,8 @@ function DemoPage() {
               <PendingRow
                 key={idx}
                 item={item}
+                recalcing={recalcingRows.has(idx)}
+                onRecalc={(next) => void recalcRow(idx, next)}
                 onChange={(next) =>
                   setPending((p) => p!.map((it, i) => (i === idx ? next : it)))
                 }
@@ -531,8 +591,18 @@ function DemoPage() {
             ))}
           </div>
           <div className="mt-6 space-y-2">
-            <Button onClick={confirmAdd} className="w-full h-12 rounded-2xl">
-              Add to demo day
+            <Button
+              onClick={confirmAdd}
+              disabled={anyRecalcing}
+              className="w-full h-12 rounded-2xl"
+            >
+              {anyRecalcing ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Recalculating…
+                </span>
+              ) : (
+                "Add to demo day"
+              )}
             </Button>
             <Button onClick={() => setPending(null)} variant="ghost" className="w-full h-12 rounded-2xl">
               Cancel
