@@ -267,8 +267,11 @@ function TodayPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="text-xs text-muted-foreground">{greeting}</div>
-            <div className="text-lg font-semibold">
-              {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+            <div className="flex items-center gap-2">
+              <div className="text-lg font-semibold">
+                {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+              </div>
+              <BetaBadge />
             </div>
           </div>
           <button
@@ -367,6 +370,26 @@ function TodayPage() {
                           {Number(e.quantity)}{e.unit} · {Math.round(e.calories)} kcal ·
                           P {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
                         </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReportTarget({
+                              id: e.id,
+                              values: {
+                                display_name: e.display_name,
+                                quantity: e.quantity,
+                                unit: e.unit,
+                                calories: e.calories,
+                                protein_g: e.protein_g,
+                                carbs_g: e.carbs_g,
+                                fat_g: e.fat_g,
+                              },
+                            })
+                          }
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                        >
+                          <Flag className="h-3 w-3" /> Report incorrect macros
+                        </button>
                       </div>
                       <button onClick={() => deleteEntry(e)} className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
                         <Trash2 className="h-4 w-4" />
@@ -394,10 +417,27 @@ function TodayPage() {
                 key={idx}
                 item={item}
                 onChange={(next) =>
-                  setPending((p) => p!.map((it, i) => (i === idx ? next : it)))
+                  {
+                    editedRef.current = true;
+                    setPending((p) => p!.map((it, i) => (i === idx ? next : it)));
+                  }
                 }
                 onRemove={() =>
                   setPending((p) => (p!.length > 1 ? p!.filter((_, i) => i !== idx) : null))
+                }
+                onReport={() =>
+                  setReportTarget({
+                    id: null,
+                    values: {
+                      display_name: item.display_name,
+                      quantity: item.quantity,
+                      unit: item.unit,
+                      calories: item.calories,
+                      protein_g: item.protein_g,
+                      carbs_g: item.carbs_g,
+                      fat_g: item.fat_g,
+                    },
+                  })
                 }
               />
             ))}
@@ -412,6 +452,13 @@ function TodayPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <ReportMacrosDialog
+        open={reportTarget !== null}
+        onOpenChange={(v) => { if (!v) setReportTarget(null); }}
+        foodEntryId={reportTarget?.id ?? null}
+        originalValues={reportTarget?.values ?? {}}
+      />
 
       <BottomNav />
     </div>
