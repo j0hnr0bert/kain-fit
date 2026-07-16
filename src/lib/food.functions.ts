@@ -37,6 +37,7 @@ Rules:
 - Set is_estimate to true unless you are highly confident.
 - confidence must be between 0 and 1.
 - If the description is genuinely ambiguous, set clarification_needed=true and provide a short clarification_question. Otherwise clarification_needed=false and clarification_question=null.
+- When a user gives a weight (grams) for foods whose nutrition materially changes based on preparation (raw meat/poultry/fish weight vs cooked, dry pasta vs cooked pasta, uncooked rice vs cooked rice) AND they did NOT explicitly say "raw", "cooked", "uncooked", "dry", or similar, you MUST set clarification_needed=true and clarification_question="Was that weighed raw or cooked?". In that case, provide the most reasonable middle-ground estimate and set is_estimate=true and preparation="estimated".
 - Set meal_type based on the current local time hint provided by the user, defaulting to snacks when unclear.
 - Never fabricate precision; round nutrition to whole numbers.
 - Do NOT add coaching, judgement, or diet advice.`;
