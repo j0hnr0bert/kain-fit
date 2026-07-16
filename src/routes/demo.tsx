@@ -11,7 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { toast } from "sonner";
 import {
   ArrowLeft, ArrowUp, Sparkles, Trash2, Loader2, MessageSquare, AlertCircle,
@@ -23,6 +29,14 @@ import { BetaBadge } from "@/components/BetaBadge";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { parseFoodDemo } from "@/lib/food.functions";
+import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useRef } from "react";
 
 export const Route = createFileRoute("/demo")({
   head: () => ({
