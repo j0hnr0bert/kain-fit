@@ -26,9 +26,45 @@ async function ensureAdmin(ctx: { supabase: unknown; userId: string }): Promise<
 
 export const getPublicOpsFlags = createServerFn({ method: "GET" }).handler(async () => {
   const { readOpsSettings } = await import("./ops-settings.server");
+  const { getBreakerStatus, getCapacityStats, getGlobalAiCounts } = await import("./ai-guard.server");
   const s = await readOpsSettings();
+
+  // Auto-banner: if the founder hasn't set a manual message, surface one
+  // automatically when the system is visibly strained. Precedence:
+  //   1) manual banner (whatever the admin typed)
+  //   2) AI paused
+  //   3) circuit breaker open (repeated AI failures)
+  //   4) monthly cap reached
+  //   5) daily alert threshold crossed
+  //   6) queue saturated (all slots busy AND waiters queued)
+  let banner = s.high_demand_banner?.trim() ?? "";
+  if (!banner) {
+    if (s.pause_ai || s.db_only_mode) {
+      banner = "KainFit's calculator is temporarily paused. You can still edit or add entries manually.";
+    } else if (getBreakerStatus() === "open") {
+      banner = "Our calculator is catching its breath. Try again in a minute — your entries are safe.";
+    } else {
+      try {
+        const counts = await getGlobalAiCounts();
+        if (s.monthly_ai_call_cap > 0 && counts.month >= s.monthly_ai_call_cap) {
+          banner = "We've hit this month's calculator budget. You can still edit or add entries manually.";
+        } else if (s.daily_ai_call_alert > 0 && counts.today >= s.daily_ai_call_alert) {
+          banner = "Demand is unusually high today — parsing may be slower than usual.";
+        }
+      } catch {
+        // don't let a counts read failure hide the app
+      }
+      if (!banner) {
+        const cap = getCapacityStats();
+        if (cap.queued > 0 && cap.inFlight >= cap.maxConcurrent) {
+          banner = "Lots of people logging right now — hang tight, your entry is queued.";
+        }
+      }
+    }
+  }
+
   return {
-    high_demand_banner: s.high_demand_banner,
+    high_demand_banner: banner,
     db_only_mode: s.db_only_mode,
   };
 });
