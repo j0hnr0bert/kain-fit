@@ -296,8 +296,15 @@ function DemoPage() {
           <div className="text-sm">
             <div className="font-semibold text-foreground">Demo mode</div>
             <p className="text-muted-foreground text-[13px] leading-relaxed">
-              Your entry is processed to generate this preview but is not saved to an account.
-              You have {remaining} free {remaining === 1 ? "calculation" : "calculations"} left.
+              Your entry is processed to generate this preview but is not saved to an account.{" "}
+              {remaining === null ? (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  Checking demo availability…
+                </span>
+              ) : (
+                <>You have {remaining} free {remaining === 1 ? "calculation" : "calculations"} left.</>
+              )}
             </p>
           </div>
         </div>
@@ -325,12 +332,12 @@ function DemoPage() {
               placeholder="Try: 200g chicken breast and 150g rice"
               aria-label="Describe what you ate"
               className="h-14 pl-5 pr-14 bg-transparent border-0 rounded-3xl text-base focus-visible:ring-0"
-              disabled={parsing || limitReached}
+              disabled={parsing || limitReached || remaining === null}
               ref={inputRef}
             />
             <button
               type="submit"
-              disabled={parsing || !input.trim() || limitReached}
+              disabled={parsing || !input.trim() || limitReached || remaining === null}
               className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
               aria-label="Calculate nutrition"
             >
@@ -368,8 +375,8 @@ function DemoPage() {
           )}
           {limitReached && (
             <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
-              You've used all {DEMO_LIMIT} free demo calculations. Create a free account to keep
-              tracking.
+              You've completed your {DEMO_LIMIT} free demo calculations. Create a free account to
+              continue tracking.
             </div>
           )}
         </form>
