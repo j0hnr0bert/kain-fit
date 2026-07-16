@@ -409,12 +409,15 @@ export const getDemoStatus = createServerFn({ method: "GET" }).handler(async () 
   const { sid } = readOrIssueDemoSid();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = supabaseAdmin as unknown as DemoAdmin;
+  const { readOpsSettings } = await import("./ops-settings.server");
+  const settings = await readOpsSettings();
+  const limit = Math.max(1, Math.floor(settings.demo_allowance || DEMO_PARSE_LIMIT));
   const row = await getUsageRow(admin, sid);
   const count = row?.count ?? 0;
   return {
-    limit: DEMO_PARSE_LIMIT,
-    remaining: Math.max(0, DEMO_PARSE_LIMIT - count),
-    used: Math.min(DEMO_PARSE_LIMIT, count),
+    limit,
+    remaining: Math.max(0, limit - count),
+    used: Math.min(limit, count),
   };
 });
 
@@ -467,14 +470,14 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
         await admin.rpc("release_demo_slot", { _sid: sid, _reason: "empty_result" });
         return {
           ...result,
-          remaining: Math.max(0, DEMO_PARSE_LIMIT - (reservedCount - 1)),
+          remaining: Math.max(0, demoLimit - (reservedCount - 1)),
           timings,
         };
       }
       await admin.rpc("mark_demo_success", { _sid: sid });
       return {
         ...result,
-        remaining: Math.max(0, DEMO_PARSE_LIMIT - reservedCount),
+        remaining: Math.max(0, demoLimit - reservedCount),
         timings,
       };
     } catch (err) {
