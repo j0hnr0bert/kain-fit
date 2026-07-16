@@ -46,6 +46,7 @@ export const Route = createFileRoute("/_authenticated/today")({
 type Entry = {
   id: string;
   logged_at: string;
+  created_at?: string;
   meal_type: "breakfast" | "lunch" | "dinner" | "snacks";
   display_name: string;
   quantity: number;
@@ -56,6 +57,7 @@ type Entry = {
   fat_g: number;
   data_source: string;
   is_estimate: boolean;
+  preparation?: string | null;
 };
 
 type PendingItem = {
@@ -216,7 +218,7 @@ function TodayPage() {
         .from("food_entries")
         .select("*")
         .gte("logged_at", start.toISOString())
-        .order("logged_at", { ascending: true });
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Entry[];
     },
@@ -373,7 +375,8 @@ function TodayPage() {
     }
     track("food_deleted", {});
     qc.invalidateQueries({ queryKey: ["entries", "today"] });
-    toast("Removed", {
+    toast("Entry deleted", {
+      duration: 5000,
       action: {
         label: "Undo",
         onClick: async () => {
@@ -386,11 +389,36 @@ function TodayPage() {
     });
   }
 
-  const grouped = useMemo(() => {
-    const g: Record<Entry["meal_type"], Entry[]> = { breakfast: [], lunch: [], dinner: [], snacks: [] };
-    entries.forEach((e) => g[e.meal_type].push(e));
-    return g;
-  }, [entries]);
+  async function updateEntryAmount(entry: Entry, newQuantity: number) {
+    const oldQ = Number(entry.quantity) || 0;
+    if (!(newQuantity > 0)) {
+      toast.error("Enter an amount greater than 0.");
+      return false;
+    }
+    if (newQuantity > 100000) {
+      toast.error("That amount looks too large.");
+      return false;
+    }
+    // Linear recalc from stored per-unit values — no AI call.
+    const ratio = oldQ > 0 ? newQuantity / oldQ : 1;
+    const patch = {
+      quantity: newQuantity,
+      calories: Math.round(Number(entry.calories) * ratio),
+      protein_g: Math.round(Number(entry.protein_g) * ratio),
+      carbs_g: Math.round(Number(entry.carbs_g) * ratio),
+      fat_g: Math.round(Number(entry.fat_g) * ratio),
+    };
+    const { error } = await supabase
+      .from("food_entries")
+      .update(patch)
+      .eq("id", entry.id);
+    if (error) {
+      toast.error(error.message);
+      return false;
+    }
+    qc.invalidateQueries({ queryKey: ["entries", "today"] });
+    return true;
+  }
 
   async function recalcRow(idx: number, next: PendingItem) {
     editedRef.current = true;
@@ -451,6 +479,38 @@ function TodayPage() {
     return "Magandang gabi";
   }, []);
 
+  const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
+  const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  const placeholderExamples = useMemo(
+    () => [
+      "150g chicken adobo and 200g cooked rice",
+      "3 eggs and 2 slices of bread",
+      "250g raw chicken breast",
+      "1 cup oatmeal with banana",
+      "200g grilled salmon and salad",
+    ],
+    [],
+  );
+  useEffect(() => {
+    const t = window.setInterval(
+      () => setPlaceholderIdx((i) => (i + 1) % placeholderExamples.length),
+      4000,
+    );
+    return () => window.clearInterval(t);
+  }, [placeholderExamples.length]);
+
+  function formatEntryTime(iso: string | undefined) {
+    if (!iso) return "";
+    try {
+      return new Date(iso).toLocaleTimeString(undefined, {
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return "";
+    }
+  }
+
   return (
     <div className="min-h-[100dvh] bg-background pb-24">
       <HighDemandBanner />
@@ -499,7 +559,7 @@ function TodayPage() {
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="What did you eat?"
+              placeholder="Type your next food or meal…"
               className="h-14 pl-5 pr-24 bg-transparent border-0 rounded-3xl text-base focus-visible:ring-0"
               disabled={parsing}
             />
@@ -527,12 +587,15 @@ function TodayPage() {
             </div>
           </div>
           <p className="mt-2 px-1 text-xs text-muted-foreground">
-            Try: <span className="text-foreground/80">150g chicken adobo and 200g rice</span>
+            Try: <span className="text-foreground/80">{placeholderExamples[placeholderIdx]}</span>
           </p>
         </form>
 
         {/* Log */}
-        <div className="mt-8 space-y-6">
+        <div className="mt-8">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
+            Today's Log
+          </div>
           {isLoading && (
             <div className="text-sm text-muted-foreground">Loading today's log…</div>
           )}
@@ -541,59 +604,56 @@ function TodayPage() {
               Nothing logged yet. Type what you ate above.
             </div>
           )}
-          {(["breakfast", "lunch", "dinner", "snacks"] as const).map((meal) => {
-            const items = grouped[meal];
-            if (items.length === 0) return null;
-            return (
-              <div key={meal}>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
-                  {meal}
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <SwipeableEntry
+                key={e.id}
+                onDelete={() => deleteEntry(e)}
+                onOpen={() => setEditingEntry(e)}
+              >
+                <div className="rounded-2xl bg-card border border-border p-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium truncate">{e.display_name}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {formatEntryTime(e.created_at ?? e.logged_at)}
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    <StatusBadge
+                      data_source={e.data_source}
+                      is_estimate={e.is_estimate}
+                      preparation={e.preparation ?? null}
+                    />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal ·
+                    P {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      setReportTarget({
+                        id: e.id,
+                        values: {
+                          display_name: e.display_name,
+                          quantity: e.quantity,
+                          unit: e.unit,
+                          calories: e.calories,
+                          protein_g: e.protein_g,
+                          carbs_g: e.carbs_g,
+                          fat_g: e.fat_g,
+                        },
+                      });
+                    }}
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    <Flag className="h-3 w-3" /> Report incorrect macros
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  {items.map((e) => (
-                    <div key={e.id} className="rounded-2xl bg-card border border-border p-4 flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium truncate">{e.display_name}</span>
-                          <StatusBadge
-                            data_source={e.data_source}
-                            is_estimate={e.is_estimate}
-                          />
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal ·
-                          P {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReportTarget({
-                              id: e.id,
-                              values: {
-                                display_name: e.display_name,
-                                quantity: e.quantity,
-                                unit: e.unit,
-                                calories: e.calories,
-                                protein_g: e.protein_g,
-                                carbs_g: e.carbs_g,
-                                fat_g: e.fat_g,
-                              },
-                            })
-                          }
-                          className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                        >
-                          <Flag className="h-3 w-3" /> Report incorrect macros
-                        </button>
-                      </div>
-                      <button onClick={() => deleteEntry(e)} className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+              </SwipeableEntry>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -681,6 +741,23 @@ function TodayPage() {
         onOpenChange={(v) => { if (!v) setReportTarget(null); }}
         foodEntryId={reportTarget?.id ?? null}
         originalValues={reportTarget?.values ?? {}}
+      />
+
+      <EditEntrySheet
+        entry={editingEntry}
+        onClose={() => setEditingEntry(null)}
+        onSave={async (qty) => {
+          if (!editingEntry) return false;
+          const ok = await updateEntryAmount(editingEntry, qty);
+          if (ok) setEditingEntry(null);
+          return ok;
+        }}
+        onDelete={async () => {
+          if (!editingEntry) return;
+          const e = editingEntry;
+          setEditingEntry(null);
+          await deleteEntry(e);
+        }}
       />
 
       <Dialog open={!!demoImport} onOpenChange={(o) => !o && dismissDemoImport()}>
@@ -962,4 +1039,211 @@ function UserInitial() {
     });
   }, []);
   return <>{initial}</>;
+}
+
+function SwipeableEntry({
+  children,
+  onDelete,
+  onOpen,
+}: {
+  children: React.ReactNode;
+  onDelete: () => void;
+  onOpen: () => void;
+}) {
+  const [dx, setDx] = useState(0);
+  const [open, setOpen] = useState(false);
+  const startX = useRef<number | null>(null);
+  const startY = useRef<number | null>(null);
+  const moved = useRef(false);
+  const horiz = useRef(false);
+
+  const REVEAL = 88; // px width of delete action
+
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    startX.current = t.clientX;
+    startY.current = t.clientY;
+    moved.current = false;
+    horiz.current = false;
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    if (startX.current == null || startY.current == null) return;
+    const t = e.touches[0];
+    const deltaX = t.clientX - startX.current;
+    const deltaY = t.clientY - startY.current;
+    if (!horiz.current) {
+      if (Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        horiz.current = true;
+      } else if (Math.abs(deltaY) > 8) {
+        // vertical scroll — bail out
+        startX.current = null;
+        return;
+      }
+    }
+    if (horiz.current) {
+      moved.current = true;
+      const base = open ? -REVEAL : 0;
+      const next = Math.min(0, Math.max(-REVEAL * 1.4, base + deltaX));
+      setDx(next);
+    }
+  }
+  function onTouchEnd() {
+    if (horiz.current) {
+      if (dx < -REVEAL / 2) {
+        setDx(-REVEAL);
+        setOpen(true);
+      } else {
+        setDx(0);
+        setOpen(false);
+      }
+    }
+    startX.current = null;
+    startY.current = null;
+  }
+  function handleClick() {
+    if (moved.current) return;
+    if (open) {
+      setOpen(false);
+      setDx(0);
+      return;
+    }
+    onOpen();
+  }
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+          setOpen(false);
+          setDx(0);
+        }}
+        className="absolute inset-y-0 right-0 w-[88px] bg-destructive text-destructive-foreground flex items-center justify-center gap-1 text-sm font-medium"
+        aria-label="Delete entry"
+        tabIndex={open ? 0 : -1}
+      >
+        <Trash2 className="h-4 w-4" /> Delete
+      </button>
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onClick={handleClick}
+        style={{
+          transform: `translateX(${dx}px)`,
+          transition: startX.current == null ? "transform 0.2s ease" : "none",
+        }}
+        className="relative bg-background cursor-pointer"
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function EditEntrySheet({
+  entry,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  entry: Entry | null;
+  onClose: () => void;
+  onSave: (qty: number) => Promise<boolean>;
+  onDelete: () => Promise<void>;
+}) {
+  const [qty, setQty] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (entry) setQty(String(entry.quantity));
+  }, [entry]);
+  const unitLabel = useMemo(() => {
+    if (!entry) return "";
+    const u = (entry.unit ?? "").toLowerCase();
+    if (u === "g") return "grams";
+    if (u === "kg") return "kilograms";
+    if (u === "ml") return "milliliters";
+    if (u === "l") return "liters";
+    return entry.unit || "units";
+  }, [entry]);
+  const parsed = Number(qty);
+  const validationError =
+    qty.trim() === "" || Number.isNaN(parsed)
+      ? "Enter an amount."
+      : parsed <= 0
+      ? "Amount must be greater than 0."
+      : parsed > 100000
+      ? "That amount looks too large."
+      : null;
+  return (
+    <Sheet open={!!entry} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent side="bottom" className="rounded-t-3xl max-h-[85vh] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>{entry?.display_name}</SheetTitle>
+          <SheetDescription>
+            Adjust the amount. Nutrition recalculates instantly from the stored per-{unitLabel.replace(/s$/, "") || "unit"} values — no new AI calculation is used.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-4 space-y-4">
+          <label className="block">
+            <span className="text-xs text-muted-foreground">Amount ({unitLabel})</span>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              className="mt-1 h-12 rounded-2xl text-lg"
+              autoFocus
+            />
+            {validationError && (
+              <span className="mt-1 block text-[11px] text-destructive">{validationError}</span>
+            )}
+          </label>
+          {entry && (
+            <div className="rounded-2xl bg-muted/60 p-3 text-xs text-muted-foreground">
+              Current: {formatQuantity(entry.quantity, entry.unit)} · {Math.round(entry.calories)} kcal ·
+              P {Math.round(entry.protein_g)} · C {Math.round(entry.carbs_g)} · F {Math.round(entry.fat_g)}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              className="flex-1 h-12 rounded-2xl"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 h-12 rounded-2xl"
+              disabled={saving || validationError !== null || Number(qty) === entry?.quantity}
+              onClick={async () => {
+                setSaving(true);
+                await onSave(Number(qty));
+                setSaving(false);
+              }}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save changes"}
+            </Button>
+          </div>
+          <div className="pt-4 border-t border-border">
+            <Button
+              variant="destructive"
+              className="w-full h-12 rounded-2xl"
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                await onDelete();
+                setSaving(false);
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" /> Delete entry
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
 }
