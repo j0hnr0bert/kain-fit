@@ -26,6 +26,18 @@ const responseSchema = z.object({
   input_language: z.string(),
 });
 
+// Schema returned by the single-item recalculation endpoint.
+// Only the fields that can change with preparation/quantity are returned.
+const recalcSchema = z.object({
+  calories: z.number().nonnegative(),
+  protein_g: z.number().nonnegative(),
+  carbs_g: z.number().nonnegative(),
+  fat_g: z.number().nonnegative(),
+  data_source: z.string(),
+  confidence: z.number().min(0).max(1),
+  is_estimate: z.boolean(),
+});
+
 const SYSTEM_PROMPT = `You are KainFit's food-parsing engine, built for Filipino users.
 
 Your job: turn a user's natural-language description of what they ate (English, Filipino, or Taglish) into structured nutrition items. Support common Philippine foods (adobo, sinigang, tapsilog, pandesal, lechon kawali, bangus, arroz caldo, giniling, Jollibee items, etc.) and common serving language (grams, cups, tablespoons, teaspoons, pieces, bowls, servings, packs, cans, "isang mangkok", "kalahating cup").
@@ -42,6 +54,30 @@ Rules:
 - Set meal_type based on the current local time hint provided by the user, defaulting to snacks when unclear.
 - Never fabricate precision; round nutrition to whole numbers.
 - Do NOT add coaching, judgement, or diet advice.`;
+
+const RECALC_SYSTEM_PROMPT = `You are KainFit's nutrition recalculation engine.
+
+Given a single food item with an updated preparation, quantity, or unit, return
+its recalculated nutrition. Use the verified per-100g reference that matches
+the preparation the user selected:
+- "raw" → uncooked/raw reference values (before water loss, water absorption,
+  or oil absorption).
+- "cooked" → cooked/prepared reference values (accounting for water loss in
+  meats/fish, water absorption in rice/pasta, and typical oil absorption for
+  common Filipino cooking methods).
+- "estimated" → use the most reasonable middle-ground assumption for that
+  specific food (for example, most home cooks weigh raw meat but cooked rice),
+  set is_estimate=true, and set data_source="estimated".
+
+Rules:
+- Raw and cooked values MUST differ whenever the underlying reference differs
+  (chicken, beef, pork, fish, rice, pasta, oats, potato, etc.). Never return
+  identical macros for raw vs cooked for these foods.
+- Round all nutrition fields to whole numbers.
+- confidence between 0 and 1.
+- data_source: "verified_database" for well-known foods you're confident about;
+  "recipe_based" if inferred from ingredients; "estimated" otherwise.
+- Never invent precision or add coaching.`;
 
 async function callParseAi(input: string, mealHint: string) {
   const apiKey = process.env.LOVABLE_API_KEY;
@@ -84,6 +120,92 @@ async function callParseAi(input: string, mealHint: string) {
   }
   return result.data;
 }
+
+async function callRecalcAi(item: {
+  display_name: string;
+  normalized_name: string;
+  quantity: number;
+  unit: string;
+  preparation: string;
+}) {
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) throw new Error("AI is not configured. Please contact support.");
+  const userPrompt = `Recalculate nutrition for this single food.\n\nFood: ${item.display_name}\nNormalized name: ${item.normalized_name}\nQuantity: ${item.quantity}\nUnit: ${item.unit}\nPreparation: ${item.preparation}\n\nReturn a JSON object matching:\n{\n  "calories": number,\n  "protein_g": number,\n  "carbs_g": number,\n  "fat_g": number,\n  "data_source": "verified_database" | "recipe_based" | "estimated" | "user_confirmed",\n  "confidence": number,\n  "is_estimate": boolean\n}`;
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Lovable-API-Key": apiKey },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: RECALC_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (res.status === 429) throw new Error("Too many requests — please try again in a moment.");
+  if (res.status === 402) throw new Error("AI credits exhausted. Please contact the app owner.");
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("AI recalc error", res.status, text);
+    throw new Error("Could not recalculate nutrition. Please try again.");
+  }
+  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = json.choices?.[0]?.message?.content ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("AI returned an invalid response. Please try again.");
+  }
+  const result = recalcSchema.safeParse(parsed);
+  if (!result.success) {
+    console.error("Recalc schema validation failed", result.error.flatten());
+    throw new Error("AI returned an unexpected shape. Please try again.");
+  }
+  return result.data;
+}
+
+const recalcInputValidator = (data: {
+  display_name: string;
+  normalized_name: string;
+  quantity: number;
+  unit: string;
+  preparation: "raw" | "cooked" | "estimated";
+}) => {
+  if (!data?.display_name || typeof data.display_name !== "string") {
+    throw new Error("Missing food name.");
+  }
+  if (!(data.quantity >= 0) || !Number.isFinite(data.quantity)) {
+    throw new Error("Invalid quantity.");
+  }
+  if (!data.unit || typeof data.unit !== "string") throw new Error("Missing unit.");
+  const prep = data.preparation;
+  if (prep !== "raw" && prep !== "cooked" && prep !== "estimated") {
+    throw new Error("Invalid preparation.");
+  }
+  return {
+    display_name: data.display_name.trim().slice(0, 200),
+    normalized_name: (data.normalized_name ?? data.display_name).toString().trim().slice(0, 200),
+    quantity: data.quantity,
+    unit: data.unit.trim().slice(0, 40),
+    preparation: prep,
+  };
+};
+
+// Authenticated recalc for logged-in users. Does not touch demo quotas.
+export const recalcItem = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator(recalcInputValidator)
+  .handler(async ({ data }) => callRecalcAi(data));
+
+// Demo recalc — anonymous, but DOES NOT consume a demo calculation slot.
+// Answering a clarification or changing preparation is not a new calculation.
+export const recalcItemDemo = createServerFn({ method: "POST" })
+  .inputValidator(recalcInputValidator)
+  .handler(async ({ data }) => callRecalcAi(data));
 
 export const parseFood = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
