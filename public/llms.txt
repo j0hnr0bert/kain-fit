@@ -1,0 +1,11 @@
+# KainFit
+
+> Know what you ate. Instantly. A mobile-first food-logging app that turns plain-language meal descriptions into calories and macros.
+
+## Pages
+
+- [Home](/): Overview of KainFit and how instant food logging works.
+- [Try the demo](/demo): Explore KainFit with sample data — no account required.
+- [Create account or sign in](/auth): Sign up or sign in to start logging meals.
+- [Privacy policy](/privacy): How KainFit handles your data.
+- [Terms of service](/terms): Terms for using KainFit.
