@@ -29,7 +29,23 @@ function Welcome() {
   }, []);
 
   if (!checked) {
-    return <div className="min-h-screen bg-background" aria-hidden="true" />;
+    return (
+      <div
+        className="min-h-[100dvh] flex flex-col items-center justify-center gap-3 bg-background"
+        role="status"
+        aria-live="polite"
+        aria-label="Preparing KainFit"
+      >
+        <div className="h-14 w-14 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-2xl">
+          K
+        </div>
+        <div
+          className="h-4 w-4 rounded-full border-2 border-primary border-t-transparent motion-safe:animate-spin"
+          aria-hidden="true"
+        />
+        <div className="text-sm text-primary font-medium">Preparing KainFit…</div>
+      </div>
+    );
   }
 
   return (
