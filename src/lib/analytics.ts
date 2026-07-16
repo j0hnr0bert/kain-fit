@@ -83,7 +83,8 @@ export type EventName =
   | "incorrect_macros_reported"
   | "saved_meal_repeated"
   | "feedback_submitted"
-  | "app_returned";
+  | "app_returned"
+  | "admin_dashboard_viewed";
 
 export function track(event: EventName, properties: Record<string, unknown> = {}): void {
   if (!isBrowser()) return;
