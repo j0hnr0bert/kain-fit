@@ -2,6 +2,8 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { track, getAcquisitionSource } from "@/lib/analytics";
+import { BetaBadge } from "@/components/BetaBadge";
 
 export const Route = createFileRoute("/")({
   component: Welcome,
@@ -20,6 +22,11 @@ function Welcome() {
       }
     });
   }, [navigate]);
+
+  useEffect(() => {
+    // Fire once per landing view — also captures ?source= into sessionStorage.
+    track("landing_viewed", { acquisition_source: getAcquisitionSource() ?? undefined });
+  }, []);
 
   if (!checked) {
     return <div className="min-h-screen bg-background" aria-hidden="true" />;
@@ -40,6 +47,7 @@ function Welcome() {
               <span className="text-primary-foreground font-bold text-lg">K</span>
             </div>
             <span className="text-xl font-semibold tracking-tight">KainFit</span>
+            <BetaBadge className="ml-1" />
           </div>
           <h1 className="text-4xl font-bold tracking-tight leading-[1.1]">
             Know what you ate.
