@@ -1,7 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { resolveWithCache } from "./food.functions";
 
 // -------- Shared admin check --------
 
@@ -292,6 +291,7 @@ export const warmFoodParseCache = createServerFn({ method: "POST" })
     let hits = 0;
     let misses = 0;
     let errors = 0;
+    const { resolveWithCache } = await import("./food.functions");
     for (const entry of WARM_INPUTS) {
       try {
         const result = await resolveWithCache(entry.input, entry.mealHint);
