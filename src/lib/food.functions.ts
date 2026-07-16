@@ -216,7 +216,12 @@ export const parseFood = createServerFn({ method: "POST" })
     if (data.input.length > 500) throw new Error("Description is too long.");
     return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
-  .handler(async ({ data }) => callParseAi(data.input, data.mealHint));
+  .handler(async ({ data }) => {
+    const t0 = Date.now();
+    const result = await callParseAi(data.input, data.mealHint);
+    const ai_parsing_ms = Date.now() - t0;
+    return { ...result, timings: { ai_parsing_ms, resolution_path: "ai_parse" as const } };
+  });
 
 // Public (unauthenticated) demo parse. Uses the same production pipeline,
 // but is rate-limited per anonymous session and never persists results.
