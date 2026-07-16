@@ -308,3 +308,48 @@ export async function getUserDailyAiCount(userId: string): Promise<number> {
     .gte("created_at", start.toISOString());
   return res.count ?? 0;
 }
+
+// Beta usage counters — PHT day boundary.
+// A "submission" = one successful food_parse_succeeded event for this user
+// since PHT midnight. Editing / deleting / preparation toggles never emit
+// this event, so they don't consume the allowance.
+
+export function phtDayStartIso(): string {
+  const nowMs = Date.now();
+  const phtOffsetMs = 8 * 60 * 60 * 1000;
+  const phtNow = new Date(nowMs + phtOffsetMs);
+  const y = phtNow.getUTCFullYear();
+  const m = phtNow.getUTCMonth();
+  const d = phtNow.getUTCDate();
+  const midnightUtcMs = Date.UTC(y, m, d, 0, 0, 0) - phtOffsetMs;
+  return new Date(midnightUtcMs).toISOString();
+}
+
+export function phtNextDayStartIso(): string {
+  return new Date(new Date(phtDayStartIso()).getTime() + 24 * 60 * 60 * 1000).toISOString();
+}
+
+export async function getUserDailySubmissionCount(userId: string): Promise<number> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const admin = supabaseAdmin as unknown as {
+    from: (t: string) => {
+      select: (
+        c: string,
+        opts?: { count?: "exact"; head?: boolean },
+      ) => {
+        eq: (a: string, b: string) => {
+          eq: (a: string, b: string) => {
+            gte: (a: string, b: string) => Promise<{ count: number | null; error: unknown }>;
+          };
+        };
+      };
+    };
+  };
+  const res = await admin
+    .from("product_events")
+    .select("id", { count: "exact", head: true })
+    .eq("event_name", "food_parse_succeeded")
+    .eq("user_id", userId)
+    .gte("created_at", phtDayStartIso());
+  return res.count ?? 0;
+}
