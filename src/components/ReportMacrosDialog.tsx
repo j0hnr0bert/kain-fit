@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { submitMacroReport } from "@/lib/beta.functions";
-import { track } from "@/lib/analytics";
+import { submitMacroReport, submitFeedback } from "@/lib/beta.functions";
+import { track, getAcquisitionSource } from "@/lib/analytics";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -25,12 +25,12 @@ type IssueType =
   | "other";
 
 const OPTIONS: { value: IssueType; label: string }[] = [
+  { value: "wrong_food", label: "Wrong food" },
+  { value: "serving_quantity", label: "Wrong quantity" },
   { value: "calories", label: "Calories" },
   { value: "protein", label: "Protein" },
   { value: "carbs", label: "Carbohydrates" },
   { value: "fat", label: "Fat" },
-  { value: "serving_quantity", label: "Serving quantity" },
-  { value: "wrong_food", label: "Wrong food interpretation" },
   { value: "other", label: "Other" },
 ];
 
@@ -40,35 +40,60 @@ export function ReportMacrosDialog({
   foodEntryId,
   originalValues,
   disabled,
+  anonymousSessionId,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   foodEntryId: string | null;
   originalValues: Record<string, unknown>;
   disabled?: boolean;
+  /** When provided (demo / unauthenticated), the report is routed through the
+   *  public feedback endpoint instead of the authenticated macro_reports table. */
+  anonymousSessionId?: string;
 }) {
-  const [issue, setIssue] = useState<IssueType>("calories");
+  const [issue, setIssue] = useState<IssueType>("wrong_food");
   const [explanation, setExplanation] = useState("");
   const [saving, setSaving] = useState(false);
   const send = useServerFn(submitMacroReport);
+  const sendPublic = useServerFn(submitFeedback);
 
   async function submit() {
     if (saving) return;
     setSaving(true);
     try {
-      await send({
-        data: {
-          food_entry_id: foodEntryId,
-          issue_type: issue,
-          explanation: explanation.trim() || null,
-          original_values: originalValues,
-          corrected_values: null,
-        },
-      });
+      if (anonymousSessionId) {
+        const label = OPTIONS.find((o) => o.value === issue)?.label ?? issue;
+        const summary = `demo report: ${label}${
+          originalValues?.display_name ? ` — ${String(originalValues.display_name)}` : ""
+        }`;
+        await sendPublic({
+          data: {
+            anonymous_session_id: anonymousSessionId,
+            ease_rating: null,
+            accuracy_rating: null,
+            confusing: null,
+            missed_food: summary.slice(0, 500),
+            would_use_tomorrow: null,
+            comment: explanation.trim() || null,
+            allow_contact: false,
+            acquisition_source: getAcquisitionSource(),
+          },
+        });
+      } else {
+        await send({
+          data: {
+            food_entry_id: foodEntryId,
+            issue_type: issue,
+            explanation: explanation.trim() || null,
+            original_values: originalValues,
+            corrected_values: null,
+          },
+        });
+      }
       track("incorrect_macros_reported", { issue_type: issue });
       toast.success("Thanks — we'll review this");
       setExplanation("");
-      setIssue("calories");
+      setIssue("wrong_food");
       onOpenChange(false);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not send report");

@@ -7,6 +7,14 @@ import { parseFood } from "@/lib/food.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { BottomNav } from "@/components/BottomNav";
 import { toast } from "sonner";
 import {
@@ -77,6 +85,92 @@ function TodayPage() {
     values: Record<string, unknown>;
   } | null>(null);
   const editedRef = useRef(false);
+  const [demoImport, setDemoImport] = useState<{
+    entries: Array<{
+      meal: Entry["meal_type"];
+      name: string;
+      quantity: number;
+      unit: string;
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      data_source: string;
+      is_estimate: boolean;
+      confidence?: number;
+    }>;
+  } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = sessionStorage.getItem("kf.demoPendingImport");
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        entries: Array<Record<string, unknown>>;
+      };
+      const list = Array.isArray(parsed?.entries) ? parsed.entries : [];
+      if (list.length === 0) {
+        sessionStorage.removeItem("kf.demoPendingImport");
+        return;
+      }
+      setDemoImport({
+        entries: list.map((e) => ({
+          meal: (e.meal as Entry["meal_type"]) ?? "snacks",
+          name: String(e.name ?? "Demo item"),
+          quantity: Number(e.quantity ?? 1),
+          unit: String(e.unit ?? ""),
+          calories: Number(e.calories ?? 0),
+          protein: Number(e.protein ?? 0),
+          carbs: Number(e.carbs ?? 0),
+          fat: Number(e.fat ?? 0),
+          data_source: String(e.data_source ?? "estimated"),
+          is_estimate: Boolean(e.is_estimate),
+          confidence: typeof e.confidence === "number" ? e.confidence : 0.7,
+        })),
+      });
+    } catch {
+      // ignore malformed pending import
+    }
+  }, []);
+
+  async function importDemoEntries() {
+    if (!demoImport) return;
+    const { data: u } = await supabase.auth.getUser();
+    if (!u.user) return;
+    const rows = demoImport.entries.map((i) => ({
+      user_id: u.user!.id,
+      logged_at: new Date().toISOString(),
+      meal_type: i.meal,
+      original_input: "(imported from demo)",
+      display_name: i.name,
+      normalized_name: i.name.toLowerCase(),
+      quantity: i.quantity,
+      unit: i.unit,
+      preparation: null,
+      calories: Math.round(i.calories),
+      protein_g: Math.round(i.protein),
+      carbs_g: Math.round(i.carbs),
+      fat_g: Math.round(i.fat),
+      data_source: i.data_source,
+      confidence: i.confidence ?? 0.7,
+      is_estimate: i.is_estimate,
+    }));
+    const { error } = await supabase.from("food_entries").insert(rows);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+    try { sessionStorage.removeItem("kf.demoPendingImport"); } catch { /* ignore */ }
+    setDemoImport(null);
+    qc.invalidateQueries({ queryKey: ["entries", "today"] });
+    toast.success(`Imported ${rows.length} demo ${rows.length === 1 ? "entry" : "entries"}`);
+  }
+
+  function dismissDemoImport() {
+    try { sessionStorage.removeItem("kf.demoPendingImport"); } catch { /* ignore */ }
+    setDemoImport(null);
+  }
 
   useEffect(() => {
     markReturned();
@@ -459,6 +553,27 @@ function TodayPage() {
         foodEntryId={reportTarget?.id ?? null}
         originalValues={reportTarget?.values ?? {}}
       />
+
+      <Dialog open={!!demoImport} onOpenChange={(o) => !o && dismissDemoImport()}>
+        <DialogContent className="max-w-sm rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Import your demo entries?</DialogTitle>
+            <DialogDescription>
+              We kept the {demoImport?.entries.length ?? 0}{" "}
+              {demoImport?.entries.length === 1 ? "item" : "items"} you added while trying KainFit.
+              Import them into today's log?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button onClick={importDemoEntries} className="w-full h-12 rounded-2xl">
+              Yes, import them
+            </Button>
+            <Button variant="ghost" onClick={dismissDemoImport} className="w-full h-12 rounded-2xl">
+              No thanks, start fresh
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <BottomNav />
     </div>

@@ -41,6 +41,48 @@ Rules:
 - Never fabricate precision; round nutrition to whole numbers.
 - Do NOT add coaching, judgement, or diet advice.`;
 
+async function callParseAi(input: string, mealHint: string) {
+  const apiKey = process.env.LOVABLE_API_KEY;
+  if (!apiKey) throw new Error("AI is not configured. Please contact support.");
+  const userPrompt = `Current meal hint (from local time): ${mealHint}\n\nUser said: "${input}"\n\nReturn a JSON object matching this shape:\n{\n  "items": [\n    {\n      "display_name": string,\n      "normalized_name": string,\n      "quantity": number,\n      "unit": string,\n      "preparation": string | null,\n      "meal_type": "breakfast" | "lunch" | "dinner" | "snacks",\n      "calories": number,\n      "protein_g": number,\n      "carbs_g": number,\n      "fat_g": number,\n      "data_source": "verified_database" | "recipe_based" | "estimated" | "user_confirmed",\n      "confidence": number,\n      "is_estimate": boolean,\n      "clarification_needed": boolean,\n      "clarification_question": string | null\n    }\n  ],\n  "input_language": "english" | "filipino" | "taglish"\n}`;
+
+  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Lovable-API-Key": apiKey },
+    body: JSON.stringify({
+      model: "google/gemini-3-flash-preview",
+      messages: [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (res.status === 429) throw new Error("Too many requests — please try again in a moment.");
+  if (res.status === 402) throw new Error("AI credits exhausted. Please contact the app owner.");
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    console.error("AI gateway error", res.status, text);
+    throw new Error("Could not interpret your food. Please try again.");
+  }
+
+  const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
+  const content = json.choices?.[0]?.message?.content ?? "";
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("AI returned an invalid response. Please try again.");
+  }
+  const result = responseSchema.safeParse(parsed);
+  if (!result.success) {
+    console.error("Schema validation failed", result.error.flatten());
+    throw new Error("AI returned an unexpected shape. Please try again.");
+  }
+  return result.data;
+}
+
 export const parseFood = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data: { input: string; mealHint?: string }) => {
@@ -50,48 +92,69 @@ export const parseFood = createServerFn({ method: "POST" })
     if (data.input.length > 500) throw new Error("Description is too long.");
     return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
+  .handler(async ({ data }) => callParseAi(data.input, data.mealHint));
+
+// Public (unauthenticated) demo parse. Uses the same production pipeline,
+// but is rate-limited per anonymous session and never persists results.
+export const DEMO_PARSE_LIMIT = 3;
+
+export const parseFoodDemo = createServerFn({ method: "POST" })
+  .inputValidator((data: { input: string; mealHint?: string; anonymousSessionId: string }) => {
+    if (!data?.input || typeof data.input !== "string" || data.input.trim().length === 0) {
+      throw new Error("Please enter what you ate.");
+    }
+    if (data.input.length > 500) throw new Error("Description is too long.");
+    const sid = String(data.anonymousSessionId ?? "").trim();
+    if (!sid || sid.length > 128) throw new Error("Session missing.");
+    return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks", sid };
+  })
   .handler(async ({ data }) => {
-    const apiKey = process.env.LOVABLE_API_KEY;
-    if (!apiKey) throw new Error("AI is not configured. Please contact support.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as unknown as {
+      from: (t: string) => {
+        select: (
+          c: string,
+          opts?: { count?: "exact"; head?: boolean },
+        ) => {
+          eq: (a: string, b: string) => {
+            eq: (a: string, b: string) => {
+              gt: (a: string, b: string) => Promise<{ count: number | null; error: unknown }>;
+            };
+          };
+        };
+        insert: (r: unknown) => Promise<{ error: { message: string } | null }>;
+      };
+    };
 
-    const userPrompt = `Current meal hint (from local time): ${data.mealHint}\n\nUser said: "${data.input}"\n\nReturn a JSON object matching this shape:\n{\n  "items": [\n    {\n      "display_name": string,\n      "normalized_name": string,\n      "quantity": number,\n      "unit": string,\n      "preparation": string | null,\n      "meal_type": "breakfast" | "lunch" | "dinner" | "snacks",\n      "calories": number,\n      "protein_g": number,\n      "carbs_g": number,\n      "fat_g": number,\n      "data_source": "verified_database" | "recipe_based" | "estimated" | "user_confirmed",\n      "confidence": number,\n      "is_estimate": boolean,\n      "clarification_needed": boolean,\n      "clarification_question": string | null\n    }\n  ],\n  "input_language": "english" | "filipino" | "taglish"\n}`;
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { count } = await admin
+      .from("product_events")
+      .select("id", { count: "exact", head: true })
+      .eq("anonymous_session_id", data.sid)
+      .eq("event_name", "demo_food_confirmed")
+      .gt("created_at", since);
 
-    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Lovable-API-Key": apiKey,
+    if ((count ?? 0) >= DEMO_PARSE_LIMIT) {
+      const err = new Error("DEMO_LIMIT_REACHED");
+      throw err;
+    }
+
+    const result = await callParseAi(data.input, data.mealHint);
+
+    // Record a server-side successful demo parse so rate limiting is authoritative.
+    await admin.from("product_events").insert({
+      user_id: null,
+      anonymous_session_id: data.sid,
+      event_name: "demo_food_confirmed",
+      acquisition_source: null,
+      event_properties: {
+        number_of_items: result.items.length,
+        input_language: result.input_language,
       },
-      body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
-      }),
     });
 
-    if (res.status === 429) throw new Error("Too many requests — please try again in a moment.");
-    if (res.status === 402) throw new Error("AI credits exhausted. Please contact the app owner.");
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      console.error("AI gateway error", res.status, text);
-      throw new Error("Could not interpret your food. Please try again.");
-    }
-
-    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content ?? "";
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      throw new Error("AI returned an invalid response. Please try again.");
-    }
-    const result = responseSchema.safeParse(parsed);
-    if (!result.success) {
-      console.error("Schema validation failed", result.error.flatten());
-      throw new Error("AI returned an unexpected shape. Please try again.");
-    }
-    return result.data;
+    return {
+      ...result,
+      remaining: Math.max(0, DEMO_PARSE_LIMIT - ((count ?? 0) + 1)),
+    };
   });
