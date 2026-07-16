@@ -259,6 +259,8 @@ function TodayPage() {
           clarification_required: anyClar,
           estimated_item_count: estimated,
           verified_item_count: verified,
+          ai_parsing_ms: result.timings?.ai_parsing_ms,
+          resolution_path: result.timings?.resolution_path,
         });
         if (anyClar) track("food_clarification_requested", { number_of_items: result.items.length });
         setPending(result.items);
