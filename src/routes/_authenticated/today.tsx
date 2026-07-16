@@ -577,17 +577,54 @@ function TodayPage() {
 
         {/* Totals */}
         <div className="rounded-3xl bg-card border border-border p-5 shadow-sm">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">Today</div>
+          <div className="flex items-center justify-between">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              {targetsActive ? "Your manual targets" : "Today"}
+            </div>
+            {targetsActive && (
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                You entered these
+              </div>
+            )}
+          </div>
           <div className="mt-1 flex items-baseline gap-2">
             <div className="text-5xl font-bold tracking-tight">{Math.round(totals.calories)}</div>
-            <div className="text-sm text-muted-foreground">kcal</div>
+            <div className="text-sm text-muted-foreground">
+              {targetsActive ? `/ ${profile!.target_calories} kcal` : "kcal"}
+            </div>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-3">
-            <MacroPill label="Protein" value={totals.protein} color="text-primary" />
-            <MacroPill label="Carbs" value={totals.carbs} color="text-[oklch(0.72_0.19_145)]" />
-            <MacroPill label="Fat" value={totals.fat} color="text-[oklch(0.68_0.17_25)]" />
+            <MacroPill
+              label="Protein"
+              value={totals.protein}
+              target={targetsActive ? profile!.target_protein_g : null}
+              color="text-primary"
+            />
+            <MacroPill
+              label="Carbs"
+              value={totals.carbs}
+              target={targetsActive ? profile!.target_carbs_g : null}
+              color="text-[oklch(0.72_0.19_145)]"
+            />
+            <MacroPill
+              label="Fat"
+              value={totals.fat}
+              target={targetsActive ? profile!.target_fat_g : null}
+              color="text-[oklch(0.68_0.17_25)]"
+            />
           </div>
         </div>
+        {betaUsage?.enabled && betaUsage.cap > 0 && (
+          betaUsage.reachedLimit ? (
+            <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.
+            </div>
+          ) : betaUsage.remaining !== null && betaUsage.remaining <= 5 ? (
+            <div className="mt-3 text-[11px] text-muted-foreground px-1">
+              {betaUsage.remaining} beta {betaUsage.remaining === 1 ? "entry" : "entries"} remaining today
+            </div>
+          ) : null
+        )}
 
         {/* Entry */}
         <form onSubmit={handleSubmit} className="mt-5">
@@ -823,12 +860,29 @@ function TodayPage() {
   );
 }
 
-function MacroPill({ label, value, color }: { label: string; value: number; color: string }) {
+function MacroPill({
+  label,
+  value,
+  target,
+  color,
+}: {
+  label: string;
+  value: number;
+  target?: number | null;
+  color: string;
+}) {
   return (
     <div className="rounded-2xl bg-muted/60 p-3">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={cn("mt-0.5 text-xl font-semibold", color)}>
-        {Math.round(value)}<span className="text-xs font-normal text-muted-foreground ml-0.5">g</span>
+        {Math.round(value)}
+        {target != null ? (
+          <span className="text-xs font-normal text-muted-foreground ml-0.5">
+            / {target}g
+          </span>
+        ) : (
+          <span className="text-xs font-normal text-muted-foreground ml-0.5">g</span>
+        )}
       </div>
     </div>
   );
