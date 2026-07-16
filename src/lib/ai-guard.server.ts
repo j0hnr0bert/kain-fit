@@ -206,3 +206,105 @@ export async function singleFlight<T>(key: string, fn: () => Promise<T>): Promis
   inFlightByKey.set(key, { promise, expiresAt: Date.now() + SINGLE_FLIGHT_TTL_MS });
   return promise;
 }
+
+// ---------- Sliding-window burst limiter (per-key, per-isolate) ----------
+//
+// Tracks recent hit timestamps per key. Used for per-session and per-user
+// burst limits. State is per-Worker isolate; that is acceptable for beta
+// scale — this is a first line of defence, not a distributed limiter.
+
+const WINDOW_MS = 60_000;
+const rateBuckets = new Map<string, number[]>();
+
+function pruneBucket(key: string, now: number): number[] {
+  const arr = rateBuckets.get(key);
+  if (!arr) return [];
+  const kept = arr.filter((t) => now - t < WINDOW_MS);
+  if (kept.length === 0) rateBuckets.delete(key);
+  else rateBuckets.set(key, kept);
+  return kept;
+}
+
+// Returns true when this hit is allowed. `limit <= 0` disables the check.
+export function allowBurst(key: string, limit: number): boolean {
+  if (!limit || limit <= 0) return true;
+  const now = Date.now();
+  const kept = pruneBucket(key, now);
+  if (kept.length >= limit) return false;
+  kept.push(now);
+  rateBuckets.set(key, kept);
+  return true;
+}
+
+// ---------- Cached global AI-call counters ----------
+//
+// Cached to avoid running COUNT() against product_events on every parse.
+
+type CountSnapshot = { today: number; month: number; at: number };
+let countCache: CountSnapshot | null = null;
+const COUNT_TTL_MS = 30_000;
+
+export async function getGlobalAiCounts(): Promise<{ today: number; month: number }> {
+  if (countCache && Date.now() - countCache.at < COUNT_TTL_MS) {
+    return { today: countCache.today, month: countCache.month };
+  }
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const admin = supabaseAdmin as unknown as {
+    from: (t: string) => {
+      select: (
+        c: string,
+        opts?: { count?: "exact"; head?: boolean },
+      ) => {
+        eq: (a: string, b: string) => {
+          gte: (a: string, b: string) => Promise<{ count: number | null; error: unknown }>;
+        };
+      };
+    };
+  };
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const [dayRes, monthRes] = await Promise.all([
+    admin
+      .from("product_events")
+      .select("id", { count: "exact", head: true })
+      .eq("event_name", "food_parse_succeeded")
+      .gte("created_at", startOfDay),
+    admin
+      .from("product_events")
+      .select("id", { count: "exact", head: true })
+      .eq("event_name", "food_parse_succeeded")
+      .gte("created_at", startOfMonth),
+  ]);
+  const today = dayRes.count ?? 0;
+  const month = monthRes.count ?? 0;
+  countCache = { today, month, at: Date.now() };
+  return { today, month };
+}
+
+export async function getUserDailyAiCount(userId: string): Promise<number> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const admin = supabaseAdmin as unknown as {
+    from: (t: string) => {
+      select: (
+        c: string,
+        opts?: { count?: "exact"; head?: boolean },
+      ) => {
+        eq: (a: string, b: string) => {
+          eq: (a: string, b: string) => {
+            gte: (a: string, b: string) => Promise<{ count: number | null; error: unknown }>;
+          };
+        };
+      };
+    };
+  };
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const res = await admin
+    .from("product_events")
+    .select("id", { count: "exact", head: true })
+    .eq("event_name", "food_parse_succeeded")
+    .eq("user_id", userId)
+    .gte("created_at", start.toISOString());
+  return res.count ?? 0;
+}

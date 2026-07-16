@@ -7,6 +7,10 @@ type SettingsSnapshot = {
   db_only_mode: boolean;
   demo_allowance: number;
   high_demand_banner: string;
+  session_burst_per_min: number;
+  user_daily_ai_cap: number;
+  monthly_ai_call_cap: number;
+  daily_ai_call_alert: number;
 };
 
 const DEFAULTS: SettingsSnapshot = {
@@ -15,6 +19,11 @@ const DEFAULTS: SettingsSnapshot = {
   db_only_mode: false,
   demo_allowance: 3,
   high_demand_banner: "",
+  // Abuse & cost controls. Zero disables the limit.
+  session_burst_per_min: 6,
+  user_daily_ai_cap: 200,
+  monthly_ai_call_cap: 0,
+  daily_ai_call_alert: 0,
 };
 
 const CACHE_TTL_MS = 10_000;
@@ -52,6 +61,10 @@ export async function readOpsSettings(): Promise<SettingsSnapshot> {
     db_only_mode: coerceBool(map.get("db_only_mode"), DEFAULTS.db_only_mode),
     demo_allowance: coerceNum(map.get("demo_allowance"), DEFAULTS.demo_allowance),
     high_demand_banner: coerceStr(map.get("high_demand_banner"), DEFAULTS.high_demand_banner),
+    session_burst_per_min: coerceNum(map.get("session_burst_per_min"), DEFAULTS.session_burst_per_min),
+    user_daily_ai_cap: coerceNum(map.get("user_daily_ai_cap"), DEFAULTS.user_daily_ai_cap),
+    monthly_ai_call_cap: coerceNum(map.get("monthly_ai_call_cap"), DEFAULTS.monthly_ai_call_cap),
+    daily_ai_call_alert: coerceNum(map.get("daily_ai_call_alert"), DEFAULTS.daily_ai_call_alert),
   };
   cache = { at: now, value };
   return value;

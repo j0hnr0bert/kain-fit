@@ -234,13 +234,35 @@ export const parseFood = createServerFn({ method: "POST" })
     return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
   .handler(async ({ data, context }) => {
-    const { singleFlight } = await import("./ai-guard.server");
+    const { singleFlight, allowBurst, getGlobalAiCounts, getUserDailyAiCount } = await import("./ai-guard.server");
     const { readOpsSettings } = await import("./ops-settings.server");
     const settings = await readOpsSettings();
     if (settings.pause_ai || settings.db_only_mode) {
       throw new Error(
         "AI_UNAVAILABLE: KainFit's calculator is temporarily paused. You can still edit, delete, or add entries manually.",
       );
+    }
+    // Global monthly cap: hard stop above configured ceiling.
+    if (settings.monthly_ai_call_cap > 0) {
+      const { month } = await getGlobalAiCounts();
+      if (month >= settings.monthly_ai_call_cap) {
+        throw new Error(
+          "AI_UNAVAILABLE: We've hit today's calculator budget. You can still edit or add entries manually.",
+        );
+      }
+    }
+    // Per-user daily cap: prevent one account from burning the budget.
+    if (settings.user_daily_ai_cap > 0) {
+      const used = await getUserDailyAiCount(context.userId);
+      if (used >= settings.user_daily_ai_cap) {
+        throw new Error(
+          "AI_BUSY: You've hit today's calculation limit. Please come back tomorrow or add entries manually.",
+        );
+      }
+    }
+    // Per-user burst limit: reject taps beyond N per rolling minute.
+    if (!allowBurst(`user:${context.userId}`, settings.session_burst_per_min)) {
+      throw new Error("AI_BUSY: Too many requests. Please wait a moment and try again.");
     }
     const key = `parse:user:${context.userId}:${buildCacheKey(data.input, data.mealHint)}`;
     return mapGuardErrors(() =>
@@ -442,6 +464,24 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
       );
     }
     const demoLimit = Math.max(1, Math.floor(settings.demo_allowance || DEMO_PARSE_LIMIT));
+
+    // Global monthly cap: stop demo calls first when the budget is exhausted.
+    if (settings.monthly_ai_call_cap > 0) {
+      const { getGlobalAiCounts } = await import("./ai-guard.server");
+      const { month } = await getGlobalAiCounts();
+      if (month >= settings.monthly_ai_call_cap) {
+        throw new Error(
+          "AI_UNAVAILABLE: The demo is temporarily paused. Please try again shortly or sign up to keep going.",
+        );
+      }
+    }
+    // Per-session burst limit.
+    {
+      const { allowBurst } = await import("./ai-guard.server");
+      if (!allowBurst(`demo:${sid}`, settings.session_burst_per_min)) {
+        throw new Error("AI_BUSY: Too many requests. Please wait a moment and try again.");
+      }
+    }
 
     // Atomically reserve a slot BEFORE calling the AI so concurrent
     // requests cannot both pass a "count < limit" check.

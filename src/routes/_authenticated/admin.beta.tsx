@@ -46,12 +46,27 @@ function AdminBetaPage() {
 
   const [bannerDraft, setBannerDraft] = useState<string>("");
   const [allowanceDraft, setAllowanceDraft] = useState<string>("");
+  const [burstDraft, setBurstDraft] = useState<string>("");
+  const [userDailyDraft, setUserDailyDraft] = useState<string>("");
+  const [monthlyCapDraft, setMonthlyCapDraft] = useState<string>("");
+  const [dailyAlertDraft, setDailyAlertDraft] = useState<string>("");
   useEffect(() => {
     if (ops?.settings) {
       setBannerDraft(ops.settings.high_demand_banner ?? "");
       setAllowanceDraft(String(ops.settings.demo_allowance ?? 3));
+      setBurstDraft(String(ops.settings.session_burst_per_min ?? 6));
+      setUserDailyDraft(String(ops.settings.user_daily_ai_cap ?? 200));
+      setMonthlyCapDraft(String(ops.settings.monthly_ai_call_cap ?? 0));
+      setDailyAlertDraft(String(ops.settings.daily_ai_call_alert ?? 0));
     }
-  }, [ops?.settings.high_demand_banner, ops?.settings.demo_allowance]);
+  }, [
+    ops?.settings.high_demand_banner,
+    ops?.settings.demo_allowance,
+    ops?.settings.session_burst_per_min,
+    ops?.settings.user_daily_ai_cap,
+    ops?.settings.monthly_ai_call_cap,
+    ops?.settings.daily_ai_call_alert,
+  ]);
 
   async function toggle(key: "pause_demo" | "pause_ai" | "db_only_mode", value: boolean) {
     try {
@@ -87,6 +102,25 @@ function AdminBetaPage() {
       await setOps({ data: { key: "high_demand_banner", value: bannerDraft } });
       await qc.invalidateQueries({ queryKey: ["ops-snapshot"] });
       toast.success("Banner updated");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
+    }
+  }
+
+  async function saveNumberSetting(
+    key: "session_burst_per_min" | "user_daily_ai_cap" | "monthly_ai_call_cap" | "daily_ai_call_alert",
+    raw: string,
+    label: string,
+  ) {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) {
+      toast.error(`${label} must be a non-negative number`);
+      return;
+    }
+    try {
+      await setOps({ data: { key, value: n } });
+      await qc.invalidateQueries({ queryKey: ["ops-snapshot"] });
+      toast.success(`${label} updated`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to update");
     }
@@ -263,6 +297,23 @@ function AdminBetaPage() {
                     <Metric label="Cache hit rate (1m)" value={`${(ops.lastMinute.cacheHitRate * 100).toFixed(0)}%`} />
                   </div>
 
+                  <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <Metric label="AI calls today" value={ops.globals?.aiCallsToday ?? 0} />
+                    <Metric label="AI calls this month" value={ops.globals?.aiCallsMonth ?? 0} />
+                    <Metric
+                      label="Monthly cap"
+                      value={ops.settings.monthly_ai_call_cap > 0 ? ops.settings.monthly_ai_call_cap : "off"}
+                    />
+                    <Metric
+                      label="Daily alert"
+                      value={
+                        ops.settings.daily_ai_call_alert > 0
+                          ? `${ops.settings.daily_ai_call_alert}${ops.globals?.dailyAlertHit ? " (hit)" : ""}`
+                          : "off"
+                      }
+                    />
+                  </div>
+
                   <div className="mt-4 rounded-2xl border border-border bg-card divide-y divide-border">
                     <ToggleRow
                       label="Pause anonymous demo"
@@ -312,6 +363,92 @@ function AdminBetaPage() {
                         className="flex-1 min-w-[220px] rounded-xl"
                       />
                       <Button size="sm" onClick={saveBanner} className="rounded-xl">Save</Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="burst" className="text-sm">Burst limit (per session, /min)</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">0 disables the check. Default 6.</p>
+                      </div>
+                      <Input
+                        id="burst"
+                        type="number"
+                        min={0}
+                        max={120}
+                        value={burstDraft}
+                        onChange={(e) => setBurstDraft(e.target.value)}
+                        className="w-24 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("session_burst_per_min", burstDraft, "Burst limit")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="userDaily" className="text-sm">User daily AI cap</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Max successful parses per user per day. 0 disables.</p>
+                      </div>
+                      <Input
+                        id="userDaily"
+                        type="number"
+                        min={0}
+                        max={10000}
+                        value={userDailyDraft}
+                        onChange={(e) => setUserDailyDraft(e.target.value)}
+                        className="w-28 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("user_daily_ai_cap", userDailyDraft, "User daily cap")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="monthlyCap" className="text-sm">Monthly AI-call cap (global)</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Hard stop for the whole app. 0 disables.</p>
+                      </div>
+                      <Input
+                        id="monthlyCap"
+                        type="number"
+                        min={0}
+                        value={monthlyCapDraft}
+                        onChange={(e) => setMonthlyCapDraft(e.target.value)}
+                        className="w-32 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("monthly_ai_call_cap", monthlyCapDraft, "Monthly cap")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="dailyAlert" className="text-sm">Daily volume alert</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Highlights the dashboard when daily calls reach this number. 0 disables.</p>
+                      </div>
+                      <Input
+                        id="dailyAlert"
+                        type="number"
+                        min={0}
+                        value={dailyAlertDraft}
+                        onChange={(e) => setDailyAlertDraft(e.target.value)}
+                        className="w-32 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("daily_ai_call_alert", dailyAlertDraft, "Daily alert")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
                     </div>
                   </div>
 
