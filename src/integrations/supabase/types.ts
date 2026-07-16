@@ -567,8 +567,6 @@ export type Database = {
         Args: { _limit: number; _sid: string }
         Returns: number
       }
-      show_limit: { Args: never; Returns: number }
-      show_trgm: { Args: { "": string }; Returns: string[] }
       submit_feedback: {
         Args: {
           _accuracy_rating: number
