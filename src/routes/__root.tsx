@@ -115,8 +115,40 @@ function RootShell({ children }: { children: ReactNode }) {
     <html lang="en">
       <head>
         <HeadContent />
+        <style>{`
+          @keyframes kf-spin { to { transform: rotate(360deg); } }
+          #kf-boot {
+            position: fixed; inset: 0; z-index: 2147483000;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 14px; background: #ffffff; color: #0F766E;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+          }
+          #kf-boot .kf-boot-logo {
+            height: 56px; width: 56px; border-radius: 18px;
+            background: #0F766E; color: #ffffff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 24px; letter-spacing: -0.02em;
+          }
+          #kf-boot .kf-boot-spinner {
+            height: 18px; width: 18px; border-radius: 50%;
+            border: 2px solid #0F766E; border-top-color: transparent;
+            animation: kf-spin 0.8s linear infinite;
+          }
+          #kf-boot .kf-boot-label { font-size: 14px; color: #0F766E; font-weight: 500; }
+          @media (prefers-reduced-motion: reduce) { #kf-boot .kf-boot-spinner { animation: none; } }
+          @media (prefers-color-scheme: dark) {
+            #kf-boot { background: #0b0f0e; color: #99f6e4; }
+            #kf-boot .kf-boot-label { color: #99f6e4; }
+            #kf-boot .kf-boot-spinner { border-color: #99f6e4; border-top-color: transparent; }
+          }
+        `}</style>
       </head>
       <body>
+        <div id="kf-boot" role="status" aria-live="polite" aria-label="Loading KainFit">
+          <div className="kf-boot-logo" aria-hidden="true">K</div>
+          <div className="kf-boot-spinner" aria-hidden="true" />
+          <div className="kf-boot-label">Preparing KainFit…</div>
+        </div>
         {children}
         <Scripts />
       </body>
@@ -127,6 +159,14 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   const router = useRouter();
+
+  useEffect(() => {
+    // Remove the pre-hydration branded splash as soon as React has mounted.
+    if (typeof document !== "undefined") {
+      const el = document.getElementById("kf-boot");
+      if (el) el.remove();
+    }
+  }, []);
 
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event) => {
