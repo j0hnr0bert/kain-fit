@@ -98,7 +98,12 @@ async function callParseAi(input: string, mealHint: string) {
     }),
   });
 
-  if (res.status === 429) throw new Error("Too many requests — please try again in a moment.");
+  if (res.status === 429) {
+    const { AiRateLimitError } = await import("./ai-guard.server");
+    const retryAfter = res.headers.get("retry-after");
+    const parsed = retryAfter ? Number(retryAfter) : NaN;
+    throw new AiRateLimitError(Number.isFinite(parsed) ? parsed * 1000 : null);
+  }
   if (res.status === 402) throw new Error("AI credits exhausted. Please contact the app owner.");
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -146,7 +151,12 @@ async function callRecalcAi(item: {
     }),
   });
 
-  if (res.status === 429) throw new Error("Too many requests — please try again in a moment.");
+  if (res.status === 429) {
+    const { AiRateLimitError } = await import("./ai-guard.server");
+    const retryAfter = res.headers.get("retry-after");
+    const parsed = retryAfter ? Number(retryAfter) : NaN;
+    throw new AiRateLimitError(Number.isFinite(parsed) ? parsed * 1000 : null);
+  }
   if (res.status === 402) throw new Error("AI credits exhausted. Please contact the app owner.");
   if (!res.ok) {
     const text = await res.text().catch(() => "");
