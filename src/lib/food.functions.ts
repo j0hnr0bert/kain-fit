@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { createHash } from "crypto";
 
 const itemSchema = z.object({
   display_name: z.string(),
