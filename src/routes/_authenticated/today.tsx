@@ -689,14 +689,22 @@ function MacroPill({ label, value, color }: { label: string; value: number; colo
 }
 
 function PendingRow({
-  item, onChange, onRemove, onReport,
+  item, onChange, onRemove, onReport, onRecalc, recalcing,
 }: {
   item: PendingItem;
   onChange: (next: PendingItem) => void;
   onRemove: () => void;
   onReport: () => void;
+  onRecalc: (next: PendingItem) => void;
+  recalcing: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const [draftQty, setDraftQty] = useState<number>(item.quantity);
+  const [draftUnit, setDraftUnit] = useState<string>(item.unit);
+  useEffect(() => {
+    setDraftQty(item.quantity);
+    setDraftUnit(item.unit);
+  }, [item.quantity, item.unit]);
   const prepClarification =
     item.clarification_needed && isPreparationClarification(item.clarification_question);
   return (
