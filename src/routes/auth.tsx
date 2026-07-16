@@ -12,6 +12,7 @@ import { track } from "@/lib/analytics";
 
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional().default("signup"),
+  source: z.string().max(64).optional(),
 });
 
 export const Route = createFileRoute("/auth")({
