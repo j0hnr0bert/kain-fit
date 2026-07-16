@@ -6,7 +6,13 @@ import { supabase } from "@/integrations/supabase/client";
 import { parseFood } from "@/lib/food.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import {
   Dialog,
   DialogContent,
@@ -24,6 +30,13 @@ import { cn } from "@/lib/utils";
 import { track, markReturned } from "@/lib/analytics";
 import { BetaBadge } from "@/components/BetaBadge";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
+import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/_authenticated/today")({
   component: TodayPage,
