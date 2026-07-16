@@ -69,6 +69,9 @@ function AdminBetaPage() {
   const [userDailyDraft, setUserDailyDraft] = useState<string>("");
   const [monthlyCapDraft, setMonthlyCapDraft] = useState<string>("");
   const [dailyAlertDraft, setDailyAlertDraft] = useState<string>("");
+  const [betaCapDraft, setBetaCapDraft] = useState<string>("");
+  const [betaInputLenDraft, setBetaInputLenDraft] = useState<string>("");
+  const [betaMaxFoodsDraft, setBetaMaxFoodsDraft] = useState<string>("");
   useEffect(() => {
     if (ops?.settings) {
       setBannerDraft(ops.settings.high_demand_banner ?? "");
@@ -77,6 +80,9 @@ function AdminBetaPage() {
       setUserDailyDraft(String(ops.settings.user_daily_ai_cap ?? 200));
       setMonthlyCapDraft(String(ops.settings.monthly_ai_call_cap ?? 0));
       setDailyAlertDraft(String(ops.settings.daily_ai_call_alert ?? 0));
+      setBetaCapDraft(String(ops.settings.beta_daily_submission_cap ?? 20));
+      setBetaInputLenDraft(String(ops.settings.beta_max_input_length ?? 500));
+      setBetaMaxFoodsDraft(String(ops.settings.beta_max_foods_per_submission ?? 10));
     }
   }, [
     ops?.settings.high_demand_banner,
@@ -85,9 +91,15 @@ function AdminBetaPage() {
     ops?.settings.user_daily_ai_cap,
     ops?.settings.monthly_ai_call_cap,
     ops?.settings.daily_ai_call_alert,
+    ops?.settings.beta_daily_submission_cap,
+    ops?.settings.beta_max_input_length,
+    ops?.settings.beta_max_foods_per_submission,
   ]);
 
-  async function toggle(key: "pause_demo" | "pause_ai" | "db_only_mode", value: boolean) {
+  async function toggle(
+    key: "pause_demo" | "pause_ai" | "db_only_mode" | "beta_limits_enabled",
+    value: boolean,
+  ) {
     try {
       await setOps({ data: { key, value } });
       await qc.invalidateQueries({ queryKey: ["ops-snapshot"] });
@@ -127,7 +139,14 @@ function AdminBetaPage() {
   }
 
   async function saveNumberSetting(
-    key: "session_burst_per_min" | "user_daily_ai_cap" | "monthly_ai_call_cap" | "daily_ai_call_alert",
+    key:
+      | "session_burst_per_min"
+      | "user_daily_ai_cap"
+      | "monthly_ai_call_cap"
+      | "daily_ai_call_alert"
+      | "beta_daily_submission_cap"
+      | "beta_max_input_length"
+      | "beta_max_foods_per_submission",
     raw: string,
     label: string,
   ) {
