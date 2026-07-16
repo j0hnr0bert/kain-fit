@@ -358,6 +358,42 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       timeoutRate: totalParses ? timeoutCount / totalParses : 0,
     };
 
+    // Resolution path + cache-hit breakdown
+    const successEvents = events.filter((e) => e.event_name === "food_parse_succeeded");
+    const resolutionCounts: Record<string, number> = {};
+    let cacheHits = 0;
+    for (const e of successEvents) {
+      const p = e.event_properties as Record<string, unknown>;
+      const path = typeof p?.resolution_path === "string" ? (p.resolution_path as string) : "unknown";
+      resolutionCounts[path] = (resolutionCounts[path] ?? 0) + 1;
+      if (p?.cache_hit === true) cacheHits += 1;
+    }
+    const cacheHitRate = successEvents.length ? cacheHits / successEvents.length : 0;
+
+    // Live cache table stats
+    let cacheStats: {
+      total_entries: number;
+      live_entries: number;
+      total_hits: number;
+      hits_last_24h: number;
+    } = { total_entries: 0, live_entries: 0, total_hits: 0, hits_last_24h: 0 };
+    try {
+      const statsRes = await (admin as unknown as {
+        rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
+      }).rpc("get_food_parse_cache_stats", {});
+      if (Array.isArray(statsRes.data) && statsRes.data.length > 0) {
+        const row = statsRes.data[0] as Record<string, unknown>;
+        cacheStats = {
+          total_entries: Number(row.total_entries ?? 0),
+          live_entries: Number(row.live_entries ?? 0),
+          total_hits: Number(row.total_hits ?? 0),
+          hits_last_24h: Number(row.hits_last_24h ?? 0),
+        };
+      }
+    } catch (err) {
+      console.error("[beta] cache stats failed", err);
+    }
+
     const confirmedUsers = new Set(
       events
         .filter((e) => e.event_name === "food_confirmed" && e.user_id)
@@ -434,6 +470,12 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       activeUsers,
       acquisitionBreakdown: bySource,
       performance,
+      resolution: {
+        counts: resolutionCounts,
+        cacheHits,
+        cacheHitRate,
+        cacheStats,
+      },
       recentFeedback: feedback
         .sort((a, b) => (b.created_at > a.created_at ? 1 : -1))
         .slice(0, 20)

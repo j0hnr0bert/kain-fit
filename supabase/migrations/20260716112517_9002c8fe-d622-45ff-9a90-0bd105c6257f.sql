@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.get_food_parse_cache_stats() FROM authenticated;

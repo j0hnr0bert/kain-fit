@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { createHash } from "crypto";
 
 const itemSchema = z.object({
   display_name: z.string(),
@@ -217,11 +218,96 @@ export const parseFood = createServerFn({ method: "POST" })
     return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
   .handler(async ({ data }) => {
-    const t0 = Date.now();
-    const result = await callParseAi(data.input, data.mealHint);
-    const ai_parsing_ms = Date.now() - t0;
-    return { ...result, timings: { ai_parsing_ms, resolution_path: "ai_parse" as const } };
+    return resolveWithCache(data.input, data.mealHint);
   });
+
+// ============================================================
+// Fast resolution pipeline
+// ============================================================
+
+function normalizeForKey(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildCacheKey(input: string, mealHint: string): string {
+  return createHash("sha256")
+    .update(`${normalizeForKey(input)}|${mealHint}`)
+    .digest("hex");
+}
+
+type CacheAdmin = {
+  rpc: (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message: string } | null }>;
+};
+
+type ResolveResult = z.infer<typeof responseSchema> & {
+  timings: {
+    ai_parsing_ms: number;
+    resolution_path: "cache" | "ai_parse";
+    cache_hit: boolean;
+  };
+};
+
+async function resolveWithCache(input: string, mealHint: string): Promise<ResolveResult> {
+  const key = buildCacheKey(input, mealHint);
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const admin = supabaseAdmin as unknown as CacheAdmin;
+
+  // Tier: shared parse cache
+  try {
+    const cacheRes = await admin.rpc("get_food_parse_cache", { _key: key });
+    if (!cacheRes.error && Array.isArray(cacheRes.data) && cacheRes.data.length > 0) {
+      const row = cacheRes.data[0] as { items?: unknown; input_language?: unknown };
+      const parsed = responseSchema.safeParse({
+        items: row.items,
+        input_language: typeof row.input_language === "string" ? row.input_language : "english",
+      });
+      if (parsed.success && parsed.data.items.length > 0) {
+        return {
+          ...parsed.data,
+          timings: { ai_parsing_ms: 0, resolution_path: "cache", cache_hit: true },
+        };
+      }
+    }
+  } catch (err) {
+    console.error("[cache] read failed", err);
+    // fall through to AI
+  }
+
+  // Tier: AI fallback
+  const t0 = Date.now();
+  const result = await callParseAi(input, mealHint);
+  const ai_parsing_ms = Date.now() - t0;
+
+  // Write to cache — but only when the result looks reusable:
+  // no clarification requested (otherwise the answer depends on the user)
+  // and at least one item.
+  const cacheable =
+    result.items.length > 0 && !result.items.some((i) => i.clarification_needed);
+  if (cacheable) {
+    try {
+      await admin.rpc("put_food_parse_cache", {
+        _key: key,
+        _meal_hint: mealHint,
+        _items: result.items,
+        _input_language: result.input_language,
+      });
+    } catch (err) {
+      console.error("[cache] write failed", err);
+    }
+  }
+
+  return {
+    ...result,
+    timings: { ai_parsing_ms, resolution_path: "ai_parse", cache_hit: false },
+  };
+}
 
 // Public (unauthenticated) demo parse. Uses the same production pipeline,
 // but is rate-limited per anonymous session and never persists results.
@@ -312,23 +398,22 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
     }
 
     try {
-      const t0 = Date.now();
-      const result = await callParseAi(data.input, data.mealHint);
-      const ai_parsing_ms = Date.now() - t0;
+      const resolved = await resolveWithCache(data.input, data.mealHint);
+      const { timings, ...result } = resolved;
       if (!result.items || result.items.length === 0) {
         // No usable result — release the slot.
         await admin.rpc("release_demo_slot", { _sid: sid, _reason: "empty_result" });
         return {
           ...result,
           remaining: Math.max(0, DEMO_PARSE_LIMIT - (reservedCount - 1)),
-          timings: { ai_parsing_ms, resolution_path: "ai_parse" as const },
+          timings,
         };
       }
       await admin.rpc("mark_demo_success", { _sid: sid });
       return {
         ...result,
         remaining: Math.max(0, DEMO_PARSE_LIMIT - reservedCount),
-        timings: { ai_parsing_ms, resolution_path: "ai_parse" as const },
+        timings,
       };
     } catch (err) {
       const reason = err instanceof Error ? err.message.slice(0, 100) : "parse_failed";
