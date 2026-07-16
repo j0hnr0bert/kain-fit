@@ -629,19 +629,63 @@ function PendingRow({
   onReport: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const prepClarification =
+    item.clarification_needed && isPreparationClarification(item.clarification_question);
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
-      {item.clarification_needed && item.clarification_question && (
+      {item.clarification_needed && item.clarification_question && !prepClarification && (
         <div className="mb-3 rounded-xl bg-amber-brand/10 text-[oklch(0.4_0.16_75)] text-xs p-2">
           {item.clarification_question}
+        </div>
+      )}
+      {prepClarification && (
+        <div className="mb-3 rounded-xl bg-amber-brand/10 p-2.5">
+          <div className="text-xs font-medium text-[oklch(0.4_0.16_75)] mb-1.5">
+            Was that weighed raw or cooked?
+          </div>
+          <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Preparation">
+            {(["raw", "cooked", "not sure"] as const).map((choice) => (
+              <button
+                key={choice}
+                type="button"
+                role="radio"
+                aria-checked={
+                  choice === "not sure"
+                    ? item.preparation === "estimated"
+                    : item.preparation === choice
+                }
+                onClick={() => {
+                  if (choice === "not sure") {
+                    onChange({
+                      ...item,
+                      preparation: "estimated",
+                      is_estimate: true,
+                      clarification_needed: false,
+                    });
+                  } else {
+                    onChange({
+                      ...item,
+                      preparation: choice,
+                      clarification_needed: false,
+                    });
+                  }
+                }}
+                className="h-9 rounded-lg border border-border bg-background text-xs font-medium capitalize hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
+                {choice}
+              </button>
+            ))}
+          </div>
         </div>
       )}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="font-medium">{item.display_name}</div>
           <div className="text-xs text-muted-foreground mt-0.5">
-            {item.quantity}{item.unit}
-            {item.preparation ? ` · ${item.preparation}` : ""}
+            {formatQuantity(item.quantity, item.unit)}
+            {item.preparation && item.preparation !== "estimated"
+              ? ` · ${item.preparation}`
+              : ""}
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -680,10 +724,12 @@ function PendingRow({
           </label>
         </div>
       )}
-      <div className="mt-3 flex items-center gap-2 text-[11px]">
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-          {sourceLabel(item.data_source)}
-        </span>
+      <div className="mt-3 flex items-center gap-2 text-[11px] flex-wrap">
+        <StatusBadge
+          data_source={item.data_source}
+          is_estimate={item.is_estimate}
+          preparation={item.preparation}
+        />
         {item.confidence < 0.6 && (
           <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>
         )}
@@ -719,17 +765,47 @@ function NumCell({
   );
 }
 
-function sourceLabel(s: string) {
-  switch (s) {
-    case "verified_database":
-      return "Verified";
-    case "user_confirmed":
-      return "Your food";
-    case "recipe_based":
-      return "Recipe based";
-    default:
-      return "Estimated";
-  }
+function StatusBadge({
+  data_source,
+  is_estimate,
+  preparation,
+}: {
+  data_source: string;
+  is_estimate?: boolean;
+  preparation?: string | null;
+}) {
+  const info = foodStatus({ data_source, is_estimate, preparation });
+  const tone =
+    info.tone === "verified"
+      ? "bg-primary/10 text-primary"
+      : info.tone === "recipe"
+        ? "bg-muted text-foreground/80"
+        : info.tone === "user"
+          ? "bg-muted text-muted-foreground"
+          : "bg-amber-brand/15 text-[oklch(0.5_0.16_75)]";
+  return (
+    <TooltipProvider delayDuration={150}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            role="button"
+            tabIndex={0}
+            aria-label={`Nutrition status: ${info.label}. ${info.tooltip}`}
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full cursor-help focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              tone,
+            )}
+          >
+            {info.tone === "estimated" && <AlertCircle className="h-3 w-3" />}
+            {info.label}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-xs text-xs leading-relaxed">
+          {info.tooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
 }
 
 function UserInitial() {
