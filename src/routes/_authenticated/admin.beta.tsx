@@ -147,6 +147,37 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Resolution pipeline
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Where confirmed parses came from. Cache hits skip the AI call entirely.
+              </p>
+              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Metric
+                  label="Cache hit rate"
+                  value={`${((data.resolution?.cacheHitRate ?? 0) * 100).toFixed(0)}%`}
+                />
+                <Metric label="Cache hits (all-time)" value={data.resolution?.cacheHits ?? 0} />
+                <Metric label="Cache entries (live)" value={data.resolution?.cacheStats?.live_entries ?? 0} />
+                <Metric label="Cache hits (24h)" value={data.resolution?.cacheStats?.hits_last_24h ?? 0} />
+              </div>
+              <div className="mt-3 rounded-2xl border border-border bg-card divide-y divide-border">
+                {Object.entries(data.resolution?.counts ?? {}).length === 0 && (
+                  <div className="p-4 text-sm text-muted-foreground">No resolutions recorded yet.</div>
+                )}
+                {Object.entries(data.resolution?.counts ?? {})
+                  .sort((a, b) => (b[1] as number) - (a[1] as number))
+                  .map(([path, count]) => (
+                    <div key={path} className="flex items-center justify-between p-3 text-sm">
+                      <span className="font-medium">{path}</span>
+                      <span className="tabular-nums text-muted-foreground">{count as number}</span>
+                    </div>
+                  ))}
+              </div>
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Acquisition source
               </h2>
               <div className="mt-2 rounded-2xl border border-border bg-card divide-y divide-border">
