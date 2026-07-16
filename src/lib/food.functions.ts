@@ -465,6 +465,24 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
     }
     const demoLimit = Math.max(1, Math.floor(settings.demo_allowance || DEMO_PARSE_LIMIT));
 
+    // Global monthly cap: stop demo calls first when the budget is exhausted.
+    if (settings.monthly_ai_call_cap > 0) {
+      const { getGlobalAiCounts } = await import("./ai-guard.server");
+      const { month } = await getGlobalAiCounts();
+      if (month >= settings.monthly_ai_call_cap) {
+        throw new Error(
+          "AI_UNAVAILABLE: The demo is temporarily paused. Please try again shortly or sign up to keep going.",
+        );
+      }
+    }
+    // Per-session burst limit.
+    {
+      const { allowBurst } = await import("./ai-guard.server");
+      if (!allowBurst(`demo:${sid}`, settings.session_burst_per_min)) {
+        throw new Error("AI_BUSY: Too many requests. Please wait a moment and try again.");
+      }
+    }
+
     // Atomically reserve a slot BEFORE calling the AI so concurrent
     // requests cannot both pass a "count < limit" check.
     const reserveRes = await admin.rpc("reserve_demo_slot", {
