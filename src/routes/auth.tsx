@@ -87,6 +87,14 @@ function AuthPage() {
     e?.preventDefault();
     setFormError("");
 
+    const emailValue = email.trim();
+    const passwordValue = password;
+
+    if (!emailValue || !passwordValue) {
+      setFormError("Enter your email and password to continue.");
+      return;
+    }
+
     if (mode === "signup" && passwordHint) {
       setFormError(passwordHint);
       return;
@@ -96,11 +104,11 @@ function AuthPage() {
     try {
       if (mode === "signup") {
         const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
+          email: emailValue,
+          password: passwordValue,
           options: {
             emailRedirectTo: window.location.origin,
-            data: { display_name: email.trim().split("@")[0] },
+            data: { display_name: emailValue.split("@")[0] },
           },
         });
         if (error) throw error;
@@ -110,8 +118,8 @@ function AuthPage() {
         }
 
         const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
+          email: emailValue,
+          password: passwordValue,
         });
         if (!signInError && signInData.session) {
           await continueAfterAuth(true);
@@ -121,7 +129,7 @@ function AuthPage() {
         toast.success("Account created. Please sign in to continue.");
         setMode("signin");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { error } = await supabase.auth.signInWithPassword({ email: emailValue, password: passwordValue });
         if (error) throw error;
         await continueAfterAuth(false);
       }
@@ -246,7 +254,7 @@ function AuthPage() {
                 {formError}
               </div>
             )}
-            <Button type="button" onClick={() => handleEmail()} disabled={loading || (mode === "signup" && Boolean(passwordHint))} className="w-full h-12 rounded-2xl">
+            <Button type="submit" disabled={loading || (mode === "signup" && Boolean(passwordHint))} className="w-full h-12 rounded-2xl">
               {loading ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
             </Button>
             <div className="grid grid-cols-2 gap-2 pt-1">
@@ -274,7 +282,7 @@ function AuthPage() {
                 {formError}
               </div>
             )}
-            <Button type="button" onClick={() => handlePhoneSend()} disabled={loading} className="w-full h-12 rounded-2xl">
+            <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
               {loading ? "Sending…" : "Send code"}
             </Button>
           </form>
@@ -291,7 +299,7 @@ function AuthPage() {
                 {formError}
               </div>
             )}
-            <Button type="button" onClick={() => handlePhoneVerify()} disabled={loading} className="w-full h-12 rounded-2xl">
+            <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
               {loading ? "Verifying…" : "Verify & continue"}
             </Button>
           </form>
