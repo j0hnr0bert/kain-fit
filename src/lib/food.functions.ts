@@ -235,6 +235,13 @@ export const parseFood = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const { singleFlight } = await import("./ai-guard.server");
+    const { readOpsSettings } = await import("./ops-settings.server");
+    const settings = await readOpsSettings();
+    if (settings.pause_ai || settings.db_only_mode) {
+      throw new Error(
+        "AI_UNAVAILABLE: KainFit's calculator is temporarily paused. You can still edit, delete, or add entries manually.",
+      );
+    }
     const key = `parse:user:${context.userId}:${buildCacheKey(data.input, data.mealHint)}`;
     return mapGuardErrors(() =>
       singleFlight(key, () => resolveWithCache(data.input, data.mealHint)),
