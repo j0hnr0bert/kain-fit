@@ -509,6 +509,78 @@ function AdminBetaPage() {
                         Save
                       </Button>
                     </div>
+                    <ToggleRow
+                      label="Enforce beta usage limits"
+                      description="Per-user daily submission cap, input length, and max foods per submission. Enforced server-side, PHT day boundary."
+                      checked={ops.settings.beta_limits_enabled}
+                      onChange={(v) => toggle("beta_limits_enabled", v)}
+                    />
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="betaCap" className="text-sm">Beta daily submission cap (per user)</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Successful parses per PHT day. 0 disables. Default 20.</p>
+                      </div>
+                      <Input
+                        id="betaCap"
+                        type="number"
+                        min={0}
+                        max={500}
+                        value={betaCapDraft}
+                        onChange={(e) => setBetaCapDraft(e.target.value)}
+                        className="w-24 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("beta_daily_submission_cap", betaCapDraft, "Beta daily cap")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="betaInputLen" className="text-sm">Max input length (chars)</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Rejects submissions longer than this. 10–2000. Default 500.</p>
+                      </div>
+                      <Input
+                        id="betaInputLen"
+                        type="number"
+                        min={10}
+                        max={2000}
+                        value={betaInputLenDraft}
+                        onChange={(e) => setBetaInputLenDraft(e.target.value)}
+                        className="w-28 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("beta_max_input_length", betaInputLenDraft, "Input length")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="betaMaxFoods" className="text-sm">Max foods per submission</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Caps items parsed from one submission. 1–50. Default 10.</p>
+                      </div>
+                      <Input
+                        id="betaMaxFoods"
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={betaMaxFoodsDraft}
+                        onChange={(e) => setBetaMaxFoodsDraft(e.target.value)}
+                        className="w-24 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("beta_max_foods_per_submission", betaMaxFoodsDraft, "Max foods")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
                     <div className="p-4 flex items-center gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
                         <div className="text-sm font-medium">Pre-warm parse cache</div>
