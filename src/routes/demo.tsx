@@ -192,6 +192,7 @@ function DemoPage() {
         demo_or_registered: "demo",
         ai_parsing_ms: result.timings?.ai_parsing_ms,
         resolution_path: result.timings?.resolution_path,
+        cache_hit: result.timings?.cache_hit,
       });
       setPending(result.items as PendingItem[]);
       setPendingOriginalInput(text);
