@@ -743,6 +743,23 @@ function TodayPage() {
         originalValues={reportTarget?.values ?? {}}
       />
 
+      <EditEntrySheet
+        entry={editingEntry}
+        onClose={() => setEditingEntry(null)}
+        onSave={async (qty) => {
+          if (!editingEntry) return false;
+          const ok = await updateEntryAmount(editingEntry, qty);
+          if (ok) setEditingEntry(null);
+          return ok;
+        }}
+        onDelete={async () => {
+          if (!editingEntry) return;
+          const e = editingEntry;
+          setEditingEntry(null);
+          await deleteEntry(e);
+        }}
+      />
+
       <Dialog open={!!demoImport} onOpenChange={(o) => !o && dismissDemoImport()}>
         <DialogContent className="max-w-sm rounded-3xl">
           <DialogHeader>
