@@ -318,10 +318,16 @@ export type Database = {
           display_name: string | null
           height_cm: number | null
           id: string
+          manual_targets_enabled: boolean
           onboarded: boolean
           preferred_language: string | null
           preferred_units: string | null
+          profile_details_updated_at: string | null
           sex: string | null
+          target_calories: number | null
+          target_carbs_g: number | null
+          target_fat_g: number | null
+          target_protein_g: number | null
           updated_at: string
           user_id: string
           weight_kg: number | null
@@ -333,10 +339,16 @@ export type Database = {
           display_name?: string | null
           height_cm?: number | null
           id?: string
+          manual_targets_enabled?: boolean
           onboarded?: boolean
           preferred_language?: string | null
           preferred_units?: string | null
+          profile_details_updated_at?: string | null
           sex?: string | null
+          target_calories?: number | null
+          target_carbs_g?: number | null
+          target_fat_g?: number | null
+          target_protein_g?: number | null
           updated_at?: string
           user_id: string
           weight_kg?: number | null
@@ -348,10 +360,16 @@ export type Database = {
           display_name?: string | null
           height_cm?: number | null
           id?: string
+          manual_targets_enabled?: boolean
           onboarded?: boolean
           preferred_language?: string | null
           preferred_units?: string | null
+          profile_details_updated_at?: string | null
           sex?: string | null
+          target_calories?: number | null
+          target_carbs_g?: number | null
+          target_fat_g?: number | null
+          target_protein_g?: number | null
           updated_at?: string
           user_id?: string
           weight_kg?: number | null
