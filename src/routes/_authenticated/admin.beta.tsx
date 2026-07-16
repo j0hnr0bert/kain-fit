@@ -302,6 +302,27 @@ function AdminBetaPage() {
                 <div className="mt-2 text-sm text-muted-foreground">Loading ops…</div>
               ) : (
                 <>
+                  {ops.activeBanner?.text ? (
+                    <div
+                      className={`mt-3 rounded-xl border px-3 py-2 text-xs ${
+                        ops.activeBanner.isAuto
+                          ? "border-amber-500/40 bg-amber-500/10 text-amber-100"
+                          : "border-border bg-muted/40 text-foreground"
+                      }`}
+                    >
+                      <div className="font-medium">
+                        {ops.activeBanner.isAuto ? "Auto banner active" : "Manual banner active"}
+                        <span className="ml-2 rounded bg-black/20 px-1.5 py-0.5 text-[10px] uppercase tracking-wider">
+                          {ops.activeBanner.reason}
+                        </span>
+                      </div>
+                      <div className="mt-1 opacity-90">{ops.activeBanner.text}</div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 text-xs text-muted-foreground">
+                      No banner active — system is healthy.
+                    </div>
+                  )}
                   <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
                     <Metric label="In-flight AI" value={ops.capacity.inFlight} />
                     <Metric label="Queued" value={ops.capacity.queued} />

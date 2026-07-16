@@ -34,6 +34,84 @@ async function ensureAdmin(ctx: { supabase: unknown; userId: string }): Promise<
 const ALERT_COOLDOWN_MS = 10 * 60 * 1000;
 const lastAlertAt = new Map<string, number>();
 
+type BannerReason =
+  | "manual"
+  | "ai_paused"
+  | "breaker_open"
+  | "monthly_cap"
+  | "daily_alert"
+  | "queue_saturated"
+  | "none";
+
+async function computeActiveBanner(): Promise<{
+  text: string;
+  reason: BannerReason;
+  isAuto: boolean;
+}> {
+  const { readOpsSettings } = await import("./ops-settings.server");
+  const { getBreakerStatus, getCapacityStats, getGlobalAiCounts } = await import("./ai-guard.server");
+  const s = await readOpsSettings();
+
+  const manual = s.high_demand_banner?.trim() ?? "";
+  if (manual) return { text: manual, reason: "manual", isAuto: false };
+
+  if (s.pause_ai || s.db_only_mode) {
+    return {
+      text: "KainFit's calculator is temporarily paused. You can still edit or add entries manually.",
+      reason: "ai_paused",
+      isAuto: true,
+    };
+  }
+  if (getBreakerStatus() === "open") {
+    void maybeLogAutoAlert("auto_alert:breaker_open", { breaker: "open" });
+    return {
+      text: "Our calculator is catching its breath. Try again in a minute — your entries are safe.",
+      reason: "breaker_open",
+      isAuto: true,
+    };
+  }
+  try {
+    const counts = await getGlobalAiCounts();
+    if (s.monthly_ai_call_cap > 0 && counts.month >= s.monthly_ai_call_cap) {
+      void maybeLogAutoAlert("auto_alert:monthly_cap_hit", {
+        monthly: counts.month,
+        cap: s.monthly_ai_call_cap,
+      });
+      return {
+        text: "We've hit this month's calculator budget. You can still edit or add entries manually.",
+        reason: "monthly_cap",
+        isAuto: true,
+      };
+    }
+    if (s.daily_ai_call_alert > 0 && counts.today >= s.daily_ai_call_alert) {
+      void maybeLogAutoAlert("auto_alert:daily_alert_hit", {
+        today: counts.today,
+        threshold: s.daily_ai_call_alert,
+      });
+      return {
+        text: "Demand is unusually high today — parsing may be slower than usual.",
+        reason: "daily_alert",
+        isAuto: true,
+      };
+    }
+  } catch {
+    // don't let a counts read failure hide the app
+  }
+  const cap = getCapacityStats();
+  if (cap.queued > 0 && cap.inFlight >= cap.maxConcurrent) {
+    void maybeLogAutoAlert("auto_alert:queue_saturated", {
+      inFlight: cap.inFlight,
+      queued: cap.queued,
+    });
+    return {
+      text: "Lots of people logging right now — hang tight, your entry is queued.",
+      reason: "queue_saturated",
+      isAuto: true,
+    };
+  }
+  return { text: "", reason: "none", isAuto: false };
+}
+
 async function maybeLogAutoAlert(key: string, detail: Record<string, unknown>): Promise<void> {
   const now = Date.now();
   const prev = lastAlertAt.get(key) ?? 0;
@@ -57,58 +135,10 @@ async function maybeLogAutoAlert(key: string, detail: Record<string, unknown>): 
 
 export const getPublicOpsFlags = createServerFn({ method: "GET" }).handler(async () => {
   const { readOpsSettings } = await import("./ops-settings.server");
-  const { getBreakerStatus, getCapacityStats, getGlobalAiCounts } = await import("./ai-guard.server");
   const s = await readOpsSettings();
-
-  // Auto-banner: if the founder hasn't set a manual message, surface one
-  // automatically when the system is visibly strained. Precedence:
-  //   1) manual banner (whatever the admin typed)
-  //   2) AI paused
-  //   3) circuit breaker open (repeated AI failures)
-  //   4) monthly cap reached
-  //   5) daily alert threshold crossed
-  //   6) queue saturated (all slots busy AND waiters queued)
-  let banner = s.high_demand_banner?.trim() ?? "";
-  if (!banner) {
-    if (s.pause_ai || s.db_only_mode) {
-      banner = "KainFit's calculator is temporarily paused. You can still edit or add entries manually.";
-    } else if (getBreakerStatus() === "open") {
-      banner = "Our calculator is catching its breath. Try again in a minute — your entries are safe.";
-      void maybeLogAutoAlert("auto_alert:breaker_open", { breaker: "open" });
-    } else {
-      try {
-        const counts = await getGlobalAiCounts();
-        if (s.monthly_ai_call_cap > 0 && counts.month >= s.monthly_ai_call_cap) {
-          banner = "We've hit this month's calculator budget. You can still edit or add entries manually.";
-          void maybeLogAutoAlert("auto_alert:monthly_cap_hit", {
-            monthly: counts.month,
-            cap: s.monthly_ai_call_cap,
-          });
-        } else if (s.daily_ai_call_alert > 0 && counts.today >= s.daily_ai_call_alert) {
-          banner = "Demand is unusually high today — parsing may be slower than usual.";
-          void maybeLogAutoAlert("auto_alert:daily_alert_hit", {
-            today: counts.today,
-            threshold: s.daily_ai_call_alert,
-          });
-        }
-      } catch {
-        // don't let a counts read failure hide the app
-      }
-      if (!banner) {
-        const cap = getCapacityStats();
-        if (cap.queued > 0 && cap.inFlight >= cap.maxConcurrent) {
-          banner = "Lots of people logging right now — hang tight, your entry is queued.";
-          void maybeLogAutoAlert("auto_alert:queue_saturated", {
-            inFlight: cap.inFlight,
-            queued: cap.queued,
-          });
-        }
-      }
-    }
-  }
-
+  const active = await computeActiveBanner();
   return {
-    high_demand_banner: banner,
+    high_demand_banner: active.text,
     db_only_mode: s.db_only_mode,
   };
 });
@@ -170,11 +200,13 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
     const globalCounts = await getGlobalAiCounts().catch(() => ({ today: 0, month: 0 }));
     const dailyAlertHit =
       settings.daily_ai_call_alert > 0 && globalCounts.today >= settings.daily_ai_call_alert;
+    const activeBanner = await computeActiveBanner();
 
     return {
       capacity,
       breaker,
       settings,
+      activeBanner,
       globals: {
         aiCallsToday: globalCounts.today,
         aiCallsMonth: globalCounts.month,
