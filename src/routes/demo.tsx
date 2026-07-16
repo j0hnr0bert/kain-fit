@@ -513,7 +513,7 @@ function DemoPage() {
         onOpenChange={(v) => { if (!v) setReportTarget(null); }}
         foodEntryId={null}
         originalValues={reportTarget?.values ?? {}}
-        disabled
+        anonymousSessionId={typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""}
       />
 
       <Dialog open={signupPrompt} onOpenChange={setSignupPrompt}>
