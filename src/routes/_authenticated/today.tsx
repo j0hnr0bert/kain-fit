@@ -1040,3 +1040,210 @@ function UserInitial() {
   }, []);
   return <>{initial}</>;
 }
+
+function SwipeableEntry({
+  children,
+  onDelete,
+  onOpen,
+}: {
+  children: React.ReactNode;
+  onDelete: () => void;
+  onOpen: () => void;
+}) {
+  const [dx, setDx] = useState(0);
+  const [open, setOpen] = useState(false);
+  const startX = useRef<number | null>(null);
+  const startY = useRef<number | null>(null);
+  const moved = useRef(false);
+  const horiz = useRef(false);
+
+  const REVEAL = 88; // px width of delete action
+
+  function onTouchStart(e: React.TouchEvent) {
+    const t = e.touches[0];
+    startX.current = t.clientX;
+    startY.current = t.clientY;
+    moved.current = false;
+    horiz.current = false;
+  }
+  function onTouchMove(e: React.TouchEvent) {
+    if (startX.current == null || startY.current == null) return;
+    const t = e.touches[0];
+    const deltaX = t.clientX - startX.current;
+    const deltaY = t.clientY - startY.current;
+    if (!horiz.current) {
+      if (Math.abs(deltaX) > 8 && Math.abs(deltaX) > Math.abs(deltaY)) {
+        horiz.current = true;
+      } else if (Math.abs(deltaY) > 8) {
+        // vertical scroll — bail out
+        startX.current = null;
+        return;
+      }
+    }
+    if (horiz.current) {
+      moved.current = true;
+      const base = open ? -REVEAL : 0;
+      const next = Math.min(0, Math.max(-REVEAL * 1.4, base + deltaX));
+      setDx(next);
+    }
+  }
+  function onTouchEnd() {
+    if (horiz.current) {
+      if (dx < -REVEAL / 2) {
+        setDx(-REVEAL);
+        setOpen(true);
+      } else {
+        setDx(0);
+        setOpen(false);
+      }
+    }
+    startX.current = null;
+    startY.current = null;
+  }
+  function handleClick() {
+    if (moved.current) return;
+    if (open) {
+      setOpen(false);
+      setDx(0);
+      return;
+    }
+    onOpen();
+  }
+  return (
+    <div className="relative overflow-hidden rounded-2xl">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onDelete();
+          setOpen(false);
+          setDx(0);
+        }}
+        className="absolute inset-y-0 right-0 w-[88px] bg-destructive text-destructive-foreground flex items-center justify-center gap-1 text-sm font-medium"
+        aria-label="Delete entry"
+        tabIndex={open ? 0 : -1}
+      >
+        <Trash2 className="h-4 w-4" /> Delete
+      </button>
+      <div
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onClick={handleClick}
+        style={{
+          transform: `translateX(${dx}px)`,
+          transition: startX.current == null ? "transform 0.2s ease" : "none",
+        }}
+        className="relative bg-background cursor-pointer"
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function EditEntrySheet({
+  entry,
+  onClose,
+  onSave,
+  onDelete,
+}: {
+  entry: Entry | null;
+  onClose: () => void;
+  onSave: (qty: number) => Promise<boolean>;
+  onDelete: () => Promise<void>;
+}) {
+  const [qty, setQty] = useState<string>("");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    if (entry) setQty(String(entry.quantity));
+  }, [entry]);
+  const unitLabel = useMemo(() => {
+    if (!entry) return "";
+    const u = (entry.unit ?? "").toLowerCase();
+    if (u === "g") return "grams";
+    if (u === "kg") return "kilograms";
+    if (u === "ml") return "milliliters";
+    if (u === "l") return "liters";
+    return entry.unit || "units";
+  }, [entry]);
+  const parsed = Number(qty);
+  const validationError =
+    qty.trim() === "" || Number.isNaN(parsed)
+      ? "Enter an amount."
+      : parsed <= 0
+      ? "Amount must be greater than 0."
+      : parsed > 100000
+      ? "That amount looks too large."
+      : null;
+  return (
+    <Sheet open={!!entry} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <SheetContent side="bottom" className="rounded-t-3xl max-h-[85vh] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>{entry?.display_name}</SheetTitle>
+          <SheetDescription>
+            Adjust the amount. Nutrition recalculates instantly from the stored per-{unitLabel.replace(/s$/, "") || "unit"} values — no new AI calculation is used.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-4 space-y-4">
+          <label className="block">
+            <span className="text-xs text-muted-foreground">Amount ({unitLabel})</span>
+            <Input
+              type="number"
+              inputMode="decimal"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              onFocus={(e) => e.currentTarget.select()}
+              className="mt-1 h-12 rounded-2xl text-lg"
+              autoFocus
+            />
+            {validationError && (
+              <span className="mt-1 block text-[11px] text-destructive">{validationError}</span>
+            )}
+          </label>
+          {entry && (
+            <div className="rounded-2xl bg-muted/60 p-3 text-xs text-muted-foreground">
+              Current: {formatQuantity(entry.quantity, entry.unit)} · {Math.round(entry.calories)} kcal ·
+              P {Math.round(entry.protein_g)} · C {Math.round(entry.carbs_g)} · F {Math.round(entry.fat_g)}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <Button
+              variant="ghost"
+              className="flex-1 h-12 rounded-2xl"
+              onClick={onClose}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1 h-12 rounded-2xl"
+              disabled={saving || validationError !== null || Number(qty) === entry?.quantity}
+              onClick={async () => {
+                setSaving(true);
+                await onSave(Number(qty));
+                setSaving(false);
+              }}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save changes"}
+            </Button>
+          </div>
+          <div className="pt-4 border-t border-border">
+            <Button
+              variant="destructive"
+              className="w-full h-12 rounded-2xl"
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                await onDelete();
+                setSaving(false);
+              }}
+            >
+              <Trash2 className="h-4 w-4 mr-2" /> Delete entry
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
