@@ -54,22 +54,33 @@ export type StatusInfo = {
  * preparation or serving size was inferred.
  */
 export function foodStatus({ data_source, is_estimate, preparation }: StatusInput): StatusInfo {
-  const prepEstimated = preparation === "estimated";
+  const prep = (preparation ?? "").toLowerCase();
+  const knownPreps: Record<string, string> = {
+    raw: "raw weight",
+    cooked: "cooked weight",
+    grilled: "grilled",
+    fried: "fried",
+    boiled: "boiled",
+    baked: "baked",
+    steamed: "steamed",
+  };
   switch (data_source) {
-    case "verified_database":
-      if (prepEstimated || is_estimate) {
+    case "verified_database": {
+      if (knownPreps[prep]) {
         return {
-          label: "Verified food · preparation estimated",
-          tooltip:
-            "We recognized this food, but the preparation or serving size was estimated. Edit the amount if you want a closer match.",
+          label: `Verified food · ${knownPreps[prep]}`,
+          tooltip: `Matched against a known food. Nutrition uses the ${knownPreps[prep]} values.`,
           tone: "verified",
         };
       }
+      // Unknown / estimated / missing preparation → standard preparation
       return {
-        label: "Verified",
-        tooltip: "Matched against a known food with reliable per-serving values.",
+        label: "Verified food · standard preparation",
+        tooltip:
+          "We recognized this food and used its most commonly logged preparation because you didn't specify one. You can edit the amount or preparation any time.",
         tone: "verified",
       };
+    }
     case "recipe_based":
       return {
         label: "Recipe-based",
