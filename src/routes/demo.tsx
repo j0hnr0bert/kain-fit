@@ -93,18 +93,10 @@ function mealFromHour(h: number): Meal {
   return "snacks";
 }
 
-function sourceLabel(s: string) {
-  switch (s) {
-    case "verified_database": return "Verified";
-    case "user_confirmed": return "Your food";
-    case "recipe_based": return "Recipe-based";
-    default: return "Estimated";
-  }
-}
-
 function DemoPage() {
   const navigate = useNavigate();
   const parseFn = useServerFn(parseFoodDemo);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<DemoEntry[]>([]);
   const [input, setInput] = useState("");
   const [parsing, setParsing] = useState(false);
@@ -326,6 +318,7 @@ function DemoPage() {
               aria-label="Describe what you ate"
               className="h-14 pl-5 pr-14 bg-transparent border-0 rounded-3xl text-base focus-visible:ring-0"
               disabled={parsing || limitReached}
+              ref={inputRef}
             />
             <button
               type="submit"
@@ -392,17 +385,13 @@ function DemoPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium truncate">{e.name}</span>
-                          {e.is_estimate && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-brand/15 text-[oklch(0.5_0.16_75)]">
-                              <AlertCircle className="h-3 w-3" /> Estimated
-                            </span>
-                          )}
-                          <span className="inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">
-                            {sourceLabel(e.data_source)}
-                          </span>
+                          <DemoStatusBadge
+                            data_source={e.data_source}
+                            is_estimate={e.is_estimate}
+                          />
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {e.quantity}{e.unit} · {e.calories} kcal · P {e.protein} · C {e.carbs} · F {e.fat}
+                          {formatQuantity(e.quantity, e.unit)} · {e.calories} kcal · P {e.protein} · C {e.carbs} · F {e.fat}
                         </div>
                         <button
                           type="button"
@@ -470,12 +459,28 @@ function DemoPage() {
       />
 
       {/* Review sheet — same shape as production */}
-      <Sheet open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
-        <SheetContent side="bottom" className="rounded-t-3xl max-h-[85vh] overflow-y-auto">
+      <Sheet
+        open={!!pending}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPending(null);
+            requestAnimationFrame(() => inputRef.current?.focus());
+          }
+        }}
+      >
+        <SheetContent
+          side="bottom"
+          aria-describedby="demo-review-desc"
+          className="rounded-t-3xl max-h-[85vh] overflow-y-auto"
+        >
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" /> Review before adding
             </SheetTitle>
+            <SheetDescription id="demo-review-desc">
+              Check each item's amount and nutrition. Answer any preparation
+              questions, edit values if needed, then add them to your demo day.
+            </SheetDescription>
           </SheetHeader>
           {pendingOriginalInput && (
             <p className="mt-2 text-xs text-muted-foreground">
