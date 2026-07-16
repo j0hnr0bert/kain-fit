@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
@@ -99,63 +100,108 @@ export const parseFood = createServerFn({ method: "POST" })
 // but is rate-limited per anonymous session and never persists results.
 export const DEMO_PARSE_LIMIT = 3;
 
+const DEMO_COOKIE = "kf_demo_sid";
+const DEMO_COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+
+function readOrIssueDemoSid(): { sid: string; issued: boolean } {
+  const existing = getCookie(DEMO_COOKIE);
+  if (existing && existing.length > 0 && existing.length <= 128) {
+    return { sid: existing, issued: false };
+  }
+  const sid =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  setCookie(DEMO_COOKIE, sid, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: true,
+    path: "/",
+    maxAge: DEMO_COOKIE_MAX_AGE,
+  });
+  return { sid, issued: true };
+}
+
+type DemoAdmin = {
+  rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+  from: (t: string) => {
+    select: (c: string) => {
+      eq: (a: string, b: string) => Promise<{ data: unknown[] | null; error: unknown }>;
+    };
+  };
+};
+
+async function getUsageRow(admin: DemoAdmin, sid: string): Promise<{ count: number; last_success_at: string | null } | null> {
+  const { data } = await admin
+    .from("demo_usage")
+    .select("count,last_success_at")
+    .eq("session_id", sid);
+  const row = Array.isArray(data) ? (data[0] as { count?: number; last_success_at?: string | null } | undefined) : undefined;
+  if (!row) return null;
+  return { count: Number(row.count ?? 0), last_success_at: row.last_success_at ?? null };
+}
+
+// Fetches the authoritative remaining demo allowance for this browser.
+// Issues an httpOnly session cookie on first call.
+export const getDemoStatus = createServerFn({ method: "GET" }).handler(async () => {
+  const { sid } = readOrIssueDemoSid();
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const admin = supabaseAdmin as unknown as DemoAdmin;
+  const row = await getUsageRow(admin, sid);
+  const count = row?.count ?? 0;
+  return {
+    limit: DEMO_PARSE_LIMIT,
+    remaining: Math.max(0, DEMO_PARSE_LIMIT - count),
+    used: Math.min(DEMO_PARSE_LIMIT, count),
+  };
+});
+
 export const parseFoodDemo = createServerFn({ method: "POST" })
-  .inputValidator((data: { input: string; mealHint?: string; anonymousSessionId: string }) => {
+  .inputValidator((data: { input: string; mealHint?: string }) => {
     if (!data?.input || typeof data.input !== "string" || data.input.trim().length === 0) {
       throw new Error("Please enter what you ate.");
     }
     if (data.input.length > 500) throw new Error("Description is too long.");
-    const sid = String(data.anonymousSessionId ?? "").trim();
-    if (!sid || sid.length > 128) throw new Error("Session missing.");
-    return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks", sid };
+    return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
   .handler(async ({ data }) => {
+    const { sid } = readOrIssueDemoSid();
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const admin = supabaseAdmin as unknown as {
-      from: (t: string) => {
-        select: (
-          c: string,
-          opts?: { count?: "exact"; head?: boolean },
-        ) => {
-          eq: (a: string, b: string) => {
-            eq: (a: string, b: string) => {
-              gt: (a: string, b: string) => Promise<{ count: number | null; error: unknown }>;
-            };
-          };
-        };
-        insert: (r: unknown) => Promise<{ error: { message: string } | null }>;
-      };
-    };
+    const admin = supabaseAdmin as unknown as DemoAdmin;
 
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { count } = await admin
-      .from("product_events")
-      .select("id", { count: "exact", head: true })
-      .eq("anonymous_session_id", data.sid)
-      .eq("event_name", "demo_food_confirmed")
-      .gt("created_at", since);
-
-    if ((count ?? 0) >= DEMO_PARSE_LIMIT) {
-      const err = new Error("DEMO_LIMIT_REACHED");
-      throw err;
+    // Atomically reserve a slot BEFORE calling the AI so concurrent
+    // requests cannot both pass a "count < limit" check.
+    const reserveRes = await admin.rpc("reserve_demo_slot", {
+      _sid: sid,
+      _limit: DEMO_PARSE_LIMIT,
+    });
+    if (reserveRes.error) {
+      console.error("[demo] reserve failed", reserveRes.error.message);
+      throw new Error("Could not start demo calculation. Please try again.");
+    }
+    const reservedCount = Number(reserveRes.data ?? -1);
+    if (reservedCount < 0) {
+      throw new Error("DEMO_LIMIT_REACHED");
     }
 
-    const result = await callParseAi(data.input, data.mealHint);
-
-    // Record a server-side successful demo parse so rate limiting is authoritative.
-    await admin.from("product_events").insert({
-      user_id: null,
-      anonymous_session_id: data.sid,
-      event_name: "demo_food_confirmed",
-      acquisition_source: null,
-      event_properties: {
-        number_of_items: result.items.length,
-        input_language: result.input_language,
-      },
-    });
-
-    return {
-      ...result,
-      remaining: Math.max(0, DEMO_PARSE_LIMIT - ((count ?? 0) + 1)),
-    };
+    try {
+      const result = await callParseAi(data.input, data.mealHint);
+      if (!result.items || result.items.length === 0) {
+        // No usable result — release the slot.
+        await admin.rpc("release_demo_slot", { _sid: sid, _reason: "empty_result" });
+        return {
+          ...result,
+          remaining: Math.max(0, DEMO_PARSE_LIMIT - (reservedCount - 1)),
+        };
+      }
+      await admin.rpc("mark_demo_success", { _sid: sid });
+      return {
+        ...result,
+        remaining: Math.max(0, DEMO_PARSE_LIMIT - reservedCount),
+      };
+    } catch (err) {
+      const reason = err instanceof Error ? err.message.slice(0, 100) : "parse_failed";
+      await admin.rpc("release_demo_slot", { _sid: sid, _reason: reason });
+      throw err;
+    }
   });

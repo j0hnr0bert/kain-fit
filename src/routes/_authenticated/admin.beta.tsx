@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getBetaMetrics, exportBetaCsv } from "@/lib/beta.functions";
+import { getBetaMetrics, exportBetaCsv, getDemoUsage } from "@/lib/beta.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -16,10 +16,17 @@ export const Route = createFileRoute("/_authenticated/admin/beta")({
 function AdminBetaPage() {
   const fetchMetrics = useServerFn(getBetaMetrics);
   const exportFn = useServerFn(exportBetaCsv);
+  const fetchDemoUsage = useServerFn(getDemoUsage);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["beta-metrics"],
     queryFn: () => fetchMetrics(),
+    retry: false,
+  });
+
+  const { data: demoUsage } = useQuery({
+    queryKey: ["beta-demo-usage"],
+    queryFn: () => fetchDemoUsage(),
     retry: false,
   });
 
@@ -182,6 +189,50 @@ function AdminBetaPage() {
                     {r.explanation && <p className="mt-1">{r.explanation}</p>}
                   </div>
                 ))}
+              </div>
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Demo quota (anonymous sessions)
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Server-side authoritative count. No food text, IPs, or tokens.
+              </p>
+              <div className="mt-2 overflow-x-auto rounded-2xl border border-border bg-card">
+                <table className="w-full text-xs">
+                  <thead className="text-muted-foreground">
+                    <tr className="text-left">
+                      <th className="p-2 font-medium">Session</th>
+                      <th className="p-2 font-medium">Used</th>
+                      <th className="p-2 font-medium">Left</th>
+                      <th className="p-2 font-medium">Last success</th>
+                      <th className="p-2 font-medium">Last reason</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(demoUsage?.sessions ?? []).length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-3 text-muted-foreground">
+                          No demo sessions yet.
+                        </td>
+                      </tr>
+                    )}
+                    {demoUsage?.sessions.map((s) => (
+                      <tr key={s.session_id} className="border-t border-border">
+                        <td className="p-2 font-mono text-[11px]">{s.session_id.slice(0, 12)}…</td>
+                        <td className="p-2">{s.used}</td>
+                        <td className="p-2">{s.remaining}</td>
+                        <td className="p-2 text-muted-foreground">
+                          {s.last_success_at
+                            ? new Date(s.last_success_at).toLocaleString()
+                            : "—"}
+                        </td>
+                        <td className="p-2 text-muted-foreground">{s.last_reason ?? "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </section>
           </>

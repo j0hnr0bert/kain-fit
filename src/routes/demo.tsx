@@ -28,7 +28,7 @@ import { track, getAcquisitionSource } from "@/lib/analytics";
 import { BetaBadge } from "@/components/BetaBadge";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
-import { parseFoodDemo } from "@/lib/food.functions";
+import { parseFoodDemo, getDemoStatus } from "@/lib/food.functions";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import {
   Tooltip,
@@ -96,6 +96,7 @@ function mealFromHour(h: number): Meal {
 function DemoPage() {
   const navigate = useNavigate();
   const parseFn = useServerFn(parseFoodDemo);
+  const statusFn = useServerFn(getDemoStatus);
   const inputRef = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<DemoEntry[]>([]);
   const [input, setInput] = useState("");
@@ -104,7 +105,7 @@ function DemoPage() {
   const [lastInput, setLastInput] = useState("");
   const [pending, setPending] = useState<PendingItem[] | null>(null);
   const [pendingOriginalInput, setPendingOriginalInput] = useState("");
-  const [parseCount, setParseCount] = useState(0);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const [limitReached, setLimitReached] = useState(false);
   const [signupPrompt, setSignupPrompt] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -116,6 +117,27 @@ function DemoPage() {
   useEffect(() => {
     track("demo_started", { demo_or_registered: "demo" });
   }, []);
+
+  // Fetch the authoritative remaining allowance on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await statusFn();
+        if (cancelled) return;
+        setRemaining(s.remaining);
+        if (s.remaining <= 0) setLimitReached(true);
+      } catch {
+        if (cancelled) return;
+        // If status fails, keep remaining=null so the UI stays in "checking" state
+        // rather than optimistically showing a number.
+        setRemaining(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [statusFn]);
 
   const totals = useMemo(
     () =>
@@ -137,15 +159,6 @@ function DemoPage() {
     return g;
   }, [entries]);
 
-  function sessionId(): string {
-    if (typeof window === "undefined") return "";
-    try {
-      return localStorage.getItem("kf.sid") ?? "";
-    } catch {
-      return "";
-    }
-  }
-
   async function runParse(text: string) {
     setParsing(true);
     setParseError(null);
@@ -154,11 +167,12 @@ function DemoPage() {
     track("demo_food_submitted", { demo_or_registered: "demo" });
     try {
       const mealHint = mealFromHour(new Date().getHours());
-      const sid = sessionId();
-      const result = await parseFn({
-        data: { input: text, mealHint, anonymousSessionId: sid },
-      });
+      const result = await parseFn({ data: { input: text, mealHint } });
       const dur = Math.round(performance.now() - started);
+      if (typeof result.remaining === "number") {
+        setRemaining(result.remaining);
+        if (result.remaining <= 0) setLimitReached(true);
+      }
       if (!result.items || result.items.length === 0) {
         track("food_parse_failed", { processing_duration_ms: dur, reason: "empty_result", demo_or_registered: "demo" });
         setParseError("We couldn't find any food in that. Please rephrase and try again.");
@@ -197,7 +211,8 @@ function DemoPage() {
   function handleTry(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || parsing) return;
-    if (limitReached || parseCount >= DEMO_LIMIT) {
+    if (remaining === null) return; // still checking availability
+    if (limitReached || remaining <= 0) {
       setSignupPrompt(true);
       return;
     }
@@ -228,11 +243,6 @@ function DemoPage() {
     setPending(null);
     setPendingOriginalInput("");
     setInput("");
-    setParseCount((c) => {
-      const next = c + 1;
-      if (next >= DEMO_LIMIT) setLimitReached(true);
-      return next;
-    });
     toast.success("Added to demo day");
   }
 
@@ -253,8 +263,6 @@ function DemoPage() {
     }
     setSignupPrompt(true);
   }
-
-  const remaining = Math.max(0, DEMO_LIMIT - parseCount);
 
   return (
     <div className="min-h-[100dvh] bg-background pb-16">
@@ -288,8 +296,15 @@ function DemoPage() {
           <div className="text-sm">
             <div className="font-semibold text-foreground">Demo mode</div>
             <p className="text-muted-foreground text-[13px] leading-relaxed">
-              Your entry is processed to generate this preview but is not saved to an account.
-              You have {remaining} free {remaining === 1 ? "calculation" : "calculations"} left.
+              Your entry is processed to generate this preview but is not saved to an account.{" "}
+              {remaining === null ? (
+                <span className="inline-flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                  Checking demo availability…
+                </span>
+              ) : (
+                <>You have {remaining} free {remaining === 1 ? "calculation" : "calculations"} left.</>
+              )}
             </p>
           </div>
         </div>
@@ -317,12 +332,12 @@ function DemoPage() {
               placeholder="Try: 200g chicken breast and 150g rice"
               aria-label="Describe what you ate"
               className="h-14 pl-5 pr-14 bg-transparent border-0 rounded-3xl text-base focus-visible:ring-0"
-              disabled={parsing || limitReached}
+              disabled={parsing || limitReached || remaining === null}
               ref={inputRef}
             />
             <button
               type="submit"
-              disabled={parsing || !input.trim() || limitReached}
+              disabled={parsing || !input.trim() || limitReached || remaining === null}
               className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
               aria-label="Calculate nutrition"
             >
@@ -360,8 +375,8 @@ function DemoPage() {
           )}
           {limitReached && (
             <div className="mt-3 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm text-foreground">
-              You've used all {DEMO_LIMIT} free demo calculations. Create a free account to keep
-              tracking.
+              You've completed your {DEMO_LIMIT} free demo calculations. Create a free account to
+              continue tracking.
             </div>
           )}
         </form>
@@ -542,7 +557,7 @@ function DemoPage() {
             </DialogTitle>
             <DialogDescription>
               {limitReached
-                ? `You've used all ${DEMO_LIMIT} free demo calculations. Create a free KainFit account to keep tracking without limits.`
+                ? `You've completed your ${DEMO_LIMIT} free demo calculations. Create a free account to continue tracking.`
                 : "We'll create your free account first. After you're signed in, you can choose whether to import today's demo entries."}
             </DialogDescription>
           </DialogHeader>
