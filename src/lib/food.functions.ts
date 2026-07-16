@@ -216,7 +216,12 @@ export const parseFood = createServerFn({ method: "POST" })
     if (data.input.length > 500) throw new Error("Description is too long.");
     return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
-  .handler(async ({ data }) => callParseAi(data.input, data.mealHint));
+  .handler(async ({ data }) => {
+    const t0 = Date.now();
+    const result = await callParseAi(data.input, data.mealHint);
+    const ai_parsing_ms = Date.now() - t0;
+    return { ...result, timings: { ai_parsing_ms, resolution_path: "ai_parse" as const } };
+  });
 
 // Public (unauthenticated) demo parse. Uses the same production pipeline,
 // but is rate-limited per anonymous session and never persists results.
@@ -307,19 +312,23 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
     }
 
     try {
+      const t0 = Date.now();
       const result = await callParseAi(data.input, data.mealHint);
+      const ai_parsing_ms = Date.now() - t0;
       if (!result.items || result.items.length === 0) {
         // No usable result — release the slot.
         await admin.rpc("release_demo_slot", { _sid: sid, _reason: "empty_result" });
         return {
           ...result,
           remaining: Math.max(0, DEMO_PARSE_LIMIT - (reservedCount - 1)),
+          timings: { ai_parsing_ms, resolution_path: "ai_parse" as const },
         };
       }
       await admin.rpc("mark_demo_success", { _sid: sid });
       return {
         ...result,
         remaining: Math.max(0, DEMO_PARSE_LIMIT - reservedCount),
+        timings: { ai_parsing_ms, resolution_path: "ai_parse" as const },
       };
     } catch (err) {
       const reason = err instanceof Error ? err.message.slice(0, 100) : "parse_failed";

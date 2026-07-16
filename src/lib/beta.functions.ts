@@ -36,6 +36,12 @@ function sanitizeProps(props: Record<string, unknown>): Record<string, unknown> 
   // Strip any keys that could carry sensitive data. We accept only known-safe keys.
   const SAFE_KEYS = new Set([
     "processing_duration_ms",
+    "ai_parsing_ms",
+    "total_processing_ms",
+    "resolution_path",
+    "cache_hit",
+    "item_count",
+    "timeout",
     "number_of_items",
     "input_language",
     "measurement_units",
@@ -318,6 +324,40 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       ? durations[Math.floor(durations.length / 2)]
       : 0;
 
+    // Percentiles and threshold coverage
+    const pct = (arr: number[], p: number) => {
+      if (!arr.length) return 0;
+      const idx = Math.min(arr.length - 1, Math.floor((p / 100) * arr.length));
+      return arr[idx];
+    };
+    const pctUnder = (arr: number[], ms: number) =>
+      arr.length ? arr.filter((n) => n <= ms).length / arr.length : 0;
+    const aiDurations = events
+      .filter((e) => e.event_name === "food_parse_succeeded")
+      .map((e) => Number((e.event_properties as Record<string, unknown>)?.ai_parsing_ms))
+      .filter((n) => Number.isFinite(n))
+      .sort((a, b) => a - b);
+    const timeoutCount = events.filter(
+      (e) =>
+        e.event_name === "food_parse_failed" &&
+        typeof (e.event_properties as Record<string, unknown>)?.reason === "string" &&
+        ((e.event_properties as Record<string, unknown>).reason as string).toLowerCase().includes("timeout"),
+    ).length;
+    const performance = {
+      samples: durations.length,
+      p50: Math.round(pct(durations, 50)),
+      p75: Math.round(pct(durations, 75)),
+      p90: Math.round(pct(durations, 90)),
+      p95: Math.round(pct(durations, 95)),
+      under3s: pctUnder(durations, 3000),
+      under5s: pctUnder(durations, 5000),
+      under8s: pctUnder(durations, 8000),
+      under10s: pctUnder(durations, 10000),
+      aiP50: Math.round(pct(aiDurations, 50)),
+      aiP95: Math.round(pct(aiDurations, 95)),
+      timeoutRate: totalParses ? timeoutCount / totalParses : 0,
+    };
+
     const confirmedUsers = new Set(
       events
         .filter((e) => e.event_name === "food_confirmed" && e.user_id)
@@ -393,6 +433,7 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       avgConfirmedPerActiveUser: Number(avgConfirmed.toFixed(2)),
       activeUsers,
       acquisitionBreakdown: bySource,
+      performance,
       recentFeedback: feedback
         .sort((a, b) => (b.created_at > a.created_at ? 1 : -1))
         .slice(0, 20)

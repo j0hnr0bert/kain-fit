@@ -124,6 +124,29 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Performance
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                End-to-end parse latency measured client-side. AI stage measured server-side.
+              </p>
+              <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Metric label="Samples" value={data.performance?.samples ?? 0} />
+                <Metric label="p50 (total)" value={`${data.performance?.p50 ?? 0} ms`} />
+                <Metric label="p75 (total)" value={`${data.performance?.p75 ?? 0} ms`} />
+                <Metric label="p90 (total)" value={`${data.performance?.p90 ?? 0} ms`} />
+                <Metric label="p95 (total)" value={`${data.performance?.p95 ?? 0} ms`} />
+                <Metric label="% under 3s" value={`${((data.performance?.under3s ?? 0) * 100).toFixed(0)}%`} />
+                <Metric label="% under 5s" value={`${((data.performance?.under5s ?? 0) * 100).toFixed(0)}%`} />
+                <Metric label="% under 8s" value={`${((data.performance?.under8s ?? 0) * 100).toFixed(0)}%`} />
+                <Metric label="% under 10s" value={`${((data.performance?.under10s ?? 0) * 100).toFixed(0)}%`} />
+                <Metric label="AI p50" value={`${data.performance?.aiP50 ?? 0} ms`} />
+                <Metric label="AI p95" value={`${data.performance?.aiP95 ?? 0} ms`} />
+                <Metric label="Timeout rate" value={`${((data.performance?.timeoutRate ?? 0) * 100).toFixed(1)}%`} />
+              </div>
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Acquisition source
               </h2>
               <div className="mt-2 rounded-2xl border border-border bg-card divide-y divide-border">
