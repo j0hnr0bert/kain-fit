@@ -42,6 +42,10 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-coral: var(--coral);
+  --color-coral-foreground: var(--coral-foreground);
+  --color-amber-brand: var(--amber);
+  --color-amber-brand-foreground: var(--amber-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
