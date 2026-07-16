@@ -467,14 +467,13 @@ function TodayPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium truncate">{e.display_name}</span>
-                          {e.is_estimate && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-brand/15 text-[oklch(0.5_0.16_75)]">
-                              <AlertCircle className="h-3 w-3" /> Estimated
-                            </span>
-                          )}
+                          <StatusBadge
+                            data_source={e.data_source}
+                            is_estimate={e.is_estimate}
+                          />
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {Number(e.quantity)}{e.unit} · {Math.round(e.calories)} kcal ·
+                          {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal ·
                           P {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
                         </div>
                         <button
@@ -511,12 +510,29 @@ function TodayPage() {
       </div>
 
       {/* Review sheet */}
-      <Sheet open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
-        <SheetContent side="bottom" className="rounded-t-3xl max-h-[85vh] overflow-y-auto">
+      <Sheet
+        open={!!pending}
+        onOpenChange={(o) => {
+          if (!o) {
+            setPending(null);
+            // Return focus to the food input after the review dialog closes.
+            requestAnimationFrame(() => inputRef.current?.focus());
+          }
+        }}
+      >
+        <SheetContent
+          side="bottom"
+          aria-describedby="today-review-desc"
+          className="rounded-t-3xl max-h-[85vh] overflow-y-auto"
+        >
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-primary" /> Review before adding
             </SheetTitle>
+            <SheetDescription id="today-review-desc">
+              Check each item's amount and nutrition. Answer any preparation
+              questions, edit values if needed, then add them to your day.
+            </SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-3">
             {pending?.map((item, idx) => (
