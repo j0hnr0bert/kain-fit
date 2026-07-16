@@ -6,6 +6,7 @@ import { getBetaMetrics, exportBetaCsv } from "@/lib/beta.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { track } from "@/lib/analytics";
 
 export const Route = createFileRoute("/_authenticated/admin/beta")({
   head: () => ({ meta: [{ title: "Beta dashboard — KainFit" }, { name: "robots", content: "noindex" }] }),
@@ -44,6 +45,7 @@ function AdminBetaPage() {
 
   useEffect(() => {
     document.title = "Beta dashboard — KainFit";
+    track("admin_dashboard_viewed");
   }, []);
 
   if (error) {
