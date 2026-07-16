@@ -32,6 +32,7 @@ import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
+import { getBetaUsage } from "@/lib/ops.functions";
 import {
   Tooltip,
   TooltipContent,
@@ -195,20 +196,6 @@ function TodayPage() {
     markReturned();
   }, []);
 
-  // Bounce to onboarding if not done
-  useEffect(() => {
-    (async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("onboarded")
-        .eq("user_id", u.user.id)
-        .maybeSingle();
-      if (data && !data.onboarded) navigate({ to: "/onboarding", replace: true });
-    })();
-  }, [navigate]);
-
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ["entries", "today"],
     queryFn: async () => {
@@ -223,6 +210,47 @@ function TodayPage() {
       return (data ?? []) as Entry[];
     },
   });
+
+  // Manual macro targets — private to this user; never sent to gym owners.
+  const { data: profile } = useQuery({
+    queryKey: ["profile", "targets"],
+    queryFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("manual_targets_enabled,target_calories,target_protein_g,target_carbs_g,target_fat_g")
+        .eq("user_id", u.user.id)
+        .maybeSingle();
+      return data as {
+        manual_targets_enabled: boolean;
+        target_calories: number | null;
+        target_protein_g: number | null;
+        target_carbs_g: number | null;
+        target_fat_g: number | null;
+      } | null;
+    },
+  });
+  const targetsActive = Boolean(
+    profile?.manual_targets_enabled &&
+      profile.target_calories &&
+      profile.target_protein_g !== null &&
+      profile.target_carbs_g !== null &&
+      profile.target_fat_g !== null,
+  );
+
+  // Server-authoritative beta submission usage.
+  const fetchBetaUsage = useServerFn(getBetaUsage);
+  const { data: betaUsage } = useQuery({
+    queryKey: ["beta-usage"],
+    queryFn: () => fetchBetaUsage(),
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  // Refresh usage after each successful add.
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ["beta-usage"] });
+  }, [entries.length, qc]);
 
   const totals = useMemo(() => {
     return entries.reduce(
@@ -239,6 +267,12 @@ function TodayPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || parsing) return;
+    if (betaUsage?.reachedLimit) {
+      toast.error(
+        "You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.",
+      );
+      return;
+    }
     setParsing(true);
     setOriginalInput(input);
     editedRef.current = false;
@@ -278,7 +312,10 @@ function TodayPage() {
         reason: err instanceof Error ? err.message.slice(0, 80) : "unknown",
       });
       const msg = err instanceof Error ? err.message : "Could not parse. Try again.";
-      if (msg.startsWith("AI_UNAVAILABLE:")) {
+      if (msg.startsWith("BETA_LIMIT:")) {
+        toast.error(msg.replace(/^BETA_LIMIT:\s*/, ""));
+        qc.invalidateQueries({ queryKey: ["beta-usage"] });
+      } else if (msg.startsWith("AI_UNAVAILABLE:")) {
         toast.error(
           "KainFit's calculator is temporarily unavailable. Your existing entries and history stay available.",
         );
