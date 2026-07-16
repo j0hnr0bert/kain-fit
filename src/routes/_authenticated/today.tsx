@@ -218,7 +218,7 @@ function TodayPage() {
         .from("food_entries")
         .select("*")
         .gte("logged_at", start.toISOString())
-        .order("logged_at", { ascending: true });
+        .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Entry[];
     },
