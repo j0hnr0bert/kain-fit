@@ -559,7 +559,7 @@ function TodayPage() {
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="What did you eat?"
+              placeholder="Type your next food or meal…"
               className="h-14 pl-5 pr-24 bg-transparent border-0 rounded-3xl text-base focus-visible:ring-0"
               disabled={parsing}
             />
@@ -587,12 +587,15 @@ function TodayPage() {
             </div>
           </div>
           <p className="mt-2 px-1 text-xs text-muted-foreground">
-            Try: <span className="text-foreground/80">150g chicken adobo and 200g rice</span>
+            Try: <span className="text-foreground/80">{placeholderExamples[placeholderIdx]}</span>
           </p>
         </form>
 
         {/* Log */}
-        <div className="mt-8 space-y-6">
+        <div className="mt-8">
+          <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
+            Today's Log
+          </div>
           {isLoading && (
             <div className="text-sm text-muted-foreground">Loading today's log…</div>
           )}
@@ -601,59 +604,56 @@ function TodayPage() {
               Nothing logged yet. Type what you ate above.
             </div>
           )}
-          {(["breakfast", "lunch", "dinner", "snacks"] as const).map((meal) => {
-            const items = grouped[meal];
-            if (items.length === 0) return null;
-            return (
-              <div key={meal}>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
-                  {meal}
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <SwipeableEntry
+                key={e.id}
+                onDelete={() => deleteEntry(e)}
+                onOpen={() => setEditingEntry(e)}
+              >
+                <div className="rounded-2xl bg-card border border-border p-4">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium truncate">{e.display_name}</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      {formatEntryTime(e.created_at ?? e.logged_at)}
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    <StatusBadge
+                      data_source={e.data_source}
+                      is_estimate={e.is_estimate}
+                      preparation={e.preparation ?? null}
+                    />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal ·
+                    P {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      setReportTarget({
+                        id: e.id,
+                        values: {
+                          display_name: e.display_name,
+                          quantity: e.quantity,
+                          unit: e.unit,
+                          calories: e.calories,
+                          protein_g: e.protein_g,
+                          carbs_g: e.carbs_g,
+                          fat_g: e.fat_g,
+                        },
+                      });
+                    }}
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    <Flag className="h-3 w-3" /> Report incorrect macros
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  {items.map((e) => (
-                    <div key={e.id} className="rounded-2xl bg-card border border-border p-4 flex items-start gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium truncate">{e.display_name}</span>
-                          <StatusBadge
-                            data_source={e.data_source}
-                            is_estimate={e.is_estimate}
-                          />
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal ·
-                          P {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReportTarget({
-                              id: e.id,
-                              values: {
-                                display_name: e.display_name,
-                                quantity: e.quantity,
-                                unit: e.unit,
-                                calories: e.calories,
-                                protein_g: e.protein_g,
-                                carbs_g: e.carbs_g,
-                                fat_g: e.fat_g,
-                              },
-                            })
-                          }
-                          className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                        >
-                          <Flag className="h-3 w-3" /> Report incorrect macros
-                        </button>
-                      </div>
-                      <button onClick={() => deleteEntry(e)} className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
+              </SwipeableEntry>
+            ))}
+          </div>
         </div>
       </div>
 
