@@ -29,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { track, markReturned } from "@/lib/analytics";
 import { BetaBadge } from "@/components/BetaBadge";
+import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import {
@@ -452,6 +453,7 @@ function TodayPage() {
 
   return (
     <div className="min-h-[100dvh] bg-background pb-24">
+      <HighDemandBanner />
       <div
         className="max-w-md mx-auto px-5"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}

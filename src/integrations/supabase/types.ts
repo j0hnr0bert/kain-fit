@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          key: string
+          updated_at: string
+          updated_by: string | null
+          value: Json
+        }
+        Insert: {
+          key: string
+          updated_at?: string
+          updated_by?: string | null
+          value: Json
+        }
+        Update: {
+          key?: string
+          updated_at?: string
+          updated_by?: string | null
+          value?: Json
+        }
+        Relationships: []
+      }
       demo_usage: {
         Row: {
           count: number
@@ -231,6 +252,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      ops_audit_log: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          id: string
+          key: string
+          new_value: Json | null
+          old_value: Json | null
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          key: string
+          new_value?: Json | null
+          old_value?: Json | null
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          id?: string
+          key?: string
+          new_value?: Json | null
+          old_value?: Json | null
+        }
+        Relationships: []
       }
       product_events: {
         Row: {

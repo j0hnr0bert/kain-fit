@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 import { track, getAcquisitionSource } from "@/lib/analytics";
 import { BetaBadge } from "@/components/BetaBadge";
+import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { parseFoodDemo, getDemoStatus, recalcItemDemo } from "@/lib/food.functions";
@@ -341,6 +342,7 @@ function DemoPage() {
 
   return (
     <div className="min-h-[100dvh] bg-background pb-16">
+      <HighDemandBanner />
       <div
         className="max-w-md mx-auto px-5"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 1rem)" }}

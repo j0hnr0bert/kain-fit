@@ -235,6 +235,13 @@ export const parseFood = createServerFn({ method: "POST" })
   })
   .handler(async ({ data, context }) => {
     const { singleFlight } = await import("./ai-guard.server");
+    const { readOpsSettings } = await import("./ops-settings.server");
+    const settings = await readOpsSettings();
+    if (settings.pause_ai || settings.db_only_mode) {
+      throw new Error(
+        "AI_UNAVAILABLE: KainFit's calculator is temporarily paused. You can still edit, delete, or add entries manually.",
+      );
+    }
     const key = `parse:user:${context.userId}:${buildCacheKey(data.input, data.mealHint)}`;
     return mapGuardErrors(() =>
       singleFlight(key, () => resolveWithCache(data.input, data.mealHint)),
@@ -402,12 +409,15 @@ export const getDemoStatus = createServerFn({ method: "GET" }).handler(async () 
   const { sid } = readOrIssueDemoSid();
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = supabaseAdmin as unknown as DemoAdmin;
+  const { readOpsSettings } = await import("./ops-settings.server");
+  const settings = await readOpsSettings();
+  const limit = Math.max(1, Math.floor(settings.demo_allowance || DEMO_PARSE_LIMIT));
   const row = await getUsageRow(admin, sid);
   const count = row?.count ?? 0;
   return {
-    limit: DEMO_PARSE_LIMIT,
-    remaining: Math.max(0, DEMO_PARSE_LIMIT - count),
-    used: Math.min(DEMO_PARSE_LIMIT, count),
+    limit,
+    remaining: Math.max(0, limit - count),
+    used: Math.min(limit, count),
   };
 });
 
@@ -424,11 +434,20 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const admin = supabaseAdmin as unknown as DemoAdmin;
 
+    const { readOpsSettings } = await import("./ops-settings.server");
+    const settings = await readOpsSettings();
+    if (settings.pause_demo || settings.pause_ai || settings.db_only_mode) {
+      throw new Error(
+        "AI_UNAVAILABLE: The demo is temporarily paused. Please try again shortly or sign up to keep going.",
+      );
+    }
+    const demoLimit = Math.max(1, Math.floor(settings.demo_allowance || DEMO_PARSE_LIMIT));
+
     // Atomically reserve a slot BEFORE calling the AI so concurrent
     // requests cannot both pass a "count < limit" check.
     const reserveRes = await admin.rpc("reserve_demo_slot", {
       _sid: sid,
-      _limit: DEMO_PARSE_LIMIT,
+      _limit: demoLimit,
     });
     if (reserveRes.error) {
       console.error("[demo] reserve failed", reserveRes.error.message);
@@ -451,14 +470,14 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
         await admin.rpc("release_demo_slot", { _sid: sid, _reason: "empty_result" });
         return {
           ...result,
-          remaining: Math.max(0, DEMO_PARSE_LIMIT - (reservedCount - 1)),
+          remaining: Math.max(0, demoLimit - (reservedCount - 1)),
           timings,
         };
       }
       await admin.rpc("mark_demo_success", { _sid: sid });
       return {
         ...result,
-        remaining: Math.max(0, DEMO_PARSE_LIMIT - reservedCount),
+        remaining: Math.max(0, demoLimit - reservedCount),
         timings,
       };
     } catch (err) {
