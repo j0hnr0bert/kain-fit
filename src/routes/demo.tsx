@@ -28,7 +28,7 @@ import { track, getAcquisitionSource } from "@/lib/analytics";
 import { BetaBadge } from "@/components/BetaBadge";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
-import { parseFoodDemo } from "@/lib/food.functions";
+import { parseFoodDemo, getDemoStatus } from "@/lib/food.functions";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import {
   Tooltip,
@@ -96,6 +96,7 @@ function mealFromHour(h: number): Meal {
 function DemoPage() {
   const navigate = useNavigate();
   const parseFn = useServerFn(parseFoodDemo);
+  const statusFn = useServerFn(getDemoStatus);
   const inputRef = useRef<HTMLInputElement>(null);
   const [entries, setEntries] = useState<DemoEntry[]>([]);
   const [input, setInput] = useState("");
@@ -104,7 +105,7 @@ function DemoPage() {
   const [lastInput, setLastInput] = useState("");
   const [pending, setPending] = useState<PendingItem[] | null>(null);
   const [pendingOriginalInput, setPendingOriginalInput] = useState("");
-  const [parseCount, setParseCount] = useState(0);
+  const [remaining, setRemaining] = useState<number | null>(null);
   const [limitReached, setLimitReached] = useState(false);
   const [signupPrompt, setSignupPrompt] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -116,6 +117,27 @@ function DemoPage() {
   useEffect(() => {
     track("demo_started", { demo_or_registered: "demo" });
   }, []);
+
+  // Fetch the authoritative remaining allowance on mount.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const s = await statusFn();
+        if (cancelled) return;
+        setRemaining(s.remaining);
+        if (s.remaining <= 0) setLimitReached(true);
+      } catch {
+        if (cancelled) return;
+        // If status fails, keep remaining=null so the UI stays in "checking" state
+        // rather than optimistically showing a number.
+        setRemaining(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [statusFn]);
 
   const totals = useMemo(
     () =>
@@ -137,15 +159,6 @@ function DemoPage() {
     return g;
   }, [entries]);
 
-  function sessionId(): string {
-    if (typeof window === "undefined") return "";
-    try {
-      return localStorage.getItem("kf.sid") ?? "";
-    } catch {
-      return "";
-    }
-  }
-
   async function runParse(text: string) {
     setParsing(true);
     setParseError(null);
@@ -154,11 +167,12 @@ function DemoPage() {
     track("demo_food_submitted", { demo_or_registered: "demo" });
     try {
       const mealHint = mealFromHour(new Date().getHours());
-      const sid = sessionId();
-      const result = await parseFn({
-        data: { input: text, mealHint, anonymousSessionId: sid },
-      });
+      const result = await parseFn({ data: { input: text, mealHint } });
       const dur = Math.round(performance.now() - started);
+      if (typeof result.remaining === "number") {
+        setRemaining(result.remaining);
+        if (result.remaining <= 0) setLimitReached(true);
+      }
       if (!result.items || result.items.length === 0) {
         track("food_parse_failed", { processing_duration_ms: dur, reason: "empty_result", demo_or_registered: "demo" });
         setParseError("We couldn't find any food in that. Please rephrase and try again.");
@@ -197,7 +211,8 @@ function DemoPage() {
   function handleTry(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || parsing) return;
-    if (limitReached || parseCount >= DEMO_LIMIT) {
+    if (remaining === null) return; // still checking availability
+    if (limitReached || remaining <= 0) {
       setSignupPrompt(true);
       return;
     }
@@ -228,11 +243,6 @@ function DemoPage() {
     setPending(null);
     setPendingOriginalInput("");
     setInput("");
-    setParseCount((c) => {
-      const next = c + 1;
-      if (next >= DEMO_LIMIT) setLimitReached(true);
-      return next;
-    });
     toast.success("Added to demo day");
   }
 
@@ -253,8 +263,6 @@ function DemoPage() {
     }
     setSignupPrompt(true);
   }
-
-  const remaining = Math.max(0, DEMO_LIMIT - parseCount);
 
   return (
     <div className="min-h-[100dvh] bg-background pb-16">
