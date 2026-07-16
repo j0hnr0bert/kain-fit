@@ -10,9 +10,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { BottomNav } from "@/components/BottomNav";
 import { toast } from "sonner";
 import {
-  ArrowUp, Mic, Sparkles, Trash2, Pencil, Loader2, AlertCircle,
+  ArrowUp, Mic, Sparkles, Trash2, Pencil, Loader2, AlertCircle, Flag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { track, markReturned } from "@/lib/analytics";
+import { BetaBadge } from "@/components/BetaBadge";
+import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 
 export const Route = createFileRoute("/_authenticated/today")({
   component: TodayPage,
@@ -69,6 +72,15 @@ function TodayPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const [listening, setListening] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{
+    id: string | null;
+    values: Record<string, unknown>;
+  } | null>(null);
+  const editedRef = useRef(false);
+
+  useEffect(() => {
+    markReturned();
+  }, []);
 
   // Bounce to onboarding if not done
   useEffect(() => {
@@ -116,15 +128,36 @@ function TodayPage() {
     if (!input.trim() || parsing) return;
     setParsing(true);
     setOriginalInput(input);
+    editedRef.current = false;
+    const started = performance.now();
+    track("food_submitted", {});
     try {
       const mealHint = mealFromHour(new Date().getHours());
       const result = await parseFn({ data: { input, mealHint } });
+      const dur = Math.round(performance.now() - started);
       if (result.items.length === 0) {
+        track("food_parse_failed", { processing_duration_ms: dur, reason: "empty_result" });
         toast.error("Couldn't find any food in that. Try again.");
       } else {
+        const estimated = result.items.filter((i) => i.is_estimate).length;
+        const verified = result.items.length - estimated;
+        const anyClar = result.items.some((i) => i.clarification_needed);
+        track("food_parse_succeeded", {
+          processing_duration_ms: dur,
+          number_of_items: result.items.length,
+          input_language: result.input_language,
+          clarification_required: anyClar,
+          estimated_item_count: estimated,
+          verified_item_count: verified,
+        });
+        if (anyClar) track("food_clarification_requested", { number_of_items: result.items.length });
         setPending(result.items);
       }
     } catch (err) {
+      track("food_parse_failed", {
+        processing_duration_ms: Math.round(performance.now() - started),
+        reason: err instanceof Error ? err.message.slice(0, 80) : "unknown",
+      });
       toast.error(err instanceof Error ? err.message : "Could not parse. Try again.");
     } finally {
       setParsing(false);
@@ -157,6 +190,7 @@ function TodayPage() {
     if (!pending) return;
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
+    if (editedRef.current) track("food_edited_before_confirmation", { number_of_items: pending.length });
     const rows = pending.map((i) => ({
       user_id: u.user!.id,
       logged_at: new Date().toISOString(),
@@ -180,6 +214,7 @@ function TodayPage() {
       toast.error(error.message);
       return;
     }
+    track("food_confirmed", { number_of_items: pending.length });
     setPending(null);
     setInput("");
     toast.success("Added to today");
@@ -194,6 +229,7 @@ function TodayPage() {
       toast.error(error.message);
       return;
     }
+    track("food_deleted", {});
     qc.invalidateQueries({ queryKey: ["entries", "today"] });
     toast("Removed", {
       action: {
