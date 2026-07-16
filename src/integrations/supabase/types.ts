@@ -152,6 +152,39 @@ export type Database = {
         }
         Relationships: []
       }
+      food_parse_cache: {
+        Row: {
+          cache_key: string
+          created_at: string
+          expires_at: string
+          hit_count: number
+          input_language: string | null
+          items: Json
+          last_hit_at: string | null
+          meal_hint: string
+        }
+        Insert: {
+          cache_key: string
+          created_at?: string
+          expires_at?: string
+          hit_count?: number
+          input_language?: string | null
+          items: Json
+          last_hit_at?: string | null
+          meal_hint: string
+        }
+        Update: {
+          cache_key?: string
+          created_at?: string
+          expires_at?: string
+          hit_count?: number
+          input_language?: string | null
+          items?: Json
+          last_hit_at?: string | null
+          meal_hint?: string
+        }
+        Relationships: []
+      }
       macro_reports: {
         Row: {
           corrected_values: Json | null
@@ -351,6 +384,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_food_parse_cache: {
+        Args: { _key: string }
+        Returns: {
+          input_language: string
+          items: Json
+        }[]
+      }
+      get_food_parse_cache_stats: {
+        Args: never
+        Returns: {
+          hits_last_24h: number
+          live_entries: number
+          total_entries: number
+          total_hits: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -369,6 +418,15 @@ export type Database = {
         Returns: undefined
       }
       mark_demo_success: { Args: { _sid: string }; Returns: undefined }
+      put_food_parse_cache: {
+        Args: {
+          _input_language: string
+          _items: Json
+          _key: string
+          _meal_hint: string
+        }
+        Returns: undefined
+      }
       release_demo_slot: {
         Args: { _reason: string; _sid: string }
         Returns: undefined
