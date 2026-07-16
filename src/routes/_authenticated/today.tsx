@@ -32,6 +32,7 @@ import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
+import { getBetaUsage } from "@/lib/ops.functions";
 import {
   Tooltip,
   TooltipContent,
@@ -195,20 +196,6 @@ function TodayPage() {
     markReturned();
   }, []);
 
-  // Bounce to onboarding if not done
-  useEffect(() => {
-    (async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) return;
-      const { data } = await supabase
-        .from("profiles")
-        .select("onboarded")
-        .eq("user_id", u.user.id)
-        .maybeSingle();
-      if (data && !data.onboarded) navigate({ to: "/onboarding", replace: true });
-    })();
-  }, [navigate]);
-
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ["entries", "today"],
     queryFn: async () => {
@@ -223,6 +210,47 @@ function TodayPage() {
       return (data ?? []) as Entry[];
     },
   });
+
+  // Manual macro targets — private to this user; never sent to gym owners.
+  const { data: profile } = useQuery({
+    queryKey: ["profile", "targets"],
+    queryFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return null;
+      const { data } = await supabase
+        .from("profiles")
+        .select("manual_targets_enabled,target_calories,target_protein_g,target_carbs_g,target_fat_g")
+        .eq("user_id", u.user.id)
+        .maybeSingle();
+      return data as {
+        manual_targets_enabled: boolean;
+        target_calories: number | null;
+        target_protein_g: number | null;
+        target_carbs_g: number | null;
+        target_fat_g: number | null;
+      } | null;
+    },
+  });
+  const targetsActive = Boolean(
+    profile?.manual_targets_enabled &&
+      profile.target_calories &&
+      profile.target_protein_g !== null &&
+      profile.target_carbs_g !== null &&
+      profile.target_fat_g !== null,
+  );
+
+  // Server-authoritative beta submission usage.
+  const fetchBetaUsage = useServerFn(getBetaUsage);
+  const { data: betaUsage } = useQuery({
+    queryKey: ["beta-usage"],
+    queryFn: () => fetchBetaUsage(),
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  // Refresh usage after each successful add.
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ["beta-usage"] });
+  }, [entries.length, qc]);
 
   const totals = useMemo(() => {
     return entries.reduce(
@@ -239,6 +267,12 @@ function TodayPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || parsing) return;
+    if (betaUsage?.reachedLimit) {
+      toast.error(
+        "You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.",
+      );
+      return;
+    }
     setParsing(true);
     setOriginalInput(input);
     editedRef.current = false;
@@ -278,7 +312,10 @@ function TodayPage() {
         reason: err instanceof Error ? err.message.slice(0, 80) : "unknown",
       });
       const msg = err instanceof Error ? err.message : "Could not parse. Try again.";
-      if (msg.startsWith("AI_UNAVAILABLE:")) {
+      if (msg.startsWith("BETA_LIMIT:")) {
+        toast.error(msg.replace(/^BETA_LIMIT:\s*/, ""));
+        qc.invalidateQueries({ queryKey: ["beta-usage"] });
+      } else if (msg.startsWith("AI_UNAVAILABLE:")) {
         toast.error(
           "KainFit's calculator is temporarily unavailable. Your existing entries and history stay available.",
         );
@@ -540,17 +577,54 @@ function TodayPage() {
 
         {/* Totals */}
         <div className="rounded-3xl bg-card border border-border p-5 shadow-sm">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">Today</div>
+          <div className="flex items-center justify-between">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              {targetsActive ? "Your manual targets" : "Today"}
+            </div>
+            {targetsActive && (
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80">
+                You entered these
+              </div>
+            )}
+          </div>
           <div className="mt-1 flex items-baseline gap-2">
             <div className="text-5xl font-bold tracking-tight">{Math.round(totals.calories)}</div>
-            <div className="text-sm text-muted-foreground">kcal</div>
+            <div className="text-sm text-muted-foreground">
+              {targetsActive ? `/ ${profile!.target_calories} kcal` : "kcal"}
+            </div>
           </div>
           <div className="mt-4 grid grid-cols-3 gap-3">
-            <MacroPill label="Protein" value={totals.protein} color="text-primary" />
-            <MacroPill label="Carbs" value={totals.carbs} color="text-[oklch(0.72_0.19_145)]" />
-            <MacroPill label="Fat" value={totals.fat} color="text-[oklch(0.68_0.17_25)]" />
+            <MacroPill
+              label="Protein"
+              value={totals.protein}
+              target={targetsActive ? profile!.target_protein_g : null}
+              color="text-primary"
+            />
+            <MacroPill
+              label="Carbs"
+              value={totals.carbs}
+              target={targetsActive ? profile!.target_carbs_g : null}
+              color="text-[oklch(0.72_0.19_145)]"
+            />
+            <MacroPill
+              label="Fat"
+              value={totals.fat}
+              target={targetsActive ? profile!.target_fat_g : null}
+              color="text-[oklch(0.68_0.17_25)]"
+            />
           </div>
         </div>
+        {betaUsage?.enabled && betaUsage.cap > 0 && (
+          betaUsage.reachedLimit ? (
+            <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.
+            </div>
+          ) : betaUsage.remaining !== null && betaUsage.remaining <= 5 ? (
+            <div className="mt-3 text-[11px] text-muted-foreground px-1">
+              {betaUsage.remaining} beta {betaUsage.remaining === 1 ? "entry" : "entries"} remaining today
+            </div>
+          ) : null
+        )}
 
         {/* Entry */}
         <form onSubmit={handleSubmit} className="mt-5">
@@ -786,12 +860,29 @@ function TodayPage() {
   );
 }
 
-function MacroPill({ label, value, color }: { label: string; value: number; color: string }) {
+function MacroPill({
+  label,
+  value,
+  target,
+  color,
+}: {
+  label: string;
+  value: number;
+  target?: number | null;
+  color: string;
+}) {
   return (
     <div className="rounded-2xl bg-muted/60 p-3">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className={cn("mt-0.5 text-xl font-semibold", color)}>
-        {Math.round(value)}<span className="text-xs font-normal text-muted-foreground ml-0.5">g</span>
+        {Math.round(value)}
+        {target != null ? (
+          <span className="text-xs font-normal text-muted-foreground ml-0.5">
+            / {target}g
+          </span>
+        ) : (
+          <span className="text-xs font-normal text-muted-foreground ml-0.5">g</span>
+        )}
       </div>
     </div>
   );

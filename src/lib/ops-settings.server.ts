@@ -11,6 +11,10 @@ type SettingsSnapshot = {
   user_daily_ai_cap: number;
   monthly_ai_call_cap: number;
   daily_ai_call_alert: number;
+  beta_limits_enabled: boolean;
+  beta_daily_submission_cap: number;
+  beta_max_input_length: number;
+  beta_max_foods_per_submission: number;
 };
 
 const DEFAULTS: SettingsSnapshot = {
@@ -24,6 +28,11 @@ const DEFAULTS: SettingsSnapshot = {
   user_daily_ai_cap: 200,
   monthly_ai_call_cap: 0,
   daily_ai_call_alert: 0,
+  // Beta usage limits. Enforced against food_parse_succeeded per PHT day.
+  beta_limits_enabled: true,
+  beta_daily_submission_cap: 20,
+  beta_max_input_length: 500,
+  beta_max_foods_per_submission: 10,
 };
 
 const CACHE_TTL_MS = 10_000;
@@ -65,6 +74,10 @@ export async function readOpsSettings(): Promise<SettingsSnapshot> {
     user_daily_ai_cap: coerceNum(map.get("user_daily_ai_cap"), DEFAULTS.user_daily_ai_cap),
     monthly_ai_call_cap: coerceNum(map.get("monthly_ai_call_cap"), DEFAULTS.monthly_ai_call_cap),
     daily_ai_call_alert: coerceNum(map.get("daily_ai_call_alert"), DEFAULTS.daily_ai_call_alert),
+    beta_limits_enabled: coerceBool(map.get("beta_limits_enabled"), DEFAULTS.beta_limits_enabled),
+    beta_daily_submission_cap: coerceNum(map.get("beta_daily_submission_cap"), DEFAULTS.beta_daily_submission_cap),
+    beta_max_input_length: coerceNum(map.get("beta_max_input_length"), DEFAULTS.beta_max_input_length),
+    beta_max_foods_per_submission: coerceNum(map.get("beta_max_foods_per_submission"), DEFAULTS.beta_max_foods_per_submission),
   };
   cache = { at: now, value };
   return value;
