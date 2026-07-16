@@ -711,6 +711,19 @@ function PendingRow({
   }, [item.quantity, item.unit]);
   const prepClarification =
     item.clarification_needed && isPreparationClarification(item.clarification_question);
+  const [showPrep, setShowPrep] = useState(prepClarification);
+  useEffect(() => {
+    if (prepClarification) setShowPrep(true);
+  }, [prepClarification]);
+  const prep = item.preparation;
+  const prepNote =
+    prep === "raw"
+      ? "Calculated using raw weight."
+      : prep === "cooked"
+      ? "Calculated using cooked weight."
+      : prep === "estimated"
+      ? "Preparation estimated — using a middle-ground estimate. You can change this any time."
+      : null;
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       {item.clarification_needed && item.clarification_question && !prepClarification && (
@@ -718,10 +731,12 @@ function PendingRow({
           {item.clarification_question}
         </div>
       )}
-      {prepClarification && (
+      {showPrep && (
         <div className="mb-3 rounded-xl bg-amber-brand/10 p-2.5">
           <div className="text-xs font-medium text-[oklch(0.4_0.16_75)] mb-1.5">
-            Was that weighed raw or cooked?
+            {prep === "raw" || prep === "cooked" || prep === "estimated"
+              ? "Weighed raw or cooked?"
+              : "Was that weighed raw or cooked?"}
           </div>
           <div className="grid grid-cols-3 gap-1.5" role="radiogroup" aria-label="Preparation">
             {(["raw", "cooked", "not sure"] as const).map((choice) => (
@@ -750,10 +765,8 @@ function PendingRow({
               </button>
             ))}
           </div>
-          {item.preparation === "estimated" && !recalcing && (
-            <div className="mt-1.5 text-[11px] text-muted-foreground">
-              Using a middle-ground estimate. You can change this any time.
-            </div>
+          {prepNote && !recalcing && (
+            <div className="mt-1.5 text-[11px] text-muted-foreground">{prepNote}</div>
           )}
         </div>
       )}
