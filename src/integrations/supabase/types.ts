@@ -448,6 +448,69 @@ export type Database = {
         }
         Relationships: []
       }
+      verified_foods: {
+        Row: {
+          aliases: string[]
+          canonical_name: string
+          carbs_per_100g: number
+          category: string
+          created_at: string
+          created_by: string | null
+          default_serving_grams: number | null
+          fat_per_100g: number
+          id: string
+          is_active: boolean
+          kcal_per_100g: number
+          name: string
+          preparation_state: string
+          protein_per_100g: number
+          raw_to_cooked_ratio: number | null
+          source: string
+          source_notes: string | null
+          updated_at: string
+        }
+        Insert: {
+          aliases?: string[]
+          canonical_name: string
+          carbs_per_100g?: number
+          category: string
+          created_at?: string
+          created_by?: string | null
+          default_serving_grams?: number | null
+          fat_per_100g?: number
+          id?: string
+          is_active?: boolean
+          kcal_per_100g: number
+          name: string
+          preparation_state?: string
+          protein_per_100g?: number
+          raw_to_cooked_ratio?: number | null
+          source?: string
+          source_notes?: string | null
+          updated_at?: string
+        }
+        Update: {
+          aliases?: string[]
+          canonical_name?: string
+          carbs_per_100g?: number
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          default_serving_grams?: number | null
+          fat_per_100g?: number
+          id?: string
+          is_active?: boolean
+          kcal_per_100g?: number
+          name?: string
+          preparation_state?: string
+          protein_per_100g?: number
+          raw_to_cooked_ratio?: number | null
+          source?: string
+          source_notes?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

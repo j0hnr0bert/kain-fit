@@ -69,6 +69,9 @@ function AdminBetaPage() {
   const [userDailyDraft, setUserDailyDraft] = useState<string>("");
   const [monthlyCapDraft, setMonthlyCapDraft] = useState<string>("");
   const [dailyAlertDraft, setDailyAlertDraft] = useState<string>("");
+  const [betaCapDraft, setBetaCapDraft] = useState<string>("");
+  const [betaInputLenDraft, setBetaInputLenDraft] = useState<string>("");
+  const [betaMaxFoodsDraft, setBetaMaxFoodsDraft] = useState<string>("");
   useEffect(() => {
     if (ops?.settings) {
       setBannerDraft(ops.settings.high_demand_banner ?? "");
@@ -77,6 +80,9 @@ function AdminBetaPage() {
       setUserDailyDraft(String(ops.settings.user_daily_ai_cap ?? 200));
       setMonthlyCapDraft(String(ops.settings.monthly_ai_call_cap ?? 0));
       setDailyAlertDraft(String(ops.settings.daily_ai_call_alert ?? 0));
+      setBetaCapDraft(String(ops.settings.beta_daily_submission_cap ?? 20));
+      setBetaInputLenDraft(String(ops.settings.beta_max_input_length ?? 500));
+      setBetaMaxFoodsDraft(String(ops.settings.beta_max_foods_per_submission ?? 10));
     }
   }, [
     ops?.settings.high_demand_banner,
@@ -85,9 +91,15 @@ function AdminBetaPage() {
     ops?.settings.user_daily_ai_cap,
     ops?.settings.monthly_ai_call_cap,
     ops?.settings.daily_ai_call_alert,
+    ops?.settings.beta_daily_submission_cap,
+    ops?.settings.beta_max_input_length,
+    ops?.settings.beta_max_foods_per_submission,
   ]);
 
-  async function toggle(key: "pause_demo" | "pause_ai" | "db_only_mode", value: boolean) {
+  async function toggle(
+    key: "pause_demo" | "pause_ai" | "db_only_mode" | "beta_limits_enabled",
+    value: boolean,
+  ) {
     try {
       await setOps({ data: { key, value } });
       await qc.invalidateQueries({ queryKey: ["ops-snapshot"] });
@@ -127,7 +139,14 @@ function AdminBetaPage() {
   }
 
   async function saveNumberSetting(
-    key: "session_burst_per_min" | "user_daily_ai_cap" | "monthly_ai_call_cap" | "daily_ai_call_alert",
+    key:
+      | "session_burst_per_min"
+      | "user_daily_ai_cap"
+      | "monthly_ai_call_cap"
+      | "daily_ai_call_alert"
+      | "beta_daily_submission_cap"
+      | "beta_max_input_length"
+      | "beta_max_foods_per_submission",
     raw: string,
     label: string,
   ) {
@@ -485,6 +504,78 @@ function AdminBetaPage() {
                       <Button
                         size="sm"
                         onClick={() => saveNumberSetting("daily_ai_call_alert", dailyAlertDraft, "Daily alert")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <ToggleRow
+                      label="Enforce beta usage limits"
+                      description="Per-user daily submission cap, input length, and max foods per submission. Enforced server-side, PHT day boundary."
+                      checked={ops.settings.beta_limits_enabled}
+                      onChange={(v) => toggle("beta_limits_enabled", v)}
+                    />
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="betaCap" className="text-sm">Beta daily submission cap (per user)</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Successful parses per PHT day. 0 disables. Default 20.</p>
+                      </div>
+                      <Input
+                        id="betaCap"
+                        type="number"
+                        min={0}
+                        max={500}
+                        value={betaCapDraft}
+                        onChange={(e) => setBetaCapDraft(e.target.value)}
+                        className="w-24 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("beta_daily_submission_cap", betaCapDraft, "Beta daily cap")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="betaInputLen" className="text-sm">Max input length (chars)</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Rejects submissions longer than this. 10–2000. Default 500.</p>
+                      </div>
+                      <Input
+                        id="betaInputLen"
+                        type="number"
+                        min={10}
+                        max={2000}
+                        value={betaInputLenDraft}
+                        onChange={(e) => setBetaInputLenDraft(e.target.value)}
+                        className="w-28 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("beta_max_input_length", betaInputLenDraft, "Input length")}
+                        className="rounded-xl"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="betaMaxFoods" className="text-sm">Max foods per submission</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Caps items parsed from one submission. 1–50. Default 10.</p>
+                      </div>
+                      <Input
+                        id="betaMaxFoods"
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={betaMaxFoodsDraft}
+                        onChange={(e) => setBetaMaxFoodsDraft(e.target.value)}
+                        className="w-24 rounded-xl"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={() => saveNumberSetting("beta_max_foods_per_submission", betaMaxFoodsDraft, "Max foods")}
                         className="rounded-xl"
                       >
                         Save
