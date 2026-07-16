@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,8 +11,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowUp, Sparkles, Trash2, Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowUp, Sparkles, Trash2, Loader2, MessageSquare } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { track } from "@/lib/analytics";
+import { BetaBadge } from "@/components/BetaBadge";
+import { FeedbackDialog } from "@/components/FeedbackDialog";
 
 export const Route = createFileRoute("/demo")({
   head: () => ({
@@ -49,6 +52,11 @@ function DemoPage() {
   const [input, setInput] = useState("");
   const [parsing, setParsing] = useState(false);
   const [signupPrompt, setSignupPrompt] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+
+  useEffect(() => {
+    track("demo_started", { demo_or_registered: "demo" });
+  }, []);
 
   const totals = useMemo(
     () =>
@@ -74,6 +82,7 @@ function DemoPage() {
     e.preventDefault();
     if (!input.trim() || parsing) return;
     setParsing(true);
+    track("demo_food_submitted", { demo_or_registered: "demo" });
     // Simulate a parse — never hits the network. Adds a clearly-labeled sample entry.
     setTimeout(() => {
       const now = new Date().getHours();
@@ -91,6 +100,7 @@ function DemoPage() {
       setEntries((prev) => [...prev, sample]);
       setInput("");
       setParsing(false);
+      track("demo_food_confirmed", { demo_or_registered: "demo", meal_type: meal });
       toast.success("Added to demo (not saved)");
     }, 500);
   }
@@ -117,13 +127,16 @@ function DemoPage() {
           >
             <ArrowLeft className="h-4 w-4" /> Back
           </Link>
-          <Link
-            to="/auth"
-            search={{ mode: "signup" }}
-            className="text-sm font-medium text-primary px-2 py-1"
-          >
-            Create account
-          </Link>
+          <div className="flex items-center gap-2">
+            <BetaBadge />
+            <Link
+              to="/auth"
+              search={{ mode: "signup" }}
+              className="text-sm font-medium text-primary px-2 py-1"
+            >
+              Create account
+            </Link>
+          </div>
         </div>
 
         {/* Demo banner */}
@@ -220,8 +233,21 @@ function DemoPage() {
           <p className="mt-2 text-center text-xs text-muted-foreground">
             You'll be asked to create an account before anything is saved.
           </p>
+          <button
+            type="button"
+            onClick={() => setFeedbackOpen(true)}
+            className="mt-4 w-full h-11 rounded-2xl text-sm text-muted-foreground hover:text-foreground inline-flex items-center justify-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <MessageSquare className="h-4 w-4" /> Send feedback
+          </button>
         </div>
       </div>
+
+      <FeedbackDialog
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        anonymousSessionId={typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""}
+      />
 
       <Dialog open={signupPrompt} onOpenChange={setSignupPrompt}>
         <DialogContent className="max-w-sm rounded-3xl">
