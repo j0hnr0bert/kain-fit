@@ -7,7 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { LogOut, Download } from "lucide-react";
+import { LogOut, Download, MessageSquare, Shield } from "lucide-react";
+import { FeedbackDialog } from "@/components/FeedbackDialog";
+import { BetaBadge } from "@/components/BetaBadge";
+import { Link } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
@@ -25,6 +28,8 @@ function ProfilePage() {
   const [activity, setActivity] = useState<string>("moderate");
   const [language, setLanguage] = useState<string>("auto");
   const [saving, setSaving] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -45,6 +50,23 @@ function ProfilePage() {
         setActivity(data.activity_level ?? "moderate");
         setLanguage(data.preferred_language ?? "auto");
       }
+      const { data: roleRow } = await (supabase as unknown as {
+        from: (t: string) => {
+          select: (c: string) => {
+            eq: (a: string, b: string) => {
+              eq: (a: string, b: string) => {
+                maybeSingle: () => Promise<{ data: { role: string } | null }>;
+              };
+            };
+          };
+        };
+      })
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", u.user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      setIsAdmin(!!roleRow);
     })();
   }, []);
 
@@ -116,7 +138,10 @@ function ProfilePage() {
         className="max-w-md mx-auto px-5"
         style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}
       >
-        <h1 className="text-2xl font-bold tracking-tight mb-4">Profile</h1>
+        <div className="flex items-center gap-2 mb-4">
+          <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
+          <BetaBadge />
+        </div>
 
         <div className="rounded-3xl bg-card border border-border p-5 space-y-4">
           <div>
@@ -176,6 +201,16 @@ function ProfilePage() {
         </div>
 
         <div className="mt-4 rounded-3xl bg-card border border-border p-5 space-y-3">
+          <Button onClick={() => setFeedbackOpen(true)} variant="outline" className="w-full h-11 rounded-2xl justify-start">
+            <MessageSquare className="h-4 w-4 mr-2" /> Send feedback
+          </Button>
+          {isAdmin && (
+            <Button asChild variant="outline" className="w-full h-11 rounded-2xl justify-start">
+              <Link to="/admin/beta">
+                <Shield className="h-4 w-4 mr-2" /> Beta dashboard
+              </Link>
+            </Button>
+          )}
           <Button onClick={exportHistory} variant="outline" className="w-full h-11 rounded-2xl justify-start">
             <Download className="h-4 w-4 mr-2" /> Export food history (CSV)
           </Button>
@@ -192,6 +227,11 @@ function ProfilePage() {
           Values may vary based on ingredients, preparation, and serving size.
         </p>
       </div>
+      <FeedbackDialog
+        open={feedbackOpen}
+        onOpenChange={setFeedbackOpen}
+        anonymousSessionId={typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""}
+      />
       <BottomNav />
     </div>
   );
