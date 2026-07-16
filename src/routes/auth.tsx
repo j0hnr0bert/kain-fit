@@ -83,7 +83,7 @@ function AuthPage() {
     }
   }
 
-  async function handleEmail(e?: React.FormEvent) {
+  async function handleEmail(e?: React.FormEvent | React.MouseEvent) {
     e?.preventDefault();
     setFormError("");
 
@@ -179,7 +179,7 @@ function AuthPage() {
 
   return (
     <div className="min-h-[100dvh] bg-background px-6 pt-6 pb-10 flex flex-col">
-      <button
+        <button
         type="button"
         onClick={() => (method === "choose" ? navigate({ to: "/" }) : setMethod("choose"))}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground w-fit -ml-2 px-2 py-1"
@@ -254,9 +254,14 @@ function AuthPage() {
                 {formError}
               </div>
             )}
-            <Button type="submit" disabled={loading || (mode === "signup" && Boolean(passwordHint))} className="w-full h-12 rounded-2xl">
+            <button
+              type="button"
+              onClick={handleEmail}
+              disabled={loading || (mode === "signup" && Boolean(passwordHint))}
+              className="inline-flex h-12 w-full items-center justify-center rounded-2xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50"
+            >
               {loading ? "Please wait…" : mode === "signup" ? "Create account" : "Sign in"}
-            </Button>
+            </button>
             <div className="grid grid-cols-2 gap-2 pt-1">
               <Button type="button" onClick={() => handleOAuth("apple")} disabled={loading} variant="outline" className="h-11 rounded-xl">
                 Apple
