@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://kain-fit.lovable.app/sitemap.xml
