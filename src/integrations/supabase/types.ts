@@ -14,6 +14,51 @@ export type Database = {
   }
   public: {
     Tables: {
+      feedback_submissions: {
+        Row: {
+          accuracy_rating: number | null
+          acquisition_source: string | null
+          allow_contact: boolean
+          anonymous_session_id: string | null
+          comment: string | null
+          confusing: string | null
+          created_at: string
+          ease_rating: number | null
+          id: string
+          missed_food: string | null
+          user_id: string | null
+          would_use_tomorrow: string | null
+        }
+        Insert: {
+          accuracy_rating?: number | null
+          acquisition_source?: string | null
+          allow_contact?: boolean
+          anonymous_session_id?: string | null
+          comment?: string | null
+          confusing?: string | null
+          created_at?: string
+          ease_rating?: number | null
+          id?: string
+          missed_food?: string | null
+          user_id?: string | null
+          would_use_tomorrow?: string | null
+        }
+        Update: {
+          accuracy_rating?: number | null
+          acquisition_source?: string | null
+          allow_contact?: boolean
+          anonymous_session_id?: string | null
+          comment?: string | null
+          confusing?: string | null
+          created_at?: string
+          ease_rating?: number | null
+          id?: string
+          missed_food?: string | null
+          user_id?: string | null
+          would_use_tomorrow?: string | null
+        }
+        Relationships: []
+      }
       food_entries: {
         Row: {
           calories: number
@@ -77,6 +122,80 @@ export type Database = {
           unit?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      macro_reports: {
+        Row: {
+          corrected_values: Json | null
+          created_at: string
+          explanation: string | null
+          food_entry_id: string | null
+          id: string
+          issue_type: string
+          original_values: Json
+          resolution_status: string
+          user_id: string
+        }
+        Insert: {
+          corrected_values?: Json | null
+          created_at?: string
+          explanation?: string | null
+          food_entry_id?: string | null
+          id?: string
+          issue_type: string
+          original_values?: Json
+          resolution_status?: string
+          user_id: string
+        }
+        Update: {
+          corrected_values?: Json | null
+          created_at?: string
+          explanation?: string | null
+          food_entry_id?: string | null
+          id?: string
+          issue_type?: string
+          original_values?: Json
+          resolution_status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "macro_reports_food_entry_id_fkey"
+            columns: ["food_entry_id"]
+            isOneToOne: false
+            referencedRelation: "food_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      product_events: {
+        Row: {
+          acquisition_source: string | null
+          anonymous_session_id: string | null
+          created_at: string
+          event_name: string
+          event_properties: Json
+          id: string
+          user_id: string | null
+        }
+        Insert: {
+          acquisition_source?: string | null
+          anonymous_session_id?: string | null
+          created_at?: string
+          event_name: string
+          event_properties?: Json
+          id?: string
+          user_id?: string | null
+        }
+        Update: {
+          acquisition_source?: string | null
+          anonymous_session_id?: string | null
+          created_at?: string
+          event_name?: string
+          event_properties?: Json
+          id?: string
+          user_id?: string | null
         }
         Relationships: []
       }
@@ -179,15 +298,66 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_allowed_event_name: { Args: { _name: string }; Returns: boolean }
+      log_product_event: {
+        Args: {
+          _acquisition_source: string
+          _anonymous_session_id: string
+          _event_name: string
+          _event_properties: Json
+        }
+        Returns: undefined
+      }
+      submit_feedback: {
+        Args: {
+          _accuracy_rating: number
+          _acquisition_source: string
+          _allow_contact: boolean
+          _anonymous_session_id: string
+          _comment: string
+          _confusing: string
+          _ease_rating: number
+          _missed_food: string
+          _would_use_tomorrow: string
+        }
+        Returns: undefined
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -314,6 +484,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "user"],
+    },
   },
 } as const

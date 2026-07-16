@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { ArrowLeft, ArrowRight, Check, Sparkles } from "lucide-react";
+import { track } from "@/lib/analytics";
 
 export const Route = createFileRoute("/_authenticated/onboarding")({
   component: Onboarding,
@@ -68,6 +69,7 @@ function Onboarding() {
         })
         .eq("user_id", u.user.id);
       if (error) throw error;
+      track("onboarding_completed", {});
       navigate({ to: "/today", replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save profile");
@@ -81,6 +83,7 @@ function Onboarding() {
     if (u.user) {
       await supabase.from("profiles").update({ onboarded: true }).eq("user_id", u.user.id);
     }
+    track("onboarding_completed", { reason: "skipped" });
     navigate({ to: "/today", replace: true });
   }
 

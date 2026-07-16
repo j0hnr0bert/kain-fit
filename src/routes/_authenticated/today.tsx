@@ -10,9 +10,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { BottomNav } from "@/components/BottomNav";
 import { toast } from "sonner";
 import {
-  ArrowUp, Mic, Sparkles, Trash2, Pencil, Loader2, AlertCircle,
+  ArrowUp, Mic, Sparkles, Trash2, Pencil, Loader2, AlertCircle, Flag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { track, markReturned } from "@/lib/analytics";
+import { BetaBadge } from "@/components/BetaBadge";
+import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 
 export const Route = createFileRoute("/_authenticated/today")({
   component: TodayPage,
@@ -69,6 +72,15 @@ function TodayPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const [listening, setListening] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{
+    id: string | null;
+    values: Record<string, unknown>;
+  } | null>(null);
+  const editedRef = useRef(false);
+
+  useEffect(() => {
+    markReturned();
+  }, []);
 
   // Bounce to onboarding if not done
   useEffect(() => {
@@ -116,15 +128,36 @@ function TodayPage() {
     if (!input.trim() || parsing) return;
     setParsing(true);
     setOriginalInput(input);
+    editedRef.current = false;
+    const started = performance.now();
+    track("food_submitted", {});
     try {
       const mealHint = mealFromHour(new Date().getHours());
       const result = await parseFn({ data: { input, mealHint } });
+      const dur = Math.round(performance.now() - started);
       if (result.items.length === 0) {
+        track("food_parse_failed", { processing_duration_ms: dur, reason: "empty_result" });
         toast.error("Couldn't find any food in that. Try again.");
       } else {
+        const estimated = result.items.filter((i) => i.is_estimate).length;
+        const verified = result.items.length - estimated;
+        const anyClar = result.items.some((i) => i.clarification_needed);
+        track("food_parse_succeeded", {
+          processing_duration_ms: dur,
+          number_of_items: result.items.length,
+          input_language: result.input_language,
+          clarification_required: anyClar,
+          estimated_item_count: estimated,
+          verified_item_count: verified,
+        });
+        if (anyClar) track("food_clarification_requested", { number_of_items: result.items.length });
         setPending(result.items);
       }
     } catch (err) {
+      track("food_parse_failed", {
+        processing_duration_ms: Math.round(performance.now() - started),
+        reason: err instanceof Error ? err.message.slice(0, 80) : "unknown",
+      });
       toast.error(err instanceof Error ? err.message : "Could not parse. Try again.");
     } finally {
       setParsing(false);
@@ -157,6 +190,7 @@ function TodayPage() {
     if (!pending) return;
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
+    if (editedRef.current) track("food_edited_before_confirmation", { number_of_items: pending.length });
     const rows = pending.map((i) => ({
       user_id: u.user!.id,
       logged_at: new Date().toISOString(),
@@ -180,6 +214,7 @@ function TodayPage() {
       toast.error(error.message);
       return;
     }
+    track("food_confirmed", { number_of_items: pending.length });
     setPending(null);
     setInput("");
     toast.success("Added to today");
@@ -194,6 +229,7 @@ function TodayPage() {
       toast.error(error.message);
       return;
     }
+    track("food_deleted", {});
     qc.invalidateQueries({ queryKey: ["entries", "today"] });
     toast("Removed", {
       action: {
@@ -231,8 +267,11 @@ function TodayPage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <div className="text-xs text-muted-foreground">{greeting}</div>
-            <div className="text-lg font-semibold">
-              {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+            <div className="flex items-center gap-2">
+              <div className="text-lg font-semibold">
+                {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+              </div>
+              <BetaBadge />
             </div>
           </div>
           <button
@@ -331,6 +370,26 @@ function TodayPage() {
                           {Number(e.quantity)}{e.unit} · {Math.round(e.calories)} kcal ·
                           P {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
                         </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReportTarget({
+                              id: e.id,
+                              values: {
+                                display_name: e.display_name,
+                                quantity: e.quantity,
+                                unit: e.unit,
+                                calories: e.calories,
+                                protein_g: e.protein_g,
+                                carbs_g: e.carbs_g,
+                                fat_g: e.fat_g,
+                              },
+                            })
+                          }
+                          className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                        >
+                          <Flag className="h-3 w-3" /> Report incorrect macros
+                        </button>
                       </div>
                       <button onClick={() => deleteEntry(e)} className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
                         <Trash2 className="h-4 w-4" />
@@ -358,10 +417,27 @@ function TodayPage() {
                 key={idx}
                 item={item}
                 onChange={(next) =>
-                  setPending((p) => p!.map((it, i) => (i === idx ? next : it)))
+                  {
+                    editedRef.current = true;
+                    setPending((p) => p!.map((it, i) => (i === idx ? next : it)));
+                  }
                 }
                 onRemove={() =>
                   setPending((p) => (p!.length > 1 ? p!.filter((_, i) => i !== idx) : null))
+                }
+                onReport={() =>
+                  setReportTarget({
+                    id: null,
+                    values: {
+                      display_name: item.display_name,
+                      quantity: item.quantity,
+                      unit: item.unit,
+                      calories: item.calories,
+                      protein_g: item.protein_g,
+                      carbs_g: item.carbs_g,
+                      fat_g: item.fat_g,
+                    },
+                  })
                 }
               />
             ))}
@@ -376,6 +452,13 @@ function TodayPage() {
           </div>
         </SheetContent>
       </Sheet>
+
+      <ReportMacrosDialog
+        open={reportTarget !== null}
+        onOpenChange={(v) => { if (!v) setReportTarget(null); }}
+        foodEntryId={reportTarget?.id ?? null}
+        originalValues={reportTarget?.values ?? {}}
+      />
 
       <BottomNav />
     </div>
@@ -394,11 +477,12 @@ function MacroPill({ label, value, color }: { label: string; value: number; colo
 }
 
 function PendingRow({
-  item, onChange, onRemove,
+  item, onChange, onRemove, onReport,
 }: {
   item: PendingItem;
   onChange: (next: PendingItem) => void;
   onRemove: () => void;
+  onReport: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   return (
@@ -459,6 +543,13 @@ function PendingRow({
         {item.confidence < 0.6 && (
           <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>
         )}
+        <button
+          type="button"
+          onClick={onReport}
+          className="ml-auto inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+        >
+          <Flag className="h-3 w-3" /> Report macros
+        </button>
       </div>
     </div>
   );
