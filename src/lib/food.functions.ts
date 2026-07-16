@@ -218,10 +218,7 @@ export const parseFood = createServerFn({ method: "POST" })
     return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
   .handler(async ({ data }) => {
-    const t0 = Date.now();
-    const result = await callParseAi(data.input, data.mealHint);
-    const ai_parsing_ms = Date.now() - t0;
-    return { ...result, timings: { ai_parsing_ms, resolution_path: "ai_parse" as const } };
+    return resolveWithCache(data.input, data.mealHint);
   });
 
 // Public (unauthenticated) demo parse. Uses the same production pipeline,
