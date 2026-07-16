@@ -106,8 +106,8 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
         id: string;
         actor_id: string | null;
         key: string;
-        old_value: unknown;
-        new_value: unknown;
+        old_value: string | number | boolean | null;
+        new_value: string | number | boolean | null;
         created_at: string;
       }>,
     };
