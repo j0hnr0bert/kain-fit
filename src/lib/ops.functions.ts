@@ -24,6 +24,37 @@ async function ensureAdmin(ctx: { supabase: unknown; userId: string }): Promise<
 
 // -------- Public: banner + flags safe for any visitor --------
 
+// -------- Founder auto-alerts --------
+//
+// Rising-edge alerts logged to ops_audit_log when auto-banner conditions
+// trip. Per-isolate cooldown prevents spamming the log during a sustained
+// incident. The admin dashboard already renders ops_audit_log, so alerts
+// appear inline with founder-driven setting changes.
+
+const ALERT_COOLDOWN_MS = 10 * 60 * 1000;
+const lastAlertAt = new Map<string, number>();
+
+async function maybeLogAutoAlert(key: string, detail: Record<string, unknown>): Promise<void> {
+  const now = Date.now();
+  const prev = lastAlertAt.get(key) ?? 0;
+  if (now - prev < ALERT_COOLDOWN_MS) return;
+  lastAlertAt.set(key, now);
+  try {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as unknown as {
+      from: (t: string) => { insert: (row: Record<string, unknown>) => Promise<{ error: unknown }> };
+    };
+    await admin.from("ops_audit_log").insert({
+      actor_id: null,
+      key,
+      old_value: null,
+      new_value: JSON.stringify(detail),
+    });
+  } catch (err) {
+    console.error("[auto-alert] insert failed", key, err);
+  }
+}
+
 export const getPublicOpsFlags = createServerFn({ method: "GET" }).handler(async () => {
   const { readOpsSettings } = await import("./ops-settings.server");
   const { getBreakerStatus, getCapacityStats, getGlobalAiCounts } = await import("./ai-guard.server");
@@ -43,13 +74,22 @@ export const getPublicOpsFlags = createServerFn({ method: "GET" }).handler(async
       banner = "KainFit's calculator is temporarily paused. You can still edit or add entries manually.";
     } else if (getBreakerStatus() === "open") {
       banner = "Our calculator is catching its breath. Try again in a minute — your entries are safe.";
+      void maybeLogAutoAlert("auto_alert:breaker_open", { breaker: "open" });
     } else {
       try {
         const counts = await getGlobalAiCounts();
         if (s.monthly_ai_call_cap > 0 && counts.month >= s.monthly_ai_call_cap) {
           banner = "We've hit this month's calculator budget. You can still edit or add entries manually.";
+          void maybeLogAutoAlert("auto_alert:monthly_cap_hit", {
+            monthly: counts.month,
+            cap: s.monthly_ai_call_cap,
+          });
         } else if (s.daily_ai_call_alert > 0 && counts.today >= s.daily_ai_call_alert) {
           banner = "Demand is unusually high today — parsing may be slower than usual.";
+          void maybeLogAutoAlert("auto_alert:daily_alert_hit", {
+            today: counts.today,
+            threshold: s.daily_ai_call_alert,
+          });
         }
       } catch {
         // don't let a counts read failure hide the app
@@ -58,6 +98,10 @@ export const getPublicOpsFlags = createServerFn({ method: "GET" }).handler(async
         const cap = getCapacityStats();
         if (cap.queued > 0 && cap.inFlight >= cap.maxConcurrent) {
           banner = "Lots of people logging right now — hang tight, your entry is queued.";
+          void maybeLogAutoAlert("auto_alert:queue_saturated", {
+            inFlight: cap.inFlight,
+            queued: cap.queued,
+          });
         }
       }
     }
