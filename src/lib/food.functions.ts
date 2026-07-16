@@ -440,7 +440,11 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
     }
 
     try {
-      const resolved = await resolveWithCache(data.input, data.mealHint);
+      const { singleFlight } = await import("./ai-guard.server");
+      const sfKey = `parse:demo:${sid}:${buildCacheKey(data.input, data.mealHint)}`;
+      const resolved = await mapGuardErrors(() =>
+        singleFlight(sfKey, () => resolveWithCache(data.input, data.mealHint)),
+      );
       const { timings, ...result } = resolved;
       if (!result.items || result.items.length === 0) {
         // No usable result — release the slot.
