@@ -6,9 +6,10 @@ import { getBetaMetrics, exportBetaCsv } from "@/lib/beta.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
+import { track } from "@/lib/analytics";
 
 export const Route = createFileRoute("/_authenticated/admin/beta")({
-  head: () => ({ meta: [{ title: "Beta dashboard — KainFit" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({ meta: [{ title: "Founder dashboard — KainFit" }, { name: "robots", content: "noindex" }] }),
   component: AdminBetaPage,
 });
 
@@ -43,7 +44,8 @@ function AdminBetaPage() {
   }
 
   useEffect(() => {
-    document.title = "Beta dashboard — KainFit";
+    document.title = "Founder dashboard — KainFit";
+    track("admin_dashboard_viewed");
   }, []);
 
   if (error) {
@@ -91,7 +93,7 @@ function AdminBetaPage() {
           </div>
         </div>
 
-        <h1 className="text-2xl font-bold tracking-tight mt-4">Beta dashboard</h1>
+        <h1 className="text-2xl font-bold tracking-tight mt-4">Founder dashboard</h1>
         <p className="text-sm text-muted-foreground">Aggregated metrics only. No raw food text is shown here.</p>
 
         {isLoading || !data ? (
