@@ -431,11 +431,20 @@ export const parseFoodDemo = createServerFn({ method: "POST" })
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const admin = supabaseAdmin as unknown as DemoAdmin;
 
+    const { readOpsSettings } = await import("./ops-settings.server");
+    const settings = await readOpsSettings();
+    if (settings.pause_demo || settings.pause_ai || settings.db_only_mode) {
+      throw new Error(
+        "AI_UNAVAILABLE: The demo is temporarily paused. Please try again shortly or sign up to keep going.",
+      );
+    }
+    const demoLimit = Math.max(1, Math.floor(settings.demo_allowance || DEMO_PARSE_LIMIT));
+
     // Atomically reserve a slot BEFORE calling the AI so concurrent
     // requests cannot both pass a "count < limit" check.
     const reserveRes = await admin.rpc("reserve_demo_slot", {
       _sid: sid,
-      _limit: DEMO_PARSE_LIMIT,
+      _limit: demoLimit,
     });
     if (reserveRes.error) {
       console.error("[demo] reserve failed", reserveRes.error.message);
