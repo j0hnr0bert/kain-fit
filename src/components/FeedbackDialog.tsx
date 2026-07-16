@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -68,13 +69,37 @@ export function FeedbackDialog({
   const [useTomorrow, setUseTomorrow] = useState<"yes" | "maybe" | "no" | null>(null);
   const [comment, setComment] = useState("");
   const [allowContact, setAllowContact] = useState(false);
+  const [contactEmail, setContactEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const send = useServerFn(submitFeedback);
 
+  const hasContent =
+    ease !== null ||
+    accuracy !== null ||
+    useTomorrow !== null ||
+    confusing.trim().length > 0 ||
+    missed.trim().length > 0 ||
+    comment.trim().length > 0;
+
+  const trimmedEmail = contactEmail.trim();
+  const emailValid = !trimmedEmail || /.+@.+\..+/.test(trimmedEmail);
+
   async function submit() {
     if (saving) return;
+    if (!hasContent) {
+      toast.error("Please share at least one rating, answer, or comment.");
+      return;
+    }
+    if (allowContact && !emailValid) {
+      toast.error("Please enter a valid email or turn off contact.");
+      return;
+    }
     setSaving(true);
     try {
+      const commentWithContact =
+        allowContact && trimmedEmail
+          ? `${comment.trim()}\n\n[contact: ${trimmedEmail}]`.trim()
+          : comment.trim() || null;
       await send({
         data: {
           anonymous_session_id: anonymousSessionId,
@@ -83,7 +108,7 @@ export function FeedbackDialog({
           confusing: confusing.trim() || null,
           missed_food: missed.trim() || null,
           would_use_tomorrow: useTomorrow,
-          comment: comment.trim() || null,
+          comment: commentWithContact || null,
           allow_contact: allowContact,
           acquisition_source: getAcquisitionSource(),
         },
@@ -98,6 +123,7 @@ export function FeedbackDialog({
       setUseTomorrow(null);
       setComment("");
       setAllowContact(false);
+      setContactEmail("");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not send feedback");
     } finally {
@@ -184,10 +210,33 @@ export function FeedbackDialog({
             />
             <span>Okay to contact me about this feedback</span>
           </label>
+          {allowContact && (
+            <div className="space-y-1.5">
+              <Label htmlFor="fb-email">Email (optional)</Label>
+              <Input
+                id="fb-email"
+                type="email"
+                inputMode="email"
+                autoComplete="email"
+                value={contactEmail}
+                onChange={(e) => setContactEmail(e.target.value.slice(0, 200))}
+                placeholder="you@example.com"
+                className="h-11 rounded-xl"
+              />
+              <p className="text-[11px] text-muted-foreground leading-relaxed">
+                Optional. We'll only use this to follow up on this feedback and won't add
+                you to any list. Leave blank to stay anonymous.
+              </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="flex-col gap-2 sm:flex-col">
-          <Button onClick={submit} disabled={saving} className="w-full h-11 rounded-2xl">
+          <Button
+            onClick={submit}
+            disabled={saving || !hasContent}
+            className="w-full h-11 rounded-2xl"
+          >
             {saving ? "Sending…" : "Send feedback"}
           </Button>
           <Button
