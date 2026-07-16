@@ -468,3 +468,25 @@ function Metric({ label, value }: { label: string; value: number | string }) {
     </div>
   );
 }
+
+function ToggleRow({
+  label,
+  description,
+  checked,
+  onChange,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <div className="p-4 flex items-center gap-3">
+      <div className="flex-1">
+        <div className="text-sm font-medium">{label}</div>
+        <div className="text-xs text-muted-foreground mt-0.5">{description}</div>
+      </div>
+      <Switch checked={checked} onCheckedChange={onChange} />
+    </div>
+  );
+}
