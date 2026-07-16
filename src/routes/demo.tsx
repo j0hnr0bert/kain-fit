@@ -170,6 +170,13 @@ function DemoPage() {
     setLastInput(text);
     const started = performance.now();
     track("demo_food_submitted", { demo_or_registered: "demo" });
+    const highDemandTimer =
+      typeof window !== "undefined"
+        ? window.setTimeout(
+            () => setParseError("Demand is unusually high — still working on it."),
+            10_000,
+          )
+        : null;
     try {
       const mealHint = mealFromHour(new Date().getHours());
       const result = await parseFn({ data: { input: text, mealHint } });
@@ -205,13 +212,20 @@ function DemoPage() {
         setParseError(null);
       } else {
         track("food_parse_failed", { processing_duration_ms: dur, reason: msg.slice(0, 80), demo_or_registered: "demo" });
-        setParseError(
-          msg.startsWith("Too many") || msg.startsWith("AI credits")
-            ? msg
-            : "Something went wrong calculating that. Please try again.",
-        );
+        if (msg.startsWith("AI_UNAVAILABLE:")) {
+          setParseError(
+            "KainFit's calculator is temporarily unavailable. Please try again in a minute.",
+          );
+        } else if (msg.startsWith("AI_BUSY:")) {
+          setParseError("Demand is unusually high. Please try again in a moment.");
+        } else if (msg.startsWith("AI credits")) {
+          setParseError(msg);
+        } else {
+          setParseError("Something went wrong calculating that. Please try again.");
+        }
       }
     } finally {
+      if (highDemandTimer !== null) window.clearTimeout(highDemandTimer);
       setParsing(false);
     }
   }

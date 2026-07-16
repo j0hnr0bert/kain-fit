@@ -241,6 +241,9 @@ function TodayPage() {
     editedRef.current = false;
     const started = performance.now();
     track("food_submitted", {});
+    const highDemandTimer = window.setTimeout(() => {
+      toast("Demand is unusually high — hang tight.", { duration: 6000 });
+    }, 10_000);
     try {
       const mealHint = mealFromHour(new Date().getHours());
       const result = await parseFn({ data: { input, mealHint } });
@@ -271,8 +274,18 @@ function TodayPage() {
         processing_duration_ms: Math.round(performance.now() - started),
         reason: err instanceof Error ? err.message.slice(0, 80) : "unknown",
       });
-      toast.error(err instanceof Error ? err.message : "Could not parse. Try again.");
+      const msg = err instanceof Error ? err.message : "Could not parse. Try again.";
+      if (msg.startsWith("AI_UNAVAILABLE:")) {
+        toast.error(
+          "KainFit's calculator is temporarily unavailable. Your existing entries and history stay available.",
+        );
+      } else if (msg.startsWith("AI_BUSY:")) {
+        toast.error("Demand is unusually high. Please try again in a moment.");
+      } else {
+        toast.error(msg);
+      }
     } finally {
+      window.clearTimeout(highDemandTimer);
       setParsing(false);
     }
   }
@@ -305,6 +318,12 @@ function TodayPage() {
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
     if (editedRef.current) track("food_edited_before_confirmation", { number_of_items: pending.length });
+    // Idempotency: one shared client_request_id for this confirm batch.
+    // Duplicate taps or retries hit the unique index on (user_id, client_request_id).
+    const clientRequestId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const rows = pending.map((i) => ({
       user_id: u.user!.id,
       logged_at: new Date().toISOString(),
@@ -322,9 +341,17 @@ function TodayPage() {
       data_source: i.data_source,
       confidence: i.confidence,
       is_estimate: i.is_estimate,
+      client_request_id: clientRequestId,
     }));
     const { error } = await supabase.from("food_entries").insert(rows);
     if (error) {
+      // Duplicate confirmation (double-tap / retry) — treat as success.
+      if (error.code === "23505") {
+        setPending(null);
+        setInput("");
+        qc.invalidateQueries({ queryKey: ["entries", "today"] });
+        return;
+      }
       toast.error(error.message);
       return;
     }
