@@ -22,12 +22,18 @@ function Welcome() {
   }, [navigate]);
 
   if (!checked) {
-    return <div className="min-h-screen bg-background" />;
+    return <div className="min-h-screen bg-background" aria-hidden="true" />;
   }
 
   return (
-    <div className="min-h-[100dvh] flex flex-col bg-background px-6 pt-16 pb-10 safe-area">
-      <div className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full">
+    <div
+      className="min-h-[100dvh] flex flex-col bg-background px-6"
+      style={{
+        paddingTop: "calc(env(safe-area-inset-top) + 3rem)",
+        paddingBottom: "calc(env(safe-area-inset-bottom) + 1.5rem)",
+      }}
+    >
+      <main className="flex-1 flex flex-col justify-center max-w-md mx-auto w-full">
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 mb-6">
             <div className="h-10 w-10 rounded-2xl bg-primary flex items-center justify-center">
@@ -49,14 +55,20 @@ function Welcome() {
           <Button asChild size="lg" className="w-full h-14 text-base rounded-2xl">
             <Link to="/auth" search={{ mode: "signup" }}>Get started</Link>
           </Button>
+          <Button asChild variant="outline" size="lg" className="w-full h-14 text-base rounded-2xl">
+            <Link to="/demo">Try the demo</Link>
+          </Button>
           <Button asChild variant="ghost" size="lg" className="w-full h-14 text-base rounded-2xl">
             <Link to="/auth" search={{ mode: "signin" }}>I already have an account</Link>
           </Button>
         </div>
-      </div>
-      <p className="text-xs text-muted-foreground text-center max-w-md mx-auto">
-        KainFit provides nutrition estimates for personal tracking. Values may vary based on ingredients and preparation.
-      </p>
+      </main>
+      <footer className="mt-10 max-w-md mx-auto w-full">
+        <p className="text-sm text-muted-foreground/90 text-center leading-relaxed">
+          KainFit provides nutrition estimates for personal tracking. Values may vary
+          based on ingredients and preparation.
+        </p>
+      </footer>
     </div>
   );
 }
