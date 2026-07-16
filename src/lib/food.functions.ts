@@ -2,7 +2,12 @@ import { createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { createHash } from "crypto";
+// Namespace import so client-side `import * as nodeCrypto from "crypto"` does
+// NOT eagerly access `.createHash`. Vite's crypto stub throws on any property
+// access, which used to break the whole client bundle for this file.
+// `buildCacheKey` runs only inside server-only code paths, so accessing
+// `.createHash` there is safe.
+import * as nodeCrypto from "crypto";
 
 const itemSchema = z.object({
   display_name: z.string(),
@@ -304,7 +309,7 @@ function normalizeForKey(input: string): string {
 }
 
 function buildCacheKey(input: string, mealHint: string): string {
-  return createHash("sha256")
+  return nodeCrypto.createHash("sha256")
     .update(`${normalizeForKey(input)}|${mealHint}`)
     .digest("hex");
 }
