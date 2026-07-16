@@ -48,7 +48,7 @@ async function maybeLogAutoAlert(key: string, detail: Record<string, unknown>): 
       actor_id: null,
       key,
       old_value: null,
-      new_value: detail,
+      new_value: JSON.stringify(detail),
     });
   } catch (err) {
     console.error("[auto-alert] insert failed", key, err);
