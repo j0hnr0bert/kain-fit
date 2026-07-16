@@ -240,6 +240,108 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Operations (live)
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Refreshes every 5s. Capacity numbers reflect one server instance; queued may fan out across instances during a burst.
+              </p>
+              {!ops ? (
+                <div className="mt-2 text-sm text-muted-foreground">Loading ops…</div>
+              ) : (
+                <>
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <Metric label="In-flight AI" value={ops.capacity.inFlight} />
+                    <Metric label="Queued" value={ops.capacity.queued} />
+                    <Metric label="Max concurrent" value={ops.capacity.maxConcurrent} />
+                    <Metric label="Circuit breaker" value={ops.breaker} />
+                    <Metric label="AI calls / min" value={ops.lastMinute.aiCalls} />
+                    <Metric label="Rate-limited (1m)" value={ops.lastMinute.rateLimited} />
+                    <Metric label="Retries (1m)" value={ops.lastMinute.retries} />
+                    <Metric label="Error rate (1m)" value={`${(ops.lastMinute.errorRate * 100).toFixed(1)}%`} />
+                    <Metric label="p50 latency (1m)" value={`${ops.lastMinute.p50Ms} ms`} />
+                    <Metric label="p95 latency (1m)" value={`${ops.lastMinute.p95Ms} ms`} />
+                    <Metric label="Cache hit rate (1m)" value={`${(ops.lastMinute.cacheHitRate * 100).toFixed(0)}%`} />
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-border bg-card divide-y divide-border">
+                    <ToggleRow
+                      label="Pause anonymous demo"
+                      description="New demo calculations are rejected. Existing signups unaffected."
+                      checked={ops.settings.pause_demo}
+                      onChange={(v) => toggle("pause_demo", v)}
+                    />
+                    <ToggleRow
+                      label="Pause all AI calculations"
+                      description="Every parse call returns AI_UNAVAILABLE. History and manual editing still work."
+                      checked={ops.settings.pause_ai}
+                      onChange={(v) => toggle("pause_ai", v)}
+                    />
+                    <ToggleRow
+                      label="Database-only mode"
+                      description="Same effect as pausing AI, but signals the app to steer users to manual entry."
+                      checked={ops.settings.db_only_mode}
+                      onChange={(v) => toggle("db_only_mode", v)}
+                    />
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="allowance" className="text-sm">Demo allowance (per browser)</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Applies to new demo attempts.</p>
+                      </div>
+                      <Input
+                        id="allowance"
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={allowanceDraft}
+                        onChange={(e) => setAllowanceDraft(e.target.value)}
+                        className="w-24 rounded-xl"
+                      />
+                      <Button size="sm" onClick={saveAllowance} className="rounded-xl">Save</Button>
+                    </div>
+                    <div className="p-4 flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label htmlFor="banner" className="text-sm">High-demand banner</Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">Empty = no banner. Max 200 chars.</p>
+                      </div>
+                      <Input
+                        id="banner"
+                        value={bannerDraft}
+                        onChange={(e) => setBannerDraft(e.target.value)}
+                        placeholder="e.g. Very busy right now — thanks for your patience."
+                        maxLength={200}
+                        className="flex-1 min-w-[220px] rounded-xl"
+                      />
+                      <Button size="sm" onClick={saveBanner} className="rounded-xl">Save</Button>
+                    </div>
+                  </div>
+
+                  <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Recent operational changes
+                  </h3>
+                  <div className="mt-2 rounded-2xl border border-border bg-card divide-y divide-border">
+                    {ops.recentAudit.length === 0 && (
+                      <div className="p-4 text-sm text-muted-foreground">No changes yet.</div>
+                    )}
+                    {ops.recentAudit.map((a) => (
+                      <div key={a.id} className="p-3 text-sm flex justify-between gap-3">
+                        <div>
+                          <div className="font-medium">{a.key}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {String(a.old_value ?? "∅")} → {String(a.new_value ?? "∅")}
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(a.created_at).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Acquisition source
               </h2>
               <div className="mt-2 rounded-2xl border border-border bg-card divide-y divide-border">
