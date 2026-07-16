@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { resolveWithCache } from "./food.functions";
 
 // -------- Shared admin check --------
 
@@ -228,4 +229,84 @@ export const updateOpsSetting = createServerFn({ method: "POST" })
     invalidateOpsSettingsCache();
 
     return { ok: true };
+  });
+
+// -------- Admin: pre-warm the shared parse cache --------
+//
+// Iterates a small curated list of common Filipino inputs and populates the
+// shared cache when it's missing. Any hit skips the AI call entirely.
+// Bounded (max ~40 entries) so an accidental click can't burn credits.
+
+const WARM_INPUTS: ReadonlyArray<{ input: string; mealHint: "breakfast" | "lunch" | "dinner" | "snacks" }> = [
+  // Breakfast
+  { input: "tapsilog", mealHint: "breakfast" },
+  { input: "longsilog", mealHint: "breakfast" },
+  { input: "tocilog", mealHint: "breakfast" },
+  { input: "1 pandesal", mealHint: "breakfast" },
+  { input: "2 pandesal with butter", mealHint: "breakfast" },
+  { input: "1 cup oatmeal with banana", mealHint: "breakfast" },
+  { input: "2 scrambled eggs and rice", mealHint: "breakfast" },
+  { input: "1 cup arroz caldo", mealHint: "breakfast" },
+  // Lunch / Dinner staples
+  { input: "chicken adobo and rice", mealHint: "lunch" },
+  { input: "1 cup chicken adobo with 1 cup rice", mealHint: "lunch" },
+  { input: "pork sinigang and rice", mealHint: "lunch" },
+  { input: "beef sinigang and rice", mealHint: "lunch" },
+  { input: "sinigang na baboy with 1 cup rice", mealHint: "lunch" },
+  { input: "chicken tinola and rice", mealHint: "lunch" },
+  { input: "pork giniling and rice", mealHint: "lunch" },
+  { input: "menudo and rice", mealHint: "lunch" },
+  { input: "kare-kare and rice", mealHint: "lunch" },
+  { input: "lechon kawali and rice", mealHint: "lunch" },
+  { input: "sisig and rice", mealHint: "lunch" },
+  { input: "grilled bangus and rice", mealHint: "lunch" },
+  { input: "fried tilapia and rice", mealHint: "lunch" },
+  { input: "bicol express and rice", mealHint: "lunch" },
+  { input: "chicken curry and rice", mealHint: "lunch" },
+  { input: "beef caldereta and rice", mealHint: "dinner" },
+  { input: "pancit canton", mealHint: "dinner" },
+  { input: "pancit bihon", mealHint: "dinner" },
+  { input: "spaghetti Filipino style", mealHint: "dinner" },
+  // Fast food
+  { input: "Jollibee Chickenjoy with rice", mealHint: "lunch" },
+  { input: "Jollibee 2pc Chickenjoy with rice", mealHint: "lunch" },
+  { input: "Jollibee Jolly Spaghetti", mealHint: "lunch" },
+  { input: "Chowking chao fan and siomai", mealHint: "lunch" },
+  { input: "McDonalds Chicken McDo with rice", mealHint: "lunch" },
+  // Snacks
+  { input: "1 banana", mealHint: "snacks" },
+  { input: "1 apple", mealHint: "snacks" },
+  { input: "1 cup taho", mealHint: "snacks" },
+  { input: "1 turon", mealHint: "snacks" },
+  { input: "1 slice cassava cake", mealHint: "snacks" },
+  { input: "1 puto", mealHint: "snacks" },
+  { input: "1 can Coke", mealHint: "snacks" },
+  { input: "1 cup rice", mealHint: "snacks" },
+];
+
+export const warmFoodParseCache = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await ensureAdmin(context);
+    const started = Date.now();
+    let hits = 0;
+    let misses = 0;
+    let errors = 0;
+    for (const entry of WARM_INPUTS) {
+      try {
+        const result = await resolveWithCache(entry.input, entry.mealHint);
+        if (result.timings.cache_hit) hits++;
+        else misses++;
+      } catch (err) {
+        console.error("[warm] entry failed", entry.input, err);
+        errors++;
+      }
+    }
+    return {
+      attempted: WARM_INPUTS.length,
+      cacheHits: hits,
+      aiCalls: misses,
+      errors,
+      durationMs: Date.now() - started,
+    };
   });

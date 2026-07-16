@@ -324,7 +324,7 @@ type ResolveResult = z.infer<typeof responseSchema> & {
   };
 };
 
-async function resolveWithCache(input: string, mealHint: string): Promise<ResolveResult> {
+export async function resolveWithCache(input: string, mealHint: string): Promise<ResolveResult> {
   const key = buildCacheKey(input, mealHint);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = supabaseAdmin as unknown as CacheAdmin;
