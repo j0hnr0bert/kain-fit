@@ -46,6 +46,7 @@ export const Route = createFileRoute("/_authenticated/today")({
 type Entry = {
   id: string;
   logged_at: string;
+  created_at?: string;
   meal_type: "breakfast" | "lunch" | "dinner" | "snacks";
   display_name: string;
   quantity: number;
@@ -56,6 +57,7 @@ type Entry = {
   fat_g: number;
   data_source: string;
   is_estimate: boolean;
+  preparation?: string | null;
 };
 
 type PendingItem = {
