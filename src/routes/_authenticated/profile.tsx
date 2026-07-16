@@ -54,9 +54,7 @@ function ProfilePage() {
         from: (t: string) => {
           select: (c: string) => {
             eq: (a: string, b: string) => {
-              eq: (a: string, b: string) => {
-                maybeSingle: () => Promise<{ data: { role: string } | null }>;
-              };
+              in: (a: string, b: string[]) => Promise<{ data: { role: string }[] | null }>;
             };
           };
         };
@@ -64,9 +62,8 @@ function ProfilePage() {
         .from("user_roles")
         .select("role")
         .eq("user_id", u.user.id)
-        .eq("role", "admin")
-        .maybeSingle();
-      setIsAdmin(!!roleRow);
+        .in("role", ["admin", "founder"]);
+      setIsAdmin(!!(roleRow && roleRow.length > 0));
     })();
   }, []);
 
@@ -207,7 +204,7 @@ function ProfilePage() {
           {isAdmin && (
             <Button asChild variant="outline" className="w-full h-11 rounded-2xl justify-start">
               <Link to="/admin/beta">
-                <Shield className="h-4 w-4 mr-2" /> Beta dashboard
+                <Shield className="h-4 w-4 mr-2" /> Founder dashboard
               </Link>
             </Button>
           )}
