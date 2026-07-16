@@ -716,27 +716,26 @@ function PendingRow({
                     : item.preparation === choice
                 }
                 onClick={() => {
-                  if (choice === "not sure") {
-                    onChange({
-                      ...item,
-                      preparation: "estimated",
-                      is_estimate: true,
-                      clarification_needed: false,
-                    });
-                  } else {
-                    onChange({
-                      ...item,
-                      preparation: choice,
-                      clarification_needed: false,
-                    });
-                  }
+                  const nextPrep = choice === "not sure" ? "estimated" : choice;
+                  onRecalc({
+                    ...item,
+                    preparation: nextPrep,
+                    is_estimate: nextPrep === "estimated" ? true : item.is_estimate,
+                    clarification_needed: false,
+                  });
                 }}
-                className="h-9 rounded-lg border border-border bg-background text-xs font-medium capitalize hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                disabled={recalcing}
+                className="h-9 rounded-lg border border-border bg-background text-xs font-medium capitalize hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
               >
                 {choice}
               </button>
             ))}
           </div>
+          {item.preparation === "estimated" && !recalcing && (
+            <div className="mt-1.5 text-[11px] text-muted-foreground">
+              Using a middle-ground estimate. You can change this any time.
+            </div>
+          )}
         </div>
       )}
       <div className="flex items-start justify-between gap-2">
@@ -747,6 +746,11 @@ function PendingRow({
             {item.preparation && item.preparation !== "estimated"
               ? ` · ${item.preparation}`
               : ""}
+            {recalcing && (
+              <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Loader2 className="h-3 w-3 animate-spin" /> Recalculating…
+              </span>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-1">
