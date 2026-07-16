@@ -354,7 +354,7 @@ type CacheAdmin = {
 type ResolveResult = z.infer<typeof responseSchema> & {
   timings: {
     ai_parsing_ms: number;
-    resolution_path: "cache" | "ai_parse";
+    resolution_path: "verified_db" | "cache" | "ai_parse";
     cache_hit: boolean;
   };
 };
@@ -363,6 +363,27 @@ export async function resolveWithCache(input: string, mealHint: string): Promise
   const key = buildCacheKey(input, mealHint);
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = supabaseAdmin as unknown as CacheAdmin;
+
+  // Tier 0: verified_foods DB — single-item, unambiguous inputs bypass AI entirely.
+  try {
+    const { lookupVerifiedFood } = await import("./verified-foods.server");
+    const mh = (mealHint === "breakfast" || mealHint === "lunch" || mealHint === "dinner"
+      ? mealHint
+      : "snacks") as "breakfast" | "lunch" | "dinner" | "snacks";
+    const dbHit = await lookupVerifiedFood(input, mh);
+    if (dbHit && dbHit.items.length > 0) {
+      const parsed = responseSchema.safeParse(dbHit);
+      if (parsed.success) {
+        return {
+          ...parsed.data,
+          timings: { ai_parsing_ms: 0, resolution_path: "verified_db", cache_hit: true },
+        };
+      }
+    }
+  } catch (err) {
+    console.error("[verified-foods] lookup failed", err);
+    // fall through to cache/AI
+  }
 
   // Tier: shared parse cache
   try {
