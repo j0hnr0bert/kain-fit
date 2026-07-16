@@ -41,6 +41,7 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
     await ensureAdmin(context);
     const { getCapacityStats, getBreakerStatus } = await import("./ai-guard.server");
     const { readOpsSettings } = await import("./ops-settings.server");
+    const { getGlobalAiCounts } = await import("./ai-guard.server");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => {
@@ -86,11 +87,19 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
     const settings = await readOpsSettings();
     const capacity = getCapacityStats();
     const breaker = getBreakerStatus();
+    const globalCounts = await getGlobalAiCounts().catch(() => ({ today: 0, month: 0 }));
+    const dailyAlertHit =
+      settings.daily_ai_call_alert > 0 && globalCounts.today >= settings.daily_ai_call_alert;
 
     return {
       capacity,
       breaker,
       settings,
+      globals: {
+        aiCallsToday: globalCounts.today,
+        aiCallsMonth: globalCounts.month,
+        dailyAlertHit,
+      },
       lastMinute: {
         aiCalls: total,
         parseSuccess,
@@ -121,6 +130,10 @@ const SETTABLE_KEYS = [
   "db_only_mode",
   "demo_allowance",
   "high_demand_banner",
+  "session_burst_per_min",
+  "user_daily_ai_cap",
+  "monthly_ai_call_cap",
+  "daily_ai_call_alert",
 ] as const;
 
 const updateSchema = z.object({
@@ -150,6 +163,26 @@ export const updateOpsSetting = createServerFn({ method: "POST" })
       case "high_demand_banner":
         if (t !== "string" || (data.value as string).length > 200) {
           throw new Error("Banner must be a string under 200 chars");
+        }
+        break;
+      case "session_burst_per_min":
+        if (t !== "number" || (data.value as number) < 0 || (data.value as number) > 120) {
+          throw new Error("Burst limit must be 0–120 per minute");
+        }
+        break;
+      case "user_daily_ai_cap":
+        if (t !== "number" || (data.value as number) < 0 || (data.value as number) > 10000) {
+          throw new Error("User daily cap must be 0–10000");
+        }
+        break;
+      case "monthly_ai_call_cap":
+        if (t !== "number" || (data.value as number) < 0 || (data.value as number) > 10_000_000) {
+          throw new Error("Monthly cap out of range");
+        }
+        break;
+      case "daily_ai_call_alert":
+        if (t !== "number" || (data.value as number) < 0 || (data.value as number) > 10_000_000) {
+          throw new Error("Daily alert threshold out of range");
         }
         break;
     }
