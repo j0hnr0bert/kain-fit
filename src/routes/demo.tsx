@@ -190,6 +190,8 @@ function DemoPage() {
         estimated_item_count: result.items.filter((i) => i.is_estimate).length,
         verified_item_count: result.items.filter((i) => !i.is_estimate).length,
         demo_or_registered: "demo",
+        ai_parsing_ms: result.timings?.ai_parsing_ms,
+        resolution_path: result.timings?.resolution_path,
       });
       setPending(result.items as PendingItem[]);
       setPendingOriginalInput(text);
