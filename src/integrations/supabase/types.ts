@@ -90,6 +90,7 @@ export type Database = {
         Row: {
           calories: number
           carbs_g: number
+          client_request_id: string | null
           confidence: number | null
           created_at: string
           data_source: string
@@ -111,6 +112,7 @@ export type Database = {
         Insert: {
           calories?: number
           carbs_g?: number
+          client_request_id?: string | null
           confidence?: number | null
           created_at?: string
           data_source?: string
@@ -132,6 +134,7 @@ export type Database = {
         Update: {
           calories?: number
           carbs_g?: number
+          client_request_id?: string | null
           confidence?: number | null
           created_at?: string
           data_source?: string
