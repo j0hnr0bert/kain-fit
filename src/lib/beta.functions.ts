@@ -36,6 +36,12 @@ function sanitizeProps(props: Record<string, unknown>): Record<string, unknown> 
   // Strip any keys that could carry sensitive data. We accept only known-safe keys.
   const SAFE_KEYS = new Set([
     "processing_duration_ms",
+    "ai_parsing_ms",
+    "total_processing_ms",
+    "resolution_path",
+    "cache_hit",
+    "item_count",
+    "timeout",
     "number_of_items",
     "input_language",
     "measurement_units",
