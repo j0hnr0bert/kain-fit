@@ -375,7 +375,8 @@ function TodayPage() {
     }
     track("food_deleted", {});
     qc.invalidateQueries({ queryKey: ["entries", "today"] });
-    toast("Removed", {
+    toast("Entry deleted", {
+      duration: 5000,
       action: {
         label: "Undo",
         onClick: async () => {
@@ -388,11 +389,36 @@ function TodayPage() {
     });
   }
 
-  const grouped = useMemo(() => {
-    const g: Record<Entry["meal_type"], Entry[]> = { breakfast: [], lunch: [], dinner: [], snacks: [] };
-    entries.forEach((e) => g[e.meal_type].push(e));
-    return g;
-  }, [entries]);
+  async function updateEntryAmount(entry: Entry, newQuantity: number) {
+    const oldQ = Number(entry.quantity) || 0;
+    if (!(newQuantity > 0)) {
+      toast.error("Enter an amount greater than 0.");
+      return false;
+    }
+    if (newQuantity > 100000) {
+      toast.error("That amount looks too large.");
+      return false;
+    }
+    // Linear recalc from stored per-unit values — no AI call.
+    const ratio = oldQ > 0 ? newQuantity / oldQ : 1;
+    const patch = {
+      quantity: newQuantity,
+      calories: Math.round(Number(entry.calories) * ratio),
+      protein_g: Math.round(Number(entry.protein_g) * ratio),
+      carbs_g: Math.round(Number(entry.carbs_g) * ratio),
+      fat_g: Math.round(Number(entry.fat_g) * ratio),
+    };
+    const { error } = await supabase
+      .from("food_entries")
+      .update(patch)
+      .eq("id", entry.id);
+    if (error) {
+      toast.error(error.message);
+      return false;
+    }
+    qc.invalidateQueries({ queryKey: ["entries", "today"] });
+    return true;
+  }
 
   async function recalcRow(idx: number, next: PendingItem) {
     editedRef.current = true;
