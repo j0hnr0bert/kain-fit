@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Eye, EyeOff, Phone, Loader2 } from "lucide-react";
+import { track } from "@/lib/analytics";
 
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional().default("signup"),
@@ -41,6 +42,10 @@ function AuthPage() {
     });
   }, [navigate]);
 
+  useEffect(() => {
+    if (mode === "signup") track("signup_started", {});
+  }, [mode]);
+
   const passwordChecks = useMemo(() => checkPassword(password), [password]);
   const passwordValid = passwordChecks.every((r) => r.ok);
   const emailValid = /.+@.+\..+/.test(email.trim());
@@ -67,6 +72,7 @@ function AuthPage() {
         { onConflict: "user_id", ignoreDuplicates: true },
       );
 
+    if (isNewAccount) track("signup_completed", {});
     navigate({ to: isNewAccount ? "/onboarding" : "/today", replace: true });
   }
 
