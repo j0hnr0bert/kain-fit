@@ -228,9 +228,7 @@ async function ensureAdmin(ctx: {
     from: (t: string) => {
       select: (c: string) => {
         eq: (a: string, b: string) => {
-          eq: (a: string, b: string) => {
-            maybeSingle: () => Promise<{ data: unknown | null; error: unknown }>;
-          };
+          in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }>;
         };
       };
     };
@@ -239,9 +237,8 @@ async function ensureAdmin(ctx: {
     .from("user_roles")
     .select("role")
     .eq("user_id", ctx.userId)
-    .eq("role", "admin")
-    .maybeSingle();
-  if (!data) throw new Error("Forbidden");
+    .in("role", ["admin", "founder"]);
+  if (!data || data.length === 0) throw new Error("Forbidden");
 }
 
 type EventRow = {
