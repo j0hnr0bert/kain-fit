@@ -210,13 +210,19 @@ const recalcInputValidator = (data: {
 export const recalcItem = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator(recalcInputValidator)
-  .handler(async ({ data }) => callRecalcAi(data));
+  .handler(async ({ data }) => {
+    const { guardedAiCall } = await import("./ai-guard.server");
+    return mapGuardErrors(() => guardedAiCall(() => callRecalcAi(data)));
+  });
 
 // Demo recalc — anonymous, but DOES NOT consume a demo calculation slot.
 // Answering a clarification or changing preparation is not a new calculation.
 export const recalcItemDemo = createServerFn({ method: "POST" })
   .inputValidator(recalcInputValidator)
-  .handler(async ({ data }) => callRecalcAi(data));
+  .handler(async ({ data }) => {
+    const { guardedAiCall } = await import("./ai-guard.server");
+    return mapGuardErrors(() => guardedAiCall(() => callRecalcAi(data)));
+  });
 
 export const parseFood = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
@@ -227,9 +233,34 @@ export const parseFood = createServerFn({ method: "POST" })
     if (data.input.length > 500) throw new Error("Description is too long.");
     return { input: data.input.trim(), mealHint: data.mealHint ?? "snacks" };
   })
-  .handler(async ({ data }) => {
-    return resolveWithCache(data.input, data.mealHint);
+  .handler(async ({ data, context }) => {
+    const { singleFlight } = await import("./ai-guard.server");
+    const key = `parse:user:${context.userId}:${buildCacheKey(data.input, data.mealHint)}`;
+    return mapGuardErrors(() =>
+      singleFlight(key, () => resolveWithCache(data.input, data.mealHint)),
+    );
   });
+
+// Translates internal guard errors into user-visible messages.
+// The prefix `AI_UNAVAILABLE:` / `AI_BUSY:` lets the client route to fallbacks.
+async function mapGuardErrors<T>(fn: () => Promise<T>): Promise<T> {
+  const { AiUnavailableError, AiBusyError } = await import("./ai-guard.server");
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof AiUnavailableError) {
+      throw new Error(
+        "AI_UNAVAILABLE: KainFit's calculator is temporarily unavailable. You can still edit, delete, or add entries manually.",
+      );
+    }
+    if (err instanceof AiBusyError) {
+      throw new Error(
+        "AI_BUSY: Demand is unusually high. Please wait a moment and try again.",
+      );
+    }
+    throw err;
+  }
+}
 
 // ============================================================
 // Fast resolution pipeline
@@ -292,7 +323,8 @@ async function resolveWithCache(input: string, mealHint: string): Promise<Resolv
 
   // Tier: AI fallback
   const t0 = Date.now();
-  const result = await callParseAi(input, mealHint);
+  const { guardedAiCall } = await import("./ai-guard.server");
+  const result = await guardedAiCall(() => callParseAi(input, mealHint));
   const ai_parsing_ms = Date.now() - t0;
 
   // Write to cache — but only when the result looks reusable:
