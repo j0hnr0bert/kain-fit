@@ -595,6 +595,8 @@ function TodayPage() {
               <PendingRow
                 key={idx}
                 item={item}
+                recalcing={recalcingRows.has(idx)}
+                onRecalc={(next) => void recalcRow(idx, next)}
                 onChange={(next) =>
                   {
                     editedRef.current = true;
@@ -622,8 +624,18 @@ function TodayPage() {
             ))}
           </div>
           <div className="mt-6 space-y-2">
-            <Button onClick={confirmAdd} className="w-full h-12 rounded-2xl">
-              Add to today
+            <Button
+              onClick={confirmAdd}
+              disabled={anyRecalcing}
+              className="w-full h-12 rounded-2xl"
+            >
+              {anyRecalcing ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Recalculating…
+                </span>
+              ) : (
+                "Add to today"
+              )}
             </Button>
             <Button onClick={() => setPending(null)} variant="ghost" className="w-full h-12 rounded-2xl">
               Cancel
