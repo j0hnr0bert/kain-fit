@@ -557,7 +557,7 @@ function DemoPage() {
             </DialogTitle>
             <DialogDescription>
               {limitReached
-                ? `You've used all ${DEMO_LIMIT} free demo calculations. Create a free KainFit account to keep tracking without limits.`
+                ? `You've completed your ${DEMO_LIMIT} free demo calculations. Create a free account to continue tracking.`
                 : "We'll create your free account first. After you're signed in, you can choose whether to import today's demo entries."}
             </DialogDescription>
           </DialogHeader>
