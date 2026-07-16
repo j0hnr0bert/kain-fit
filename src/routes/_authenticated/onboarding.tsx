@@ -83,6 +83,7 @@ function Onboarding() {
     if (u.user) {
       await supabase.from("profiles").update({ onboarded: true }).eq("user_id", u.user.id);
     }
+    track("onboarding_completed", { reason: "skipped" });
     navigate({ to: "/today", replace: true });
   }
 
