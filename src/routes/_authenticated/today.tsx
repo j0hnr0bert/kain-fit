@@ -477,11 +477,12 @@ function MacroPill({ label, value, color }: { label: string; value: number; colo
 }
 
 function PendingRow({
-  item, onChange, onRemove,
+  item, onChange, onRemove, onReport,
 }: {
   item: PendingItem;
   onChange: (next: PendingItem) => void;
   onRemove: () => void;
+  onReport: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   return (
@@ -542,6 +543,13 @@ function PendingRow({
         {item.confidence < 0.6 && (
           <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>
         )}
+        <button
+          type="button"
+          onClick={onReport}
+          className="ml-auto inline-flex items-center gap-1 text-muted-foreground hover:text-foreground"
+        >
+          <Flag className="h-3 w-3" /> Report macros
+        </button>
       </div>
     </div>
   );
