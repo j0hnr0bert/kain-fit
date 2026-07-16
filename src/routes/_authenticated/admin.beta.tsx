@@ -3,7 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBetaMetrics, exportBetaCsv, getDemoUsage } from "@/lib/beta.functions";
-import { getOpsSnapshot, updateOpsSetting } from "@/lib/ops.functions";
+import { getOpsSnapshot, updateOpsSetting, warmFoodParseCache } from "@/lib/ops.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +24,25 @@ function AdminBetaPage() {
   const fetchDemoUsage = useServerFn(getDemoUsage);
   const fetchOps = useServerFn(getOpsSnapshot);
   const setOps = useServerFn(updateOpsSetting);
+  const warmCache = useServerFn(warmFoodParseCache);
+  const [warming, setWarming] = useState(false);
+
+  async function runWarm() {
+    if (warming) return;
+    setWarming(true);
+    try {
+      const r = await warmCache();
+      toast.success(
+        `Warmed cache: ${r.cacheHits} already cached, ${r.aiCalls} newly cached, ${r.errors} errors (${r.durationMs} ms)`,
+      );
+      await qc.invalidateQueries({ queryKey: ["ops-snapshot"] });
+      await qc.invalidateQueries({ queryKey: ["beta-metrics"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Warm failed");
+    } finally {
+      setWarming(false);
+    }
+  }
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["beta-metrics"],
@@ -448,6 +467,22 @@ function AdminBetaPage() {
                         className="rounded-xl"
                       >
                         Save
+                      </Button>
+                    </div>
+                    <div className="p-4 flex items-center gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <div className="text-sm font-medium">Pre-warm parse cache</div>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Seeds the shared cache with common Filipino inputs so the first few users hit the cache instead of the AI. Safe to run anytime; entries already cached are skipped.
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={runWarm}
+                        disabled={warming}
+                        className="rounded-xl"
+                      >
+                        {warming ? <Loader2 className="h-4 w-4 animate-spin" /> : "Warm now"}
                       </Button>
                     </div>
                   </div>
