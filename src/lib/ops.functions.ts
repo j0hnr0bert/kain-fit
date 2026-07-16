@@ -143,6 +143,28 @@ export const getPublicOpsFlags = createServerFn({ method: "GET" }).handler(async
   };
 });
 
+// Per-user beta usage — used by Today to show "N remaining" hints.
+// Server-authoritative; the client cannot forge these numbers.
+export const getBetaUsage = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { readOpsSettings } = await import("./ops-settings.server");
+    const { getUserDailySubmissionCount, phtNextDayStartIso } = await import("./ai-guard.server");
+    const settings = await readOpsSettings();
+    const enabled = settings.beta_limits_enabled;
+    const cap = enabled ? settings.beta_daily_submission_cap : 0;
+    const used = enabled && cap > 0 ? await getUserDailySubmissionCount(context.userId) : 0;
+    const remaining = cap > 0 ? Math.max(0, cap - used) : Number.POSITIVE_INFINITY;
+    return {
+      enabled,
+      cap,
+      used,
+      remaining: Number.isFinite(remaining) ? (remaining as number) : null,
+      reachedLimit: cap > 0 && used >= cap,
+      resetsAtIso: phtNextDayStartIso(),
+    };
+  });
+
 // -------- Admin: live operational snapshot --------
 
 export const getOpsSnapshot = createServerFn({ method: "GET" })
