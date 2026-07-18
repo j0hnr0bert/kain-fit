@@ -896,8 +896,10 @@ function TodayPage() {
       <Sheet
         open={!!pending}
         onOpenChange={(o) => {
+          if (saving) return;
           if (!o) {
             setPending(null);
+            setSaveError(null);
             // Return focus to the food input after the review dialog closes.
             requestAnimationFrame(() => inputRef.current?.focus());
           }
@@ -950,21 +952,38 @@ function TodayPage() {
               />
             ))}
           </div>
+          {saveError && (
+            <div role="alert" className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {saveError}
+            </div>
+          )}
           <div className="mt-6 space-y-2">
             <Button
               onClick={confirmAdd}
-              disabled={anyRecalcing}
+              disabled={anyRecalcing || saving}
               className="w-full h-12 rounded-2xl"
             >
-              {anyRecalcing ? (
+              {saving ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+                </span>
+              ) : anyRecalcing ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" /> Recalculating…
                 </span>
               ) : (
-                "Add to today"
+                saveError ? "Retry save" : "Add to Today"
               )}
             </Button>
-            <Button onClick={() => setPending(null)} variant="ghost" className="w-full h-12 rounded-2xl">
+            <Button
+              onClick={() => {
+                setSaveError(null);
+                setPending(null);
+              }}
+              disabled={saving}
+              variant="ghost"
+              className="w-full h-12 rounded-2xl"
+            >
               Cancel
             </Button>
           </div>
