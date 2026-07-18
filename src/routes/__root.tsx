@@ -13,6 +13,8 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { Toaster } from "@/components/ui/sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { track } from "@/lib/analytics";
+import { startWebVitals } from "@/lib/perf";
 
 function NotFoundComponent() {
   return (
@@ -166,6 +168,20 @@ function RootComponent() {
       const el = document.getElementById("kf-boot");
       if (el) el.remove();
     }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    // Time from navigation start to React mount.
+    let ttiMs: number | undefined;
+    try {
+      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      if (nav) ttiMs = Math.round(performance.now());
+    } catch {
+      // ignore
+    }
+    track("app_loaded", { time_to_react_mount_ms: ttiMs });
+    startWebVitals();
   }, []);
 
   useEffect(() => {

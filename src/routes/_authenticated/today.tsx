@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { track, markReturned } from "@/lib/analytics";
+import { mark, elapsed } from "@/lib/perf";
 import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
@@ -270,13 +271,19 @@ function TodayPage() {
     queryKey: ["entries", "today"],
     queryFn: async () => {
       const { startIso, endIso } = getManilaDayBounds();
+      const started = mark();
       const { data, error } = await supabase
         .from("food_entries")
         .select("*")
         .gte("logged_at", startIso)
         .lt("logged_at", endIso)
         .order("created_at", { ascending: false });
+      const database_query_duration_ms = elapsed(started);
       if (error) throw error;
+      track("today_ready", {
+        database_query_duration_ms,
+        entry_count: data?.length ?? 0,
+      });
       return (data ?? []) as Entry[];
     },
   });
@@ -290,6 +297,7 @@ function TodayPage() {
     savingRef.current = true;
     setSaving(true);
     setSaveError(null);
+    const saveStarted = mark();
     try {
       const { data: u, error: authError } = await supabase.auth.getUser();
       if (authError || !u.user) {
@@ -323,6 +331,7 @@ function TodayPage() {
       }));
 
       const { data, error } = await supabase.from("food_entries").insert(rows).select("*");
+      const database_query_duration_ms = elapsed(saveStarted);
       if (error) {
         if (error.code === "23505") {
           const ids = stampedItems
@@ -379,6 +388,12 @@ function TodayPage() {
       track("food_confirmed", {
         number_of_items: rows.length,
         save_mode: options.automatic ? "automatic" : "manual",
+      });
+      track("food_log_saved", {
+        number_of_items: rows.length,
+        save_mode: options.automatic ? "automatic" : "manual",
+        food_log_total_duration_ms: elapsed(saveStarted),
+        database_query_duration_ms,
       });
       setPending(null);
       setInput("");
@@ -477,6 +492,7 @@ function TodayPage() {
     editedRef.current = false;
     const started = performance.now();
     track("food_submitted", {});
+    track("food_calculation_started", { source: "authenticated" });
     const highDemandTimer = window.setTimeout(() => {
       toast("Demand is unusually high — hang tight.", { duration: 6000 });
     }, 10_000);
@@ -484,6 +500,19 @@ function TodayPage() {
       const mealHint = mealFromHour(getManilaHour());
       const result = await parseFn({ data: { input, mealHint } });
       const dur = Math.round(performance.now() - started);
+      const cacheHit = result.timings?.cache_hit === true;
+      track(cacheHit ? "cache_hit" : "cache_miss", {
+        resolution_path: result.timings?.resolution_path ?? null,
+        ai_request_duration_ms: result.timings?.ai_parsing_ms ?? null,
+      });
+      track("food_calculation_completed", {
+        source: "authenticated",
+        total_duration_ms: dur,
+        ai_request_duration_ms: result.timings?.ai_parsing_ms ?? null,
+        resolution_path: result.timings?.resolution_path ?? null,
+        cache_hit: cacheHit,
+        number_of_items: result.items.length,
+      });
       if (result.items.length === 0) {
         track("food_parse_failed", { processing_duration_ms: dur, reason: "empty_result" });
         toast.error("Couldn't find any food in that. Try again.");

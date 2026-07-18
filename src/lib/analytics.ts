@@ -84,14 +84,40 @@ export type EventName =
   | "saved_meal_repeated"
   | "feedback_submitted"
   | "app_returned"
-  | "admin_dashboard_viewed";
+  | "admin_dashboard_viewed"
+  // Perf telemetry (phase 1 baseline)
+  | "app_loaded"
+  | "today_ready"
+  | "food_search_started"
+  | "food_search_results_shown"
+  | "food_calculation_started"
+  | "food_calculation_completed"
+  | "food_log_saved"
+  | "cache_hit"
+  | "cache_miss"
+  | "performance_error"
+  | "web_vital";
+
+// These fire more than once per second (e.g. web_vital LCP+INP+CLS,
+// cache_hit per item) — client-side dedupe would silently drop them.
+const NO_DEDUPE = new Set<EventName>([
+  "web_vital",
+  "cache_hit",
+  "cache_miss",
+  "food_calculation_started",
+  "food_calculation_completed",
+  "food_log_saved",
+  "performance_error",
+]);
 
 export function track(event: EventName, properties: Record<string, unknown> = {}): void {
   if (!isBrowser()) return;
   const now = Date.now();
-  const last = lastSent.get(event) ?? 0;
-  if (now - last < 1000) return;
-  lastSent.set(event, now);
+  if (!NO_DEDUPE.has(event)) {
+    const last = lastSent.get(event) ?? 0;
+    if (now - last < 1000) return;
+    lastSent.set(event, now);
+  }
 
   const sid = getSessionId();
   const source = readSource();
