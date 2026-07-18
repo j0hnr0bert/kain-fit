@@ -492,6 +492,7 @@ function TodayPage() {
     editedRef.current = false;
     const started = performance.now();
     track("food_submitted", {});
+    track("food_calculation_started", { source: "authenticated" });
     const highDemandTimer = window.setTimeout(() => {
       toast("Demand is unusually high — hang tight.", { duration: 6000 });
     }, 10_000);
@@ -499,6 +500,19 @@ function TodayPage() {
       const mealHint = mealFromHour(getManilaHour());
       const result = await parseFn({ data: { input, mealHint } });
       const dur = Math.round(performance.now() - started);
+      const cacheHit = result.timings?.cache_hit === true;
+      track(cacheHit ? "cache_hit" : "cache_miss", {
+        resolution_path: result.timings?.resolution_path ?? null,
+        ai_request_duration_ms: result.timings?.ai_parsing_ms ?? null,
+      });
+      track("food_calculation_completed", {
+        source: "authenticated",
+        total_duration_ms: dur,
+        ai_request_duration_ms: result.timings?.ai_parsing_ms ?? null,
+        resolution_path: result.timings?.resolution_path ?? null,
+        cache_hit: cacheHit,
+        number_of_items: result.items.length,
+      });
       if (result.items.length === 0) {
         track("food_parse_failed", { processing_duration_ms: dur, reason: "empty_result" });
         toast.error("Couldn't find any food in that. Try again.");
