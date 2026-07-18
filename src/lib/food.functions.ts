@@ -85,6 +85,138 @@ Rules:
   "recipe_based" if inferred from ingredients; "estimated" otherwise.
 - Never invent precision or add coaching.`;
 
+// Well-known Filipino / prepared dishes. Their identity is inherently
+// "cooked" — asking raw vs cooked makes no sense, so we suppress any AI
+// clarification and lock preparation to "cooked".
+const PREPARED_DISH_TOKENS = [
+  "adobo",
+  "sinigang",
+  "tapsilog",
+  "tocilog",
+  "longsilog",
+  "silog",
+  "sisig",
+  "lechon",
+  "kaldereta",
+  "caldereta",
+  "menudo",
+  "afritada",
+  "giniling",
+  "tinola",
+  "nilaga",
+  "bulalo",
+  "kare-kare",
+  "kare kare",
+  "pinakbet",
+  "bicol express",
+  "ginataan",
+  "laing",
+  "dinuguan",
+  "paksiw",
+  "embutido",
+  "arroz caldo",
+  "lugaw",
+  "champorado",
+  "pancit",
+  "lumpia",
+  "fried rice",
+  "garlic rice",
+  "sinangag",
+  "curry",
+  "stew",
+  "soup",
+  "omelet",
+  "omelette",
+  "scrambled",
+  "sunny side",
+  "hard boiled",
+  "soft boiled",
+  "poached",
+];
+
+const EXPLICIT_COOKED_RE =
+  /\b(cooked|boiled|steamed|grilled|fried|deep[-\s]?fried|pan[-\s]?fried|baked|roasted|braised|saut[eé]ed|stewed|prepared|scrambled|poached|toasted|smoked|BBQ|barbecue|barbecued)\b/i;
+const EXPLICIT_RAW_RE = /\b(raw|uncooked|dry)\b/i;
+
+function splitFragments(input: string): string[] {
+  return input
+    .split(/\s+(?:and|with|plus)\s+|[,;+&]/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function isPrepClarificationQ(q: string | null | undefined): boolean {
+  if (!q) return false;
+  const s = q.toLowerCase();
+  return (
+    s.includes("raw") ||
+    s.includes("cooked") ||
+    s.includes("weighed") ||
+    s.includes("preparation") ||
+    s.includes("prep")
+  );
+}
+
+function fragmentForItem(fragments: string[], displayName: string, normalizedName: string): string | null {
+  const nameTokens = `${displayName} ${normalizedName}`
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((t) => t.length >= 3);
+  let best: { frag: string; score: number } | null = null;
+  for (const frag of fragments) {
+    const f = frag.toLowerCase();
+    let score = 0;
+    for (const tok of nameTokens) if (f.includes(tok)) score += 1;
+    if (score > 0 && (!best || score > best.score)) best = { frag, score };
+  }
+  return best?.frag ?? null;
+}
+
+function isPreparedDish(displayName: string, normalizedName: string): boolean {
+  const hay = `${displayName} ${normalizedName}`.toLowerCase();
+  return PREPARED_DISH_TOKENS.some((tok) => hay.includes(tok));
+}
+
+// Post-process the AI parse so obviously-answered raw/cooked questions
+// don't get bounced back to the user. Runs on the server, before caching,
+// so cache entries are already clean.
+function suppressSpuriousPrepClarifications(
+  input: string,
+  parsed: z.infer<typeof responseSchema>,
+): z.infer<typeof responseSchema> {
+  const fragments = splitFragments(input);
+  const wholeCooked = EXPLICIT_COOKED_RE.test(input);
+  const wholeRaw = EXPLICIT_RAW_RE.test(input);
+
+  return {
+    ...parsed,
+    items: parsed.items.map((item) => {
+      if (!item.clarification_needed || !isPrepClarificationQ(item.clarification_question)) {
+        return item;
+      }
+      const frag = fragmentForItem(fragments, item.display_name, item.normalized_name);
+      const fragCooked = frag ? EXPLICIT_COOKED_RE.test(frag) : false;
+      const fragRaw = frag ? EXPLICIT_RAW_RE.test(frag) : false;
+
+      let prep: "raw" | "cooked" | null = null;
+      if (fragCooked) prep = "cooked";
+      else if (fragRaw) prep = "raw";
+      else if (isPreparedDish(item.display_name, item.normalized_name)) prep = "cooked";
+      else if (fragments.length <= 1 && wholeCooked && !wholeRaw) prep = "cooked";
+      else if (fragments.length <= 1 && wholeRaw && !wholeCooked) prep = "raw";
+
+      if (!prep) return item;
+      return {
+        ...item,
+        preparation: prep,
+        clarification_needed: false,
+        clarification_question: null,
+        is_estimate: item.is_estimate && prep !== "cooked" ? item.is_estimate : item.is_estimate,
+      };
+    }),
+  };
+}
+
 async function callParseAi(input: string, mealHint: string) {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("AI is not configured. Please contact support.");
@@ -409,7 +541,8 @@ export async function resolveWithCache(input: string, mealHint: string): Promise
   // Tier: AI fallback
   const t0 = Date.now();
   const { guardedAiCall } = await import("./ai-guard.server");
-  const result = await guardedAiCall(() => callParseAi(input, mealHint));
+  const rawResult = await guardedAiCall(() => callParseAi(input, mealHint));
+  const result = suppressSpuriousPrepClarifications(input, rawResult);
   const ai_parsing_ms = Date.now() - t0;
 
   // Write to cache — but only when the result looks reusable:
