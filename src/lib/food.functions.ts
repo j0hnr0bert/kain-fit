@@ -541,7 +541,8 @@ export async function resolveWithCache(input: string, mealHint: string): Promise
   // Tier: AI fallback
   const t0 = Date.now();
   const { guardedAiCall } = await import("./ai-guard.server");
-  const result = await guardedAiCall(() => callParseAi(input, mealHint));
+  const rawResult = await guardedAiCall(() => callParseAi(input, mealHint));
+  const result = suppressSpuriousPrepClarifications(input, rawResult);
   const ai_parsing_ms = Date.now() - t0;
 
   // Write to cache — but only when the result looks reusable:
