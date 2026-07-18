@@ -161,6 +161,7 @@ function TodayPage() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const savingRef = useRef(false);
   const [pending, setPending] = useState<PendingItem[] | null>(null);
   const [recalcingRows, setRecalcingRows] = useState<Set<number>>(new Set());
   const anyRecalcing = recalcingRows.size > 0;
@@ -285,7 +286,8 @@ function TodayPage() {
     sourceInput: string,
     options: { automatic?: boolean } = {},
   ) {
-    if (items.length === 0 || saving) return false;
+    if (items.length === 0 || savingRef.current) return false;
+    savingRef.current = true;
     setSaving(true);
     setSaveError(null);
     try {
@@ -380,11 +382,30 @@ function TodayPage() {
       });
       setPending(null);
       setInput("");
-      toast.success(options.automatic ? "Added to Today" : "Added to Today");
+      toast.success("Added to Today", {
+        duration: options.automatic ? 5000 : 3000,
+        action: options.automatic
+          ? {
+              label: "Undo",
+              onClick: async () => {
+                const ids = savedRows.map((row) => row.id);
+                if (ids.length === 0) return;
+                const { error: undoError } = await supabase.from("food_entries").delete().in("id", ids);
+                if (undoError) {
+                  toast.error(formatDbError(undoError));
+                  return;
+                }
+                await qc.invalidateQueries({ queryKey: ["entries", "today"] });
+                toast("Meal removed");
+              },
+            }
+          : undefined,
+      });
       await qc.invalidateQueries({ queryKey: ["entries", "today"] });
       await qc.invalidateQueries({ queryKey: ["beta-usage"] });
       return true;
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
