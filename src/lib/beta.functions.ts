@@ -23,6 +23,17 @@ const ALLOWED_EVENTS = [
   "feedback_submitted",
   "app_returned",
   "admin_dashboard_viewed",
+  "app_loaded",
+  "today_ready",
+  "web_vital",
+  "db_query_timing",
+  "food_calc_timing",
+  "food_save_timing",
+  "cache_hit",
+  "cache_miss",
+  "ai_call_timing",
+  "route_load_timing",
+  "error_boundary",
 ] as const;
 
 const eventSchema = z.object({
