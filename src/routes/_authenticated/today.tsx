@@ -77,7 +77,76 @@ type PendingItem = {
   is_estimate: boolean;
   clarification_needed: boolean;
   clarification_question?: string | null;
+  client_request_id?: string;
 };
+
+const MANILA_TIME_ZONE = "Asia/Manila";
+
+function createUuid() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  const bytes =
+    typeof crypto !== "undefined" && "getRandomValues" in crypto
+      ? crypto.getRandomValues(new Uint8Array(16))
+      : Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex
+    .slice(6, 8)
+    .join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+}
+
+function stampClientRequestIds(items: PendingItem[]) {
+  return items.map((item) => ({
+    ...item,
+    client_request_id: item.client_request_id ?? createUuid(),
+  }));
+}
+
+function getManilaHour(date = new Date()) {
+  const hour = new Intl.DateTimeFormat("en-US", {
+    timeZone: MANILA_TIME_ZONE,
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).format(date);
+  return Number(hour);
+}
+
+function getManilaDayBounds(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: MANILA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const get = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? 0);
+  const year = get("year");
+  const month = get("month");
+  const day = get("day");
+  const start = new Date(Date.UTC(year, month - 1, day, -8, 0, 0, 0));
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+  return { startIso: start.toISOString(), endIso: end.toISOString() };
+}
+
+function formatDbError(error: {
+  message?: string;
+  details?: string | null;
+  hint?: string | null;
+  code?: string;
+}) {
+  return [
+    error.message || "Database save failed.",
+    error.details ? `Details: ${error.details}` : null,
+    error.hint ? `Hint: ${error.hint}` : null,
+    error.code ? `Code: ${error.code}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
 
 function mealFromHour(h: number): Entry["meal_type"] {
   if (h < 10) return "breakfast";
@@ -93,6 +162,8 @@ function TodayPage() {
   const recalcFn = useServerFn(recalcItem);
   const [input, setInput] = useState("");
   const [parsing, setParsing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [pending, setPending] = useState<PendingItem[] | null>(null);
   const [recalcingRows, setRecalcingRows] = useState<Set<number>>(new Set());
   const anyRecalcing = recalcingRows.size > 0;
@@ -158,9 +229,10 @@ function TodayPage() {
     if (!demoImport) return;
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
+    const loggedAt = new Date().toISOString();
     const rows = demoImport.entries.map((i) => ({
       user_id: u.user!.id,
-      logged_at: new Date().toISOString(),
+      logged_at: loggedAt,
       meal_type: i.meal,
       original_input: "(imported from demo)",
       display_name: i.name,
@@ -199,17 +271,126 @@ function TodayPage() {
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ["entries", "today"],
     queryFn: async () => {
-      const start = new Date();
-      start.setHours(0, 0, 0, 0);
+      const { startIso, endIso } = getManilaDayBounds();
       const { data, error } = await supabase
         .from("food_entries")
         .select("*")
-        .gte("logged_at", start.toISOString())
+        .gte("logged_at", startIso)
+        .lt("logged_at", endIso)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Entry[];
     },
   });
+
+  async function saveFoodItems(
+    items: PendingItem[],
+    sourceInput: string,
+    options: { automatic?: boolean } = {},
+  ) {
+    if (items.length === 0 || saving) return false;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const { data: u, error: authError } = await supabase.auth.getUser();
+      if (authError || !u.user) {
+        const msg = authError?.message ?? "Please sign in again before saving this meal.";
+        setSaveError(msg);
+        toast.error(msg);
+        return false;
+      }
+
+      if (editedRef.current) track("food_edited_before_confirmation", { number_of_items: items.length });
+      const loggedAt = new Date().toISOString();
+      const stampedItems = stampClientRequestIds(items);
+      const rows = stampedItems.map((i) => ({
+        user_id: u.user!.id,
+        logged_at: loggedAt,
+        meal_type: i.meal_type,
+        original_input: sourceInput,
+        display_name: i.display_name,
+        normalized_name: i.normalized_name,
+        quantity: i.quantity,
+        unit: i.unit,
+        preparation: i.preparation,
+        calories: Math.round(i.calories),
+        protein_g: Math.round(i.protein_g),
+        carbs_g: Math.round(i.carbs_g),
+        fat_g: Math.round(i.fat_g),
+        data_source: i.data_source,
+        confidence: i.confidence,
+        is_estimate: i.is_estimate,
+        client_request_id: i.client_request_id,
+      }));
+
+      const { data, error } = await supabase.from("food_entries").insert(rows).select("*");
+      if (error) {
+        if (error.code === "23505") {
+          const ids = stampedItems
+            .map((item) => item.client_request_id)
+            .filter((id): id is string => Boolean(id));
+          const { data: existingRows, error: lookupError } = await supabase
+            .from("food_entries")
+            .select("*")
+            .in("client_request_id", ids);
+          if (!lookupError && (existingRows?.length ?? 0) >= rows.length) {
+            const existing = (existingRows ?? []) as Entry[];
+            qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
+              const known = new Set(current.map((entry) => entry.id));
+              return [...existing.filter((entry) => !known.has(entry.id)), ...current].sort(
+                (a, b) =>
+                  new Date(b.created_at ?? b.logged_at).getTime() -
+                  new Date(a.created_at ?? a.logged_at).getTime(),
+              );
+            });
+            setPending(null);
+            setInput("");
+            await qc.invalidateQueries({ queryKey: ["entries", "today"] });
+            await qc.invalidateQueries({ queryKey: ["beta-usage"] });
+            toast.success("Added to Today");
+            return true;
+          }
+        }
+
+        const msg = formatDbError(error);
+        console.error("[today] food_entries insert failed", { error, rows });
+        setSaveError(msg);
+        toast.error(msg, { duration: 9000 });
+        return false;
+      }
+
+      const savedRows = (data ?? []) as Entry[];
+      if (savedRows.length !== rows.length) {
+        const msg = `Saved ${savedRows.length} of ${rows.length} items. Please retry.`;
+        console.error("[today] food_entries insert returned unexpected row count", { savedRows, rows });
+        setSaveError(msg);
+        toast.error(msg);
+        await qc.invalidateQueries({ queryKey: ["entries", "today"] });
+        return false;
+      }
+
+      qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
+        const known = new Set(current.map((entry) => entry.id));
+        return [...savedRows.filter((entry) => !known.has(entry.id)), ...current].sort(
+          (a, b) =>
+            new Date(b.created_at ?? b.logged_at).getTime() -
+            new Date(a.created_at ?? a.logged_at).getTime(),
+        );
+      });
+      track("food_confirmed", {
+        number_of_items: rows.length,
+        save_mode: options.automatic ? "automatic" : "manual",
+      });
+      setPending(null);
+      setInput("");
+      toast.success(options.automatic ? "Added to Today" : "Added to Today");
+      await qc.invalidateQueries({ queryKey: ["entries", "today"] });
+      await qc.invalidateQueries({ queryKey: ["beta-usage"] });
+      return true;
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // Manual macro targets — private to this user; never sent to gym owners.
   const { data: profile } = useQuery({
@@ -282,7 +463,7 @@ function TodayPage() {
       toast("Demand is unusually high — hang tight.", { duration: 6000 });
     }, 10_000);
     try {
-      const mealHint = mealFromHour(new Date().getHours());
+      const mealHint = mealFromHour(getManilaHour());
       const result = await parseFn({ data: { input, mealHint } });
       const dur = Math.round(performance.now() - started);
       if (result.items.length === 0) {
@@ -303,8 +484,14 @@ function TodayPage() {
           resolution_path: result.timings?.resolution_path,
           cache_hit: result.timings?.cache_hit,
         });
-        if (anyClar) track("food_clarification_requested", { number_of_items: result.items.length });
-        setPending(result.items);
+        const stampedItems = stampClientRequestIds(result.items);
+        if (anyClar) {
+          track("food_clarification_requested", { number_of_items: result.items.length });
+          setPending(stampedItems);
+        } else {
+          const saved = await saveFoodItems(stampedItems, input, { automatic: true });
+          if (!saved) setPending(stampedItems);
+        }
       }
     } catch (err) {
       track("food_parse_failed", {
@@ -355,51 +542,7 @@ function TodayPage() {
   async function confirmAdd() {
     if (!pending) return;
     if (anyRecalcing) return;
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) return;
-    if (editedRef.current) track("food_edited_before_confirmation", { number_of_items: pending.length });
-    // Idempotency: one shared client_request_id for this confirm batch.
-    // Duplicate taps or retries hit the unique index on (user_id, client_request_id).
-    const clientRequestId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const rows = pending.map((i) => ({
-      user_id: u.user!.id,
-      logged_at: new Date().toISOString(),
-      meal_type: i.meal_type,
-      original_input: originalInput,
-      display_name: i.display_name,
-      normalized_name: i.normalized_name,
-      quantity: i.quantity,
-      unit: i.unit,
-      preparation: i.preparation,
-      calories: Math.round(i.calories),
-      protein_g: Math.round(i.protein_g),
-      carbs_g: Math.round(i.carbs_g),
-      fat_g: Math.round(i.fat_g),
-      data_source: i.data_source,
-      confidence: i.confidence,
-      is_estimate: i.is_estimate,
-      client_request_id: clientRequestId,
-    }));
-    const { error } = await supabase.from("food_entries").insert(rows);
-    if (error) {
-      // Duplicate confirmation (double-tap / retry) — treat as success.
-      if (error.code === "23505") {
-        setPending(null);
-        setInput("");
-        qc.invalidateQueries({ queryKey: ["entries", "today"] });
-        return;
-      }
-      toast.error(error.message);
-      return;
-    }
-    track("food_confirmed", { number_of_items: pending.length });
-    setPending(null);
-    setInput("");
-    toast.success("Added to today");
-    qc.invalidateQueries({ queryKey: ["entries", "today"] });
+    await saveFoodItems(pending, originalInput);
   }
 
   async function deleteEntry(entry: Entry) {
