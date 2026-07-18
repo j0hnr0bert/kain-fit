@@ -171,6 +171,7 @@ function DemoPage() {
     setLastInput(text);
     const started = performance.now();
     track("demo_food_submitted", { demo_or_registered: "demo" });
+    track("food_calculation_started", { source: "demo" });
     const highDemandTimer =
       typeof window !== "undefined"
         ? window.setTimeout(
@@ -182,6 +183,20 @@ function DemoPage() {
       const mealHint = mealFromHour(new Date().getHours());
       const result = await parseFn({ data: { input: text, mealHint } });
       const dur = Math.round(performance.now() - started);
+      const cacheHit = result.timings?.cache_hit === true;
+      track(cacheHit ? "cache_hit" : "cache_miss", {
+        resolution_path: result.timings?.resolution_path ?? null,
+        ai_request_duration_ms: result.timings?.ai_parsing_ms ?? null,
+        source: "demo",
+      });
+      track("food_calculation_completed", {
+        source: "demo",
+        total_duration_ms: dur,
+        ai_request_duration_ms: result.timings?.ai_parsing_ms ?? null,
+        resolution_path: result.timings?.resolution_path ?? null,
+        cache_hit: cacheHit,
+        number_of_items: result.items?.length ?? 0,
+      });
       if (typeof result.remaining === "number") {
         setRemaining(result.remaining);
         if (result.remaining <= 0) setLimitReached(true);
