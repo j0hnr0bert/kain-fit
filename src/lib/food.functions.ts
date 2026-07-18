@@ -496,12 +496,30 @@ export async function resolveWithCache(input: string, mealHint: string): Promise
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = supabaseAdmin as unknown as CacheAdmin;
 
-  // Tier 0: verified_foods DB — single-item, unambiguous inputs bypass AI entirely.
+  const mh = (mealHint === "breakfast" || mealHint === "lunch" || mealHint === "dinner"
+    ? mealHint
+    : "snacks") as "breakfast" | "lunch" | "dinner" | "snacks";
+
+  // Tier 0a: normalized food_records catalog (aliases → generic + Filipino dishes).
+  try {
+    const { lookupFoodRecord } = await import("./food-records.server");
+    const rec = await lookupFoodRecord(input, mh);
+    if (rec && rec.items.length > 0) {
+      const parsed = responseSchema.safeParse(rec);
+      if (parsed.success) {
+        return {
+          ...parsed.data,
+          timings: { ai_parsing_ms: 0, resolution_path: "verified_db", cache_hit: true },
+        };
+      }
+    }
+  } catch (err) {
+    console.error("[food-records] lookup failed", err);
+  }
+
+  // Tier 0b: legacy verified_foods DB — single-item, unambiguous inputs bypass AI entirely.
   try {
     const { lookupVerifiedFood } = await import("./verified-foods.server");
-    const mh = (mealHint === "breakfast" || mealHint === "lunch" || mealHint === "dinner"
-      ? mealHint
-      : "snacks") as "breakfast" | "lunch" | "dinner" | "snacks";
     const dbHit = await lookupVerifiedFood(input, mh);
     if (dbHit && dbHit.items.length > 0) {
       const parsed = responseSchema.safeParse(dbHit);
