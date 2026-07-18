@@ -87,10 +87,7 @@ function createUuid() {
     return crypto.randomUUID();
   }
 
-  const bytes =
-    typeof crypto !== "undefined" && "getRandomValues" in crypto
-      ? crypto.getRandomValues(new Uint8Array(16))
-      : Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+  const bytes = Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
   bytes[6] = (bytes[6] & 0x0f) | 0x40;
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0"));
