@@ -16,6 +16,7 @@ type Row = {
   protein_per_100g: number;
   carbs_per_100g: number;
   fat_per_100g: number;
+  barcode: string | null;
 };
 
 type Alias = {
@@ -62,7 +63,7 @@ async function loadCatalog(): Promise<{ rows: Row[]; aliases: Alias[] }> {
     admin
       .from("food_records")
       .select(
-        "id,canonical_name,display_name,category,preparation_state,preparation_variant,default_serving_grams,calories_per_100g,protein_per_100g,carbs_per_100g,fat_per_100g",
+        "id,canonical_name,display_name,category,preparation_state,preparation_variant,default_serving_grams,calories_per_100g,protein_per_100g,carbs_per_100g,fat_per_100g,barcode",
       )
       .eq("active", true),
     admin.from("food_aliases").select("food_record_id,normalized_alias,priority"),
@@ -223,6 +224,39 @@ export async function lookupFoodRecord(
   input: string,
   mealHint: "breakfast" | "lunch" | "dinner" | "snacks",
 ): Promise<FoodRecordsResolveResult | null> {
+  // Barcode fast-path: raw 8-14 digit EAN/UPC → direct food_records lookup.
+  const trimmed = input.trim();
+  if (/^\d{8,14}$/.test(trimmed)) {
+    const { rows } = await loadCatalog();
+    const hit = rows.find((r) => r.barcode === trimmed);
+    if (hit) {
+      const grams = hit.default_serving_grams ?? 100;
+      const factor = grams / 100;
+      return {
+        items: [
+          {
+            display_name: hit.display_name,
+            normalized_name: hit.canonical_name,
+            quantity: 1,
+            unit: "serving",
+            preparation: hit.preparation_state === "n_a" ? null : hit.preparation_state,
+            meal_type: mealHint,
+            calories: Math.round(hit.calories_per_100g * factor),
+            protein_g: Math.round(hit.protein_per_100g * factor),
+            carbs_g: Math.round(hit.carbs_per_100g * factor),
+            fat_g: Math.round(hit.fat_per_100g * factor),
+            data_source: "verified_database",
+            confidence: 0.98,
+            is_estimate: false,
+            clarification_needed: false,
+            clarification_question: null,
+          },
+        ],
+        input_language: "english",
+      };
+    }
+    return null;
+  }
   const parsed = parseInput(input);
   if (!parsed) return null;
   const { rows, aliases } = await loadCatalog();
