@@ -16,6 +16,7 @@ type Row = {
   protein_per_100g: number;
   carbs_per_100g: number;
   fat_per_100g: number;
+  barcode: string | null;
 };
 
 type Alias = {
@@ -62,7 +63,7 @@ async function loadCatalog(): Promise<{ rows: Row[]; aliases: Alias[] }> {
     admin
       .from("food_records")
       .select(
-        "id,canonical_name,display_name,category,preparation_state,preparation_variant,default_serving_grams,calories_per_100g,protein_per_100g,carbs_per_100g,fat_per_100g",
+        "id,canonical_name,display_name,category,preparation_state,preparation_variant,default_serving_grams,calories_per_100g,protein_per_100g,carbs_per_100g,fat_per_100g,barcode",
       )
       .eq("active", true),
     admin.from("food_aliases").select("food_record_id,normalized_alias,priority"),
