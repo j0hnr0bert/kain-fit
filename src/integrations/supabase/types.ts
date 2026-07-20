@@ -899,6 +899,7 @@ export type Database = {
           fat_g: number
           food_name: string
           id: string
+          is_favorite: boolean
           last_used_at: string | null
           normalized_name: string | null
           protein_g: number
@@ -915,6 +916,7 @@ export type Database = {
           fat_g?: number
           food_name: string
           id?: string
+          is_favorite?: boolean
           last_used_at?: string | null
           normalized_name?: string | null
           protein_g?: number
@@ -931,10 +933,44 @@ export type Database = {
           fat_g?: number
           food_name?: string
           id?: string
+          is_favorite?: boolean
           last_used_at?: string | null
           normalized_name?: string | null
           protein_g?: number
           source?: string | null
+          usage_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      saved_meals: {
+        Row: {
+          created_at: string
+          id: string
+          items: Json
+          last_used_at: string | null
+          name: string
+          updated_at: string
+          usage_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          items?: Json
+          last_used_at?: string | null
+          name: string
+          updated_at?: string
+          usage_count?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          items?: Json
+          last_used_at?: string | null
+          name?: string
+          updated_at?: string
           usage_count?: number
           user_id?: string
         }
