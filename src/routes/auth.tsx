@@ -133,19 +133,48 @@ function AuthPage() {
     if (oauthLoading || loading) return;
     setOauthLoading(provider);
     setFormError("");
+    logStep(provider === "google" ? "oauth_google_started" : "oauth_apple_started");
+    const failStep = provider === "google" ? "oauth_google_failed" : "oauth_apple_failed";
+    const unavailableMsg = "Sign-in is temporarily unavailable — try email instead.";
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      logStep(failStep, "timeout", "no completion within 8s");
+      setFormError(unavailableMsg);
+      toast.error(unavailableMsg);
+      setOauthLoading(null);
+    }, 8000);
     try {
       const result = await lovable.auth.signInWithOAuth(provider, {
         redirect_uri: window.location.origin,
       });
+      if (settled) return;
       if (result.error) {
-        toast.error(result.error.message ?? "Sign-in failed");
+        settled = true;
+        window.clearTimeout(timeoutId);
+        const msg = result.error.message ?? unavailableMsg;
+        logStep(failStep, "provider_error", msg);
+        setFormError(msg);
+        toast.error(msg);
         setOauthLoading(null);
         return;
       }
-      if (result.redirected) return;
+      if (result.redirected) {
+        // Browser will navigate away; keep timeout so a hung redirect still surfaces.
+        return;
+      }
+      settled = true;
+      window.clearTimeout(timeoutId);
       navigate({ to: "/today", replace: true });
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Sign-in failed");
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      const msg = e instanceof Error ? e.message : "Sign-in failed";
+      logStep(failStep, "exception", msg);
+      setFormError(msg);
+      toast.error(msg);
       setOauthLoading(null);
     }
   }
