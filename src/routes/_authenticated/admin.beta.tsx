@@ -9,6 +9,7 @@ import {
   reviewFoodSubmission,
   reviewFoodRevision,
 } from "@/lib/food-review.functions";
+import { bulkImportFoods, parseCsv, mapCsvRows, type BulkImportRow } from "@/lib/food-catalog.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -35,6 +36,52 @@ function AdminBetaPage() {
   const decideSubmission = useServerFn(reviewFoodSubmission);
   const decideRevision = useServerFn(reviewFoodRevision);
   const [pendingDecision, setPendingDecision] = useState<string | null>(null);
+  const importFoods = useServerFn(bulkImportFoods);
+  const [csvRows, setCsvRows] = useState<BulkImportRow[]>([]);
+  const [csvErrors, setCsvErrors] = useState<Array<{ line: number; reason: string }>>([]);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
+
+  async function onCsvFile(file: File) {
+    const text = await file.text();
+    const records = parseCsv(text);
+    const mapped = mapCsvRows(records);
+    setCsvRows(mapped.rows);
+    setCsvErrors(mapped.errors);
+    setImportResult(null);
+    if (mapped.rows.length === 0 && mapped.errors.length === 0) {
+      toast.error("CSV contained no valid rows");
+    } else {
+      toast.success(`Parsed ${mapped.rows.length} row(s), ${mapped.errors.length} error(s)`);
+    }
+  }
+
+  async function runImport() {
+    if (csvRows.length === 0 || importing) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      // Chunk to stay under the 1000-row server-side cap and keep responses snappy.
+      const CHUNK = 200;
+      let imported = 0;
+      let aliases = 0;
+      for (let i = 0; i < csvRows.length; i += CHUNK) {
+        const slice = csvRows.slice(i, i + CHUNK);
+        const r = await importFoods({ data: { rows: slice } });
+        imported += r.imported;
+        aliases += r.aliases;
+      }
+      setImportResult(`Imported/updated ${imported} food record(s) and ${aliases} alias(es).`);
+      toast.success(`Imported ${imported} foods`);
+      setCsvRows([]);
+      setCsvErrors([]);
+      await qc.invalidateQueries({ queryKey: ["beta-metrics"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function runWarm() {
     if (warming) return;
@@ -662,6 +709,75 @@ function AdminBetaPage() {
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Food review queue
+              </h2>
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Bulk food import (CSV)
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Upload a CSV to populate the catalog in bulk. Required columns:
+                <code className="mx-1 rounded bg-muted px-1 py-0.5">name</code>,
+                <code className="mx-1 rounded bg-muted px-1 py-0.5">category</code>,
+                <code className="mx-1 rounded bg-muted px-1 py-0.5">per_100g_calories</code>.
+                Optional: alt_names (| or ; separated), source, per_100g_protein_g/carbs_g/fat_g/fiber_g/sodium_mg,
+                common_serving_label, common_serving_grams, verified, preparation_state, canonical_name.
+                Existing rows are upserted by canonical_name.
+              </p>
+              <div className="mt-3 rounded-2xl border border-border bg-card p-4 space-y-3">
+                <Input
+                  type="file"
+                  accept=".csv,text/csv"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void onCsvFile(f);
+                  }}
+                />
+                <div className="text-xs text-muted-foreground">
+                  Parsed: <strong>{csvRows.length}</strong> row(s). Errors:{" "}
+                  <strong className={csvErrors.length > 0 ? "text-destructive" : ""}>
+                    {csvErrors.length}
+                  </strong>
+                  .
+                </div>
+                {csvErrors.length > 0 && (
+                  <div className="max-h-32 overflow-auto rounded border border-border/50 bg-muted/30 p-2 text-[11px]">
+                    {csvErrors.slice(0, 20).map((err, i) => (
+                      <div key={i}>
+                        Line {err.line}: {err.reason}
+                      </div>
+                    ))}
+                    {csvErrors.length > 20 && <div>…and {csvErrors.length - 20} more</div>}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={runImport} disabled={csvRows.length === 0 || importing}>
+                    {importing ? (
+                      <>
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Importing…
+                      </>
+                    ) : (
+                      `Import ${csvRows.length} row(s)`
+                    )}
+                  </Button>
+                  <a
+                    href="data:text/csv;charset=utf-8,name,alt_names,category,source,per_100g_calories,per_100g_protein_g,per_100g_carbs_g,per_100g_fat_g,per_100g_fiber_g,per_100g_sodium_mg,common_serving_label,common_serving_grams,verified,preparation_state%0AApple,mansanas,fruit,manual,52,0.3,14,0.2,2.4,1,1 medium,182,true,raw"
+                    download="kainfit-foods-template.csv"
+                    className="text-xs text-primary underline underline-offset-2"
+                  >
+                    Download template
+                  </a>
+                </div>
+                {importResult && (
+                  <div className="text-xs text-emerald-600">{importResult}</div>
+                )}
+              </div>
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                User-submitted review queue
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 User-submitted branded products and proposed edits to verified records. Approving a

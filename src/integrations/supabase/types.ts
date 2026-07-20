@@ -339,6 +339,7 @@ export type Database = {
           canonical_name: string
           carbs_per_100g: number
           category: string
+          common_serving_label: string | null
           confidence_score: number
           country_code: string
           created_at: string
@@ -357,11 +358,13 @@ export type Database = {
           protein_per_100g: number
           restaurant_id: string | null
           sodium_mg_per_100g: number | null
+          source: string | null
           source_food_id: string | null
           source_id: string | null
           sugar_per_100g: number | null
           updated_at: string
           verification_status: Database["public"]["Enums"]["food_verification_status"]
+          verified: boolean
           verified_at: string | null
           verified_by: string | null
           version: number
@@ -374,6 +377,7 @@ export type Database = {
           canonical_name: string
           carbs_per_100g?: number
           category: string
+          common_serving_label?: string | null
           confidence_score?: number
           country_code?: string
           created_at?: string
@@ -392,11 +396,13 @@ export type Database = {
           protein_per_100g?: number
           restaurant_id?: string | null
           sodium_mg_per_100g?: number | null
+          source?: string | null
           source_food_id?: string | null
           source_id?: string | null
           sugar_per_100g?: number | null
           updated_at?: string
           verification_status?: Database["public"]["Enums"]["food_verification_status"]
+          verified?: boolean
           verified_at?: string | null
           verified_by?: string | null
           version?: number
@@ -409,6 +415,7 @@ export type Database = {
           canonical_name?: string
           carbs_per_100g?: number
           category?: string
+          common_serving_label?: string | null
           confidence_score?: number
           country_code?: string
           created_at?: string
@@ -427,11 +434,13 @@ export type Database = {
           protein_per_100g?: number
           restaurant_id?: string | null
           sodium_mg_per_100g?: number | null
+          source?: string | null
           source_food_id?: string | null
           source_id?: string | null
           sugar_per_100g?: number | null
           updated_at?: string
           verification_status?: Database["public"]["Enums"]["food_verification_status"]
+          verified?: boolean
           verified_at?: string | null
           verified_by?: string | null
           version?: number
