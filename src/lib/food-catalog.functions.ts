@@ -121,6 +121,21 @@ export const searchFoods = createServerFn({ method: "POST" })
     const limit = data.limit;
     const hitsById = new Map<string, FoodSearchHit>();
 
+    // ---- barcode fast-path: 8-14 digits ----
+    if (/^\d{8,14}$/.test(q)) {
+      const bcRes = await (supa.from("food_records").select(FOOD_COLS) as unknown as {
+        eq: (a: string, b: unknown) => {
+          limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
+        };
+      }).eq("barcode", q).limit(5);
+      const rows = (bcRes.data ?? []) as RawFoodRow[];
+      for (const row of rows) hitsById.set(row.id, toHit(row, "exact", 2000));
+      if (hitsById.size > 0) {
+        const results = Array.from(hitsById.values()).slice(0, limit);
+        return { results, source: "local_catalog" as const };
+      }
+    }
+
     // ---- personal: recent + frequent from food_entries ----
     if (data.include_personal) {
       try {
@@ -173,7 +188,7 @@ export const searchFoods = createServerFn({ method: "POST" })
     if (q.length > 0) {
       // Exact match on canonical_name / display_name via lower().
       const like = q.replace(/[\\%_]/g, "\\$&");
-      const orFilter = `canonical_name.ilike.${like}%,display_name.ilike.${like}%,canonical_name.ilike.%${like}%,display_name.ilike.%${like}%`;
+      const orFilter = `canonical_name.ilike.${like}%,display_name.ilike.${like}%,brand_name.ilike.${like}%,canonical_name.ilike.%${like}%,display_name.ilike.%${like}%,brand_name.ilike.%${like}%`;
       const catRes = await (supa.from("food_records").select(FOOD_COLS) as unknown as {
         eq: (a: string, b: unknown) => {
           or: (s: string) => { limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }> };
@@ -187,10 +202,12 @@ export const searchFoods = createServerFn({ method: "POST" })
         if (hitsById.has(row.id)) continue;
         const dn = row.display_name.toLowerCase();
         const cn = row.canonical_name.toLowerCase();
+        const bn = (row.brand_name ?? "").toLowerCase();
         let kind: FoodSearchHit["match_kind"] = "partial";
         let score = 100;
         if (dn === q || cn === q) { kind = "exact"; score = 500; }
         else if (dn.startsWith(q) || cn.startsWith(q)) { kind = "prefix"; score = 300; }
+        else if (bn && (bn === q || bn.startsWith(q))) { kind = "prefix"; score = 260; }
         hitsById.set(row.id, toHit(row, kind, score));
       }
 
@@ -225,25 +242,90 @@ export const searchFoods = createServerFn({ method: "POST" })
       }
     }
 
-    // FUTURE: when hitsById is empty and query is non-trivial, delegate to an
-    // external nutrition API here (USDA FoodData Central, OpenFoodFacts, etc.)
-    // and materialize the response into food_records with source='<provider>'.
-    // Keep all callers going through this single function so the fallback is
-    // transparent to the log/search UI.
+    // Fallback: no local matches → try external commercial API stub. Anything
+    // returned is materialized into food_records with source='commercial_api'
+    // (verified=false) so future searches hit the local catalog.
+    if (hitsById.size === 0 && q.length >= 2) {
+      try {
+        const fetched = await lookupExternalNutrition(q);
+        if (fetched && fetched.length > 0) {
+          const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+          const admin = supabaseAdmin as unknown as {
+            from: (t: string) => {
+              upsert: (rows: unknown, opts: { onConflict: string }) => {
+                select: (c: string) => Promise<{ data: unknown[] | null; error: unknown }>;
+              };
+            };
+          };
+          const upRes = await admin
+            .from("food_records")
+            .upsert(fetched, { onConflict: "canonical_name" })
+            .select(FOOD_COLS);
+          const rows = (upRes.data ?? []) as RawFoodRow[];
+          for (const row of rows) hitsById.set(row.id, toHit(row, "partial", 50));
+        }
+      } catch {
+        // best-effort; caller still gets an empty result
+      }
+    }
 
+    // Rank: personal hits first (their score is already >= 1000), then by
+    // source_priority ascending, then by match score descending.
     const results = Array.from(hitsById.values())
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        const aPersonal = a.match_kind === "recent" || a.match_kind === "frequent";
+        const bPersonal = b.match_kind === "recent" || b.match_kind === "frequent";
+        if (aPersonal !== bPersonal) return aPersonal ? -1 : 1;
+        if (a.source_priority !== b.source_priority) return a.source_priority - b.source_priority;
+        return b.score - a.score;
+      })
       .slice(0, limit);
     return { results, source: "local_catalog" as const };
   });
+
+// ---------------- External nutrition API fallback (stub) ----------------
+
+/**
+ * Single swappable entry point for querying an external commercial nutrition
+ * API (Nutritionix / FatSecret / Edamam). Returns rows shaped for insertion
+ * into food_records. Wire an actual provider by reading e.g.
+ * process.env.NUTRITIONIX_APP_ID / _APP_KEY inside this handler. Returning
+ * an empty array means "no upstream hit"; throwing bubbles up as a search
+ * failure.
+ */
+export async function lookupExternalNutrition(
+  _query: string,
+): Promise<Array<{
+  canonical_name: string;
+  display_name: string;
+  category: string;
+  preparation_state: "raw" | "cooked" | "n_a";
+  source: "commercial_api";
+  calories_per_100g: number;
+  protein_per_100g: number;
+  carbs_per_100g: number;
+  fat_per_100g: number;
+  fiber_per_100g: number | null;
+  sodium_mg_per_100g: number | null;
+  default_serving_grams: number | null;
+  common_serving_label: string | null;
+  active: boolean;
+}>> {
+  // No provider wired yet. Add fetch(...) + normalization here later.
+  return [];
+}
 
 // ---------------- Bulk import ----------------
 
 const importRowSchema = z.object({
   name: z.string().trim().min(1).max(120),
   alt_names: z.array(z.string().trim().min(1).max(80)).default([]),
+  brand: z.string().trim().max(80).optional().nullable(),
+  barcode: z.string().trim().regex(/^\d{8,14}$/).optional().nullable(),
   category: z.string().trim().min(1).max(40),
-  source: z.string().trim().min(1).max(40).default("manual"),
+  source: z.enum([
+    "philfct", "manufacturer", "restaurant", "openfoodfacts", "commercial_api", "manual",
+  ]).default("manual"),
   per_100g_calories: z.coerce.number().min(0).max(1200),
   per_100g_protein_g: z.coerce.number().min(0).max(200).default(0),
   per_100g_carbs_g: z.coerce.number().min(0).max(200).default(0),
@@ -255,6 +337,7 @@ const importRowSchema = z.object({
   verified: z.union([z.boolean(), z.string()]).optional(),
   preparation_state: z.enum(["raw", "cooked", "n_a"]).default("n_a"),
   canonical_name: z.string().trim().min(1).max(120).optional(),
+  last_verified_date: z.string().trim().optional().nullable(),
 });
 
 export type BulkImportRow = z.input<typeof importRowSchema>;
@@ -280,7 +363,14 @@ function toBool(v: unknown): boolean {
 export const bulkImportFoods = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ rows: z.array(importRowSchema).min(1).max(1000) }).parse(input),
+    z
+      .object({
+        rows: z.array(importRowSchema).min(1).max(1000),
+        source_override: z
+          .enum(["philfct", "manufacturer", "restaurant", "openfoodfacts", "commercial_api", "manual"]) 
+          .optional(),
+      })
+      .parse(input),
   )
   .handler(async ({ data, context }) => {
     // Founder/admin only.
@@ -317,6 +407,9 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
       sodium_mg_per_100g: number | null;
       common_serving_label: string | null;
       source: string;
+      brand_name: string | null;
+      barcode: string | null;
+      last_verified_date: string | null;
       verified: boolean;
       active: boolean;
     };
@@ -324,6 +417,8 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
     const payload: Payload[] = data.rows.map((r) => {
       const prep = r.preparation_state;
       const cn = r.canonical_name ?? canonicalize(r.name, prep);
+      const src = data.source_override ?? r.source;
+      const autoVerified = src === "philfct" || src === "manufacturer" || src === "restaurant";
       return {
         canonical_name: cn,
         display_name: r.name,
@@ -337,8 +432,13 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
         fiber_per_100g: r.per_100g_fiber_g ?? null,
         sodium_mg_per_100g: r.per_100g_sodium_mg ?? null,
         common_serving_label: r.common_serving_label ?? null,
-        source: r.source,
-        verified: toBool(r.verified),
+        source: src,
+        brand_name: r.brand ?? null,
+        barcode: r.barcode ?? null,
+        last_verified_date: r.last_verified_date ?? null,
+        // If the caller explicitly passed verified, respect it; else let the
+        // DB trigger set it from the source tier.
+        verified: r.verified === undefined ? autoVerified : toBool(r.verified),
         active: true,
       };
     });
