@@ -160,23 +160,39 @@ function AuthPage() {
     const emailValue = email.trim();
     const passwordValue = password;
 
+    if (mode === "signup") logStep("signup_submit_clicked");
+
     if (!emailValue || !passwordValue) {
-      setFormError("Enter your email and password to continue.");
+      const msg = "Enter your email and password to continue.";
+      setFormError(msg);
+      if (mode === "signup") {
+        logStep(
+          "signup_validation_failed",
+          !emailValue && !passwordValue ? "missing_both" : !emailValue ? "missing_email" : "missing_password",
+          msg,
+        );
+      }
       return;
     }
     if (!emailValid) {
-      setFormError("Please enter a valid email address.");
+      const msg = "Please enter a valid email address.";
+      setFormError(msg);
+      if (mode === "signup") logStep("signup_validation_failed", "invalid_email_format", msg);
       return;
     }
 
     if (mode === "signup" && !passwordValid) {
-      setFormError("Password does not meet the requirements below.");
+      const msg = "Password does not meet the requirements below.";
+      setFormError(msg);
+      const failed = passwordChecks.filter((r) => !r.ok).map((r) => r.label).join(",");
+      logStep("signup_validation_failed", "password_requirements", failed);
       return;
     }
 
     setLoading(true);
     try {
       if (mode === "signup") {
+        logStep("signup_request_sent");
         const { data, error } = await supabase.auth.signUp({
           email: emailValue,
           password: passwordValue,
@@ -200,6 +216,9 @@ function AuthPage() {
           return;
         }
 
+        // No session returned and immediate sign-in failed → the account was
+        // created but email confirmation is required.
+        logStep("signup_email_verification_sent", null, signInError?.message ?? null);
         toast.success("Account created. Please sign in to continue.");
         setMode("signin");
       } else {
@@ -209,6 +228,16 @@ function AuthPage() {
       }
     } catch (err) {
       const message = friendlyAuthError(err);
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      const status =
+        typeof (err as { status?: unknown })?.status === "number"
+          ? String((err as { status: number }).status)
+          : typeof (err as { code?: unknown })?.code === "string"
+            ? (err as { code: string }).code
+            : "error";
+      if (mode === "signup") {
+        logStep("signup_request_error", status, rawMessage);
+      }
       setFormError(message);
       toast.error(message);
     } finally {
