@@ -981,6 +981,36 @@ export type Database = {
           },
         ]
       }
+      signup_funnel_events: {
+        Row: {
+          anonymous_session_id: string
+          created_at: string
+          detail: string | null
+          id: string
+          reason: string | null
+          step: string
+          user_id: string | null
+        }
+        Insert: {
+          anonymous_session_id: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+          reason?: string | null
+          step: string
+          user_id?: string | null
+        }
+        Update: {
+          anonymous_session_id?: string
+          created_at?: string
+          detail?: string | null
+          id?: string
+          reason?: string | null
+          step?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1100,6 +1130,15 @@ export type Database = {
           _anonymous_session_id: string
           _event_name: string
           _event_properties: Json
+        }
+        Returns: undefined
+      }
+      log_signup_funnel_event: {
+        Args: {
+          _anonymous_session_id: string
+          _detail: string
+          _reason: string
+          _step: string
         }
         Returns: undefined
       }
