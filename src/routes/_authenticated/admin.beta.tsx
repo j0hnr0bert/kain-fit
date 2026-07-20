@@ -460,10 +460,90 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Authentication Diagnostics
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Sanitized `auth_attempt_completed` events from the last 7 days. No passwords or tokens are stored.
+              </p>
+              {!authDiag ? (
+                <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+              ) : (
+                <>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="text-muted-foreground">
+                        <tr className="text-left">
+                          <th className="py-1 pr-3">Provider</th>
+                          <th className="py-1 pr-3">Attempts</th>
+                          <th className="py-1 pr-3">Success</th>
+                          <th className="py-1 pr-3">Success rate</th>
+                          <th className="py-1 pr-3">p50</th>
+                          <th className="py-1 pr-3">p95</th>
+                          <th className="py-1 pr-3">Top errors</th>
+                          <th className="py-1 pr-3">422 breakdown</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {authDiag.byProvider
+                          .filter((r) => r.attempts > 0)
+                          .map((r) => (
+                            <tr key={r.provider} className="border-t border-border/50">
+                              <td className="py-1 pr-3 font-medium capitalize">{r.provider}</td>
+                              <td className="py-1 pr-3">{r.attempts}</td>
+                              <td className="py-1 pr-3">{r.successes}</td>
+                              <td className="py-1 pr-3">{Math.round(r.successRate * 100)}%</td>
+                              <td className="py-1 pr-3">{r.p50Ms} ms</td>
+                              <td className="py-1 pr-3">{r.p95Ms} ms</td>
+                              <td className="py-1 pr-3">
+                                {r.topErrors.length === 0
+                                  ? "—"
+                                  : r.topErrors.map((e) => `${e.code} (${e.count})`).join(", ")}
+                              </td>
+                              <td className="py-1 pr-3">
+                                {r.status422.length === 0
+                                  ? "—"
+                                  : r.status422.map((e) => `${e.code} (${e.count})`).join(", ")}
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {authDiag.recentFailures.length > 0 && (
+                    <div className="mt-4">
+                      <h3 className="text-xs font-semibold text-muted-foreground">Recent failures</h3>
+                      <div className="mt-2 space-y-1 max-h-64 overflow-y-auto pr-2 text-xs">
+                        {authDiag.recentFailures.map((f, i) => (
+                          <div key={i} className="rounded border border-border/50 p-2">
+                            <div className="flex flex-wrap justify-between gap-2">
+                              <span className="font-medium capitalize">
+                                {f.provider} · {f.operation}
+                              </span>
+                              <span className="text-muted-foreground">
+                                {new Date(f.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-muted-foreground">
+                              <span className="font-mono">{f.error_code}</span>
+                              {f.status ? <> · status {String(f.status)}</> : null} · {f.platform}
+                            </div>
+                            {f.reason && (
+                              <div className="mt-1 text-muted-foreground break-words">{f.reason}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Performance
               </h2>
 
-            {/* placeholder anchor for auth diagnostics section — replaced below */}
               <p className="mt-1 text-xs text-muted-foreground">
                 End-to-end parse latency measured client-side. AI stage measured server-side.
               </p>
