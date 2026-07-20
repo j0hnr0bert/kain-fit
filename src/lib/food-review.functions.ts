@@ -5,6 +5,14 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [k: string]: JsonValue };
+
 async function ensureAdmin(ctx: { supabase: unknown; userId: string }): Promise<void> {
   const supa = ctx.supabase as {
     from: (t: string) => {
@@ -29,7 +37,7 @@ type PendingSubmission = {
   brand: string | null;
   barcode: string | null;
   serving_size: string | null;
-  extracted_values: Record<string, unknown> | null;
+  extracted_values: JsonValue | null;
   review_status: string;
   created_at: string;
 };
@@ -37,8 +45,8 @@ type PendingSubmission = {
 type PendingRevision = {
   id: string;
   food_record_id: string;
-  previous_values: Record<string, unknown> | null;
-  proposed_values: Record<string, unknown> | null;
+  previous_values: JsonValue | null;
+  proposed_values: JsonValue | null;
   change_reason: string | null;
   review_status: string;
   created_at: string;
@@ -169,7 +177,7 @@ export const reviewFoodRevision = createServerFn({ method: "POST" })
         select: (c: string) => {
           eq: (a: string, b: string) => {
             maybeSingle: () => Promise<{
-              data: { food_record_id: string; proposed_values: Record<string, unknown> | null } | null;
+              data: { food_record_id: string; proposed_values: JsonValue | null } | null;
               error: unknown;
             }>;
           };
@@ -193,7 +201,7 @@ export const reviewFoodRevision = createServerFn({ method: "POST" })
       const proposed = rev.data.proposed_values ?? {};
       const patch: Record<string, unknown> = {};
       for (const key of REVISION_ALLOWED_FIELDS) {
-        const v = (proposed as Record<string, unknown>)[key];
+        const v = (proposed as Record<string, JsonValue>)[key];
         if (typeof v === "number" && Number.isFinite(v) && v >= 0) patch[key] = v;
       }
       if (Object.keys(patch).length > 0) {
