@@ -234,6 +234,114 @@ export const submitFeedback = createServerFn({ method: "POST" })
   });
 
 // ============================================================
+// Signup funnel logging (public — anonymous or authenticated)
+// ============================================================
+
+const SIGNUP_STEPS = [
+  "signup_form_viewed",
+  "signup_email_entered",
+  "signup_password_entered",
+  "signup_submit_clicked",
+  "signup_validation_failed",
+  "signup_request_sent",
+  "signup_request_error",
+  "signup_email_verification_sent",
+  "signup_completed",
+] as const;
+
+const signupFunnelSchema = z.object({
+  step: z.enum(SIGNUP_STEPS),
+  anonymous_session_id: z.string().min(1).max(128),
+  reason: z.string().max(64).nullable().optional(),
+  detail: z.string().max(500).nullable().optional(),
+});
+
+export const logSignupFunnelEvent = createServerFn({ method: "POST" })
+  .inputValidator((d: unknown) => signupFunnelSchema.parse(d))
+  .handler(async ({ data }) => {
+    try {
+      const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+      const admin = supabaseAdmin as unknown as {
+        rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+      };
+      await admin.rpc("log_signup_funnel_event", {
+        _step: data.step,
+        _anonymous_session_id: data.anonymous_session_id,
+        _reason: data.reason ?? null,
+        _detail: data.detail ?? null,
+      });
+    } catch (err) {
+      console.error("[logSignupFunnelEvent]", err);
+    }
+    return { ok: true };
+  });
+
+export const getSignupFunnel = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await ensureAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as unknown as {
+      from: (t: string) => {
+        select: (c: string) => Promise<{ data: unknown[] | null; error: unknown }>;
+      };
+    };
+    const { data } = await admin
+      .from("signup_funnel_events")
+      .select("step,reason,detail,anonymous_session_id,created_at");
+    const rows = (data ?? []) as Array<{
+      step: string;
+      reason: string | null;
+      detail: string | null;
+      anonymous_session_id: string;
+      created_at: string;
+    }>;
+
+    // Count unique sessions per step (so a session that fires the same
+    // step twice — e.g. refocuses the email field — counts once).
+    const bySessions = new Map<string, Set<string>>();
+    for (const step of SIGNUP_STEPS) bySessions.set(step, new Set());
+    for (const r of rows) {
+      const set = bySessions.get(r.step);
+      if (set) set.add(r.anonymous_session_id);
+    }
+    const steps = SIGNUP_STEPS.map((step) => ({
+      step,
+      sessions: bySessions.get(step)!.size,
+      events: rows.filter((r) => r.step === step).length,
+    }));
+
+    // Validation failure breakdown by reason.
+    const validationReasons = new Map<string, number>();
+    const recentErrors: Array<{ created_at: string; reason: string | null; detail: string | null }> = [];
+    for (const r of rows) {
+      if (r.step === "signup_validation_failed") {
+        const key = r.reason ?? "unknown";
+        validationReasons.set(key, (validationReasons.get(key) ?? 0) + 1);
+      }
+      if (r.step === "signup_request_error") {
+        recentErrors.push({ created_at: r.created_at, reason: r.reason, detail: r.detail });
+      }
+    }
+    recentErrors.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
+
+    // Request-error breakdown (by reason code / status).
+    const requestErrorReasons = new Map<string, number>();
+    for (const e of recentErrors) {
+      const key = e.reason ?? "unknown";
+      requestErrorReasons.set(key, (requestErrorReasons.get(key) ?? 0) + 1);
+    }
+
+    return {
+      steps,
+      validationReasons: Object.fromEntries(validationReasons),
+      requestErrorReasons: Object.fromEntries(requestErrorReasons),
+      recentErrors: recentErrors.slice(0, 20),
+      totalEvents: rows.length,
+    };
+  });
+
+// ============================================================
 // Admin metrics
 // ============================================================
 
