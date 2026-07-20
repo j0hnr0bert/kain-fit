@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBetaMetrics, exportBetaCsv, getDemoUsage } from "@/lib/beta.functions";
 import { getOpsSnapshot, updateOpsSetting, warmFoodParseCache } from "@/lib/ops.functions";
+import {
+  listFoodReviewQueue,
+  reviewFoodSubmission,
+  reviewFoodRevision,
+} from "@/lib/food-review.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +31,10 @@ function AdminBetaPage() {
   const setOps = useServerFn(updateOpsSetting);
   const warmCache = useServerFn(warmFoodParseCache);
   const [warming, setWarming] = useState(false);
+  const fetchReviewQueue = useServerFn(listFoodReviewQueue);
+  const decideSubmission = useServerFn(reviewFoodSubmission);
+  const decideRevision = useServerFn(reviewFoodRevision);
+  const [pendingDecision, setPendingDecision] = useState<string | null>(null);
 
   async function runWarm() {
     if (warming) return;
@@ -62,6 +71,32 @@ function AdminBetaPage() {
     retry: false,
     refetchInterval: 5_000,
   });
+
+  const { data: reviewQueue } = useQuery({
+    queryKey: ["food-review-queue"],
+    queryFn: () => fetchReviewQueue(),
+    retry: false,
+  });
+
+  async function decide(
+    kind: "submission" | "revision",
+    id: string,
+    action: "approve" | "reject",
+  ) {
+    const key = `${kind}:${id}:${action}`;
+    if (pendingDecision) return;
+    setPendingDecision(key);
+    try {
+      if (kind === "submission") await decideSubmission({ data: { id, action } });
+      else await decideRevision({ data: { id, action } });
+      await qc.invalidateQueries({ queryKey: ["food-review-queue"] });
+      toast.success(`${kind} ${action}d`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Review failed");
+    } finally {
+      setPendingDecision(null);
+    }
+  }
 
   const [bannerDraft, setBannerDraft] = useState<string>("");
   const [allowanceDraft, setAllowanceDraft] = useState<string>("");
@@ -622,6 +657,129 @@ function AdminBetaPage() {
                   </div>
                 </>
               )}
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Food review queue
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                User-submitted branded products and proposed edits to verified records. Approving a
+                revision applies whitelisted per-100g fields and busts the resolver cache.
+              </p>
+
+              <h3 className="mt-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Pending submissions ({reviewQueue?.submissions.length ?? 0})
+              </h3>
+              <div className="mt-2 space-y-2">
+                {(reviewQueue?.submissions ?? []).length === 0 && (
+                  <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+                    Nothing waiting.
+                  </div>
+                )}
+                {reviewQueue?.submissions.map((s) => (
+                  <div key={s.id} className="rounded-2xl border border-border bg-card p-3 text-sm">
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>{new Date(s.created_at).toLocaleString()}</span>
+                      {s.barcode && <span className="font-mono">#{s.barcode}</span>}
+                      <span>status: {s.review_status}</span>
+                    </div>
+                    <div className="mt-1 font-medium">
+                      {s.brand ? `${s.brand} — ` : ""}
+                      {s.product_name ?? "(unnamed)"}
+                    </div>
+                    {s.serving_size && (
+                      <div className="text-xs text-muted-foreground">Serving: {s.serving_size}</div>
+                    )}
+                    {s.extracted_values && (
+                      <pre className="mt-1 max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[11px]">
+                        {JSON.stringify(s.extracted_values, null, 2)}
+                      </pre>
+                    )}
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => decide("submission", s.id, "approve")}
+                        disabled={pendingDecision !== null}
+                        className="rounded-xl"
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => decide("submission", s.id, "reject")}
+                        disabled={pendingDecision !== null}
+                        className="rounded-xl"
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <h3 className="mt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Pending revisions ({reviewQueue?.revisions.length ?? 0})
+              </h3>
+              <div className="mt-2 space-y-2">
+                {(reviewQueue?.revisions ?? []).length === 0 && (
+                  <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+                    Nothing waiting.
+                  </div>
+                )}
+                {reviewQueue?.revisions.map((r) => (
+                  <div key={r.id} className="rounded-2xl border border-border bg-card p-3 text-sm">
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>{new Date(r.created_at).toLocaleString()}</span>
+                      <span>status: {r.review_status}</span>
+                    </div>
+                    <div className="mt-1 font-medium">
+                      {r.food_display_name ?? r.food_record_id}
+                    </div>
+                    {r.change_reason && (
+                      <p className="mt-1 text-xs text-muted-foreground">{r.change_reason}</p>
+                    )}
+                    <div className="mt-1 grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Previous
+                        </div>
+                        <pre className="max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[11px]">
+                          {JSON.stringify(r.previous_values ?? {}, null, 2)}
+                        </pre>
+                      </div>
+                      <div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                          Proposed
+                        </div>
+                        <pre className="max-h-32 overflow-auto rounded bg-muted/40 p-2 text-[11px]">
+                          {JSON.stringify(r.proposed_values ?? {}, null, 2)}
+                        </pre>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => decide("revision", r.id, "approve")}
+                        disabled={pendingDecision !== null}
+                        className="rounded-xl"
+                      >
+                        Approve & apply
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => decide("revision", r.id, "reject")}
+                        disabled={pendingDecision !== null}
+                        className="rounded-xl"
+                      >
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </section>
 
             <section className="mt-8">
