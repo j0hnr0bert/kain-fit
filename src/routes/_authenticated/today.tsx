@@ -32,6 +32,7 @@ import { mark, elapsed } from "@/lib/perf";
 import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
+import { QuickLogRail } from "@/components/QuickLogRail";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
 import {
