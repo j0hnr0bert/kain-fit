@@ -111,27 +111,17 @@ export const searchFoods = createServerFn({ method: "POST" })
 
     // ---- personal: recent + frequent from food_entries ----
     if (data.include_personal) {
-      // recent
-      const anySupa = supa as unknown as {
-        from: (t: string) => {
-          select: (c: string) => {
-            eq: (a: string, b: unknown) => {
-              order?: (a: string, o: { ascending: boolean }) => {
-                limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
-              };
-              limit?: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
+      try {
+        const recentBuilder = (supa.from("food_entries").select("display_name, normalized_name, quantity, created_at") as unknown as {
+          eq: (a: string, b: unknown) => {
+            order: (a: string, o: { ascending: boolean }) => {
+              limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
             };
           };
-        };
-      };
-      try {
-        const recentRes = await anySupa
-          .from("food_entries")
-          .select("display_name, normalized_name, quantity, created_at")
+        })
           .eq("user_id", context.userId)
-          // @ts-expect-error runtime supabase chain
-          .order("created_at", { ascending: false })
-          .limit(80);
+          .order("created_at", { ascending: false });
+        const recentRes = await recentBuilder.limit(80);
         const recent = (recentRes.data ?? []) as Array<{ display_name: string; normalized_name: string | null }>;
         // dedupe by normalized_name preserving order
         const seen = new Set<string>();
