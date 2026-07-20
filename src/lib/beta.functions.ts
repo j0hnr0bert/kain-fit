@@ -34,6 +34,12 @@ const ALLOWED_EVENTS = [
   "ai_call_timing",
   "route_load_timing",
   "error_boundary",
+  "food_search_started",
+  "food_search_results_shown",
+  "food_calculation_started",
+  "food_calculation_completed",
+  "food_log_saved",
+  "performance_error",
 ] as const;
 
 const eventSchema = z.object({
