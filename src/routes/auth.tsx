@@ -371,7 +371,10 @@ function AuthPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  onBlur={() => setEmailTouched(true)}
+                  onBlur={() => {
+                    setEmailTouched(true);
+                    if (mode === "signup" && email.trim().length > 0) logStep("signup_email_entered");
+                  }}
                   aria-invalid={showEmailError || undefined}
                   aria-describedby={showEmailError ? "email-error" : undefined}
                   className="h-12 rounded-xl"
@@ -393,7 +396,10 @@ function AuthPage() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    onBlur={() => setPasswordTouched(true)}
+                    onBlur={() => {
+                      setPasswordTouched(true);
+                      if (mode === "signup" && password.length > 0) logStep("signup_password_entered");
+                    }}
                     aria-invalid={mode === "signup" && passwordTouched && !passwordValid ? true : undefined}
                     aria-describedby={mode === "signup" ? "password-requirements" : undefined}
                     className="h-12 rounded-xl pr-12"
