@@ -730,7 +730,6 @@ function signInWithOAuthPopup(provider: OAuthProvider, redirectUri: string): Pro
       if (settled) return;
       settled = true;
       window.clearInterval(closedInterval);
-      window.clearTimeout(waitingTimeout);
       window.removeEventListener("message", onMessage);
       popup.close();
       resolve(result);
@@ -766,8 +765,5 @@ function signInWithOAuthPopup(provider: OAuthProvider, redirectUri: string): Pro
     const closedInterval = window.setInterval(() => {
       if (popup.closed) finish({ error: new Error("Sign in was cancelled") });
     }, 500);
-    const waitingTimeout = window.setTimeout(() => {
-      toast.message("Finish sign-in in the window that opened.");
-    }, 8000);
   });
 }
