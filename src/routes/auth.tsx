@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Eye, EyeOff, Phone, Loader2 } from "lucide-react";
 import { track } from "@/lib/analytics";
+import { logSignupFunnelEvent } from "@/lib/beta.functions";
+import { useServerFn } from "@tanstack/react-start";
 
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional().default("signup"),
@@ -36,6 +38,44 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<null | "google" | "apple">(null);
   const [formError, setFormError] = useState("");
+  const logFunnel = useServerFn(logSignupFunnelEvent);
+
+  function funnelSessionId(): string {
+    if (typeof window === "undefined") return "";
+    try {
+      let sid = localStorage.getItem("kf.sid");
+      if (!sid) {
+        sid =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem("kf.sid", sid);
+      }
+      return sid;
+    } catch {
+      return "";
+    }
+  }
+
+  function logStep(step:
+    | "signup_form_viewed"
+    | "signup_email_entered"
+    | "signup_password_entered"
+    | "signup_submit_clicked"
+    | "signup_validation_failed"
+    | "signup_request_sent"
+    | "signup_request_error"
+    | "signup_email_verification_sent"
+    | "signup_completed",
+    reason?: string | null,
+    detail?: string | null,
+  ) {
+    const sid = funnelSessionId();
+    if (!sid) return;
+    void logFunnel({
+      data: { step, anonymous_session_id: sid, reason: reason ?? null, detail: detail ?? null },
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -44,7 +84,11 @@ function AuthPage() {
   }, [navigate]);
 
   useEffect(() => {
-    if (mode === "signup") track("signup_started", {});
+    if (mode === "signup") {
+      track("signup_started", {});
+      logStep("signup_form_viewed");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   const passwordChecks = useMemo(() => checkPassword(password), [password]);
@@ -81,6 +125,7 @@ function AuthPage() {
     await supabase.from("profiles").update({ onboarded: true }).eq("user_id", data.user.id);
 
     if (isNewAccount) track("signup_completed", {});
+    if (isNewAccount) logStep("signup_completed");
     navigate({ to: "/today", replace: true });
   }
 
