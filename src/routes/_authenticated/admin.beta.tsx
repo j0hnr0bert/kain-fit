@@ -9,6 +9,7 @@ import {
   reviewFoodSubmission,
   reviewFoodRevision,
 } from "@/lib/food-review.functions";
+import { bulkImportFoods, parseCsv, mapCsvRows, type BulkImportRow } from "@/lib/food-catalog.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -35,6 +36,52 @@ function AdminBetaPage() {
   const decideSubmission = useServerFn(reviewFoodSubmission);
   const decideRevision = useServerFn(reviewFoodRevision);
   const [pendingDecision, setPendingDecision] = useState<string | null>(null);
+  const importFoods = useServerFn(bulkImportFoods);
+  const [csvRows, setCsvRows] = useState<BulkImportRow[]>([]);
+  const [csvErrors, setCsvErrors] = useState<Array<{ line: number; reason: string }>>([]);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<string | null>(null);
+
+  async function onCsvFile(file: File) {
+    const text = await file.text();
+    const records = parseCsv(text);
+    const mapped = mapCsvRows(records);
+    setCsvRows(mapped.rows);
+    setCsvErrors(mapped.errors);
+    setImportResult(null);
+    if (mapped.rows.length === 0 && mapped.errors.length === 0) {
+      toast.error("CSV contained no valid rows");
+    } else {
+      toast.success(`Parsed ${mapped.rows.length} row(s), ${mapped.errors.length} error(s)`);
+    }
+  }
+
+  async function runImport() {
+    if (csvRows.length === 0 || importing) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      // Chunk to stay under the 1000-row server-side cap and keep responses snappy.
+      const CHUNK = 200;
+      let imported = 0;
+      let aliases = 0;
+      for (let i = 0; i < csvRows.length; i += CHUNK) {
+        const slice = csvRows.slice(i, i + CHUNK);
+        const r = await importFoods({ data: { rows: slice } });
+        imported += r.imported;
+        aliases += r.aliases;
+      }
+      setImportResult(`Imported/updated ${imported} food record(s) and ${aliases} alias(es).`);
+      toast.success(`Imported ${imported} foods`);
+      setCsvRows([]);
+      setCsvErrors([]);
+      await qc.invalidateQueries({ queryKey: ["beta-metrics"] });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function runWarm() {
     if (warming) return;
