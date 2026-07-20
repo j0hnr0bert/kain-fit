@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getBetaMetrics, exportBetaCsv, getDemoUsage } from "@/lib/beta.functions";
+import { getBetaMetrics, exportBetaCsv, getDemoUsage, getSignupFunnel } from "@/lib/beta.functions";
 import { getOpsSnapshot, updateOpsSetting, warmFoodParseCache } from "@/lib/ops.functions";
 import {
   listFoodReviewQueue,
@@ -28,6 +28,7 @@ function AdminBetaPage() {
   const fetchMetrics = useServerFn(getBetaMetrics);
   const exportFn = useServerFn(exportBetaCsv);
   const fetchDemoUsage = useServerFn(getDemoUsage);
+  const fetchSignupFunnel = useServerFn(getSignupFunnel);
   const fetchOps = useServerFn(getOpsSnapshot);
   const setOps = useServerFn(updateOpsSetting);
   const warmCache = useServerFn(warmFoodParseCache);
@@ -113,6 +114,13 @@ function AdminBetaPage() {
     queryKey: ["beta-demo-usage"],
     queryFn: () => fetchDemoUsage(),
     retry: false,
+  });
+
+  const { data: signupFunnel } = useQuery({
+    queryKey: ["signup-funnel"],
+    queryFn: () => fetchSignupFunnel(),
+    retry: false,
+    refetchInterval: 15000,
   });
 
   const { data: ops } = useQuery({
@@ -340,6 +348,107 @@ function AdminBetaPage() {
               <Metric label="Day-7 returning" value={data.day7Return} />
               <Metric label="Avg entries / active" value={data.avgConfirmedPerActiveUser} />
             </div>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Signup funnel (email/password)
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Unique sessions that reached each step. Drop-off between rows is where people abandon.
+              </p>
+              {!signupFunnel ? (
+                <div className="mt-3 text-sm text-muted-foreground">Loading funnel…</div>
+              ) : (
+                <>
+                  <div className="mt-3 rounded-2xl border border-border bg-card divide-y divide-border">
+                    {signupFunnel.steps.map((s, i) => {
+                      const top = signupFunnel.steps[0]?.sessions ?? 0;
+                      const prev = i > 0 ? signupFunnel.steps[i - 1].sessions : s.sessions;
+                      const pctTop = top ? Math.round((s.sessions / top) * 100) : 0;
+                      const drop = prev - s.sessions;
+                      return (
+                        <div key={s.step} className="flex items-center justify-between p-3 text-sm">
+                          <div className="flex items-center gap-3">
+                            <span className="tabular-nums text-muted-foreground w-6">{i + 1}.</span>
+                            <span className="font-medium">{s.step.replace(/_/g, " ")}</span>
+                          </div>
+                          <div className="flex items-center gap-4 tabular-nums">
+                            <span className="text-muted-foreground text-xs">{pctTop}% of top</span>
+                            {i > 0 && drop > 0 && (
+                              <span className="text-destructive text-xs">−{drop}</span>
+                            )}
+                            <span className="font-semibold">{s.sessions}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Validation failure reasons
+                      </h3>
+                      <div className="mt-2 rounded-2xl border border-border bg-card divide-y divide-border">
+                        {Object.entries(signupFunnel.validationReasons).length === 0 && (
+                          <div className="p-3 text-sm text-muted-foreground">None recorded.</div>
+                        )}
+                        {Object.entries(signupFunnel.validationReasons)
+                          .sort((a, b) => (b[1] as number) - (a[1] as number))
+                          .map(([reason, count]) => (
+                            <div key={reason} className="flex items-center justify-between p-3 text-sm">
+                              <span className="font-mono text-xs">{reason}</span>
+                              <span className="tabular-nums text-muted-foreground">{count as number}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Backend error reasons
+                      </h3>
+                      <div className="mt-2 rounded-2xl border border-border bg-card divide-y divide-border">
+                        {Object.entries(signupFunnel.requestErrorReasons).length === 0 && (
+                          <div className="p-3 text-sm text-muted-foreground">None recorded.</div>
+                        )}
+                        {Object.entries(signupFunnel.requestErrorReasons)
+                          .sort((a, b) => (b[1] as number) - (a[1] as number))
+                          .map(([reason, count]) => (
+                            <div key={reason} className="flex items-center justify-between p-3 text-sm">
+                              <span className="font-mono text-xs">{reason}</span>
+                              <span className="tabular-nums text-muted-foreground">{count as number}</span>
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {signupFunnel.recentErrors.length > 0 && (
+                    <div className="mt-4">
+                      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                        Recent backend errors
+                      </h3>
+                      <div className="mt-2 rounded-2xl border border-border bg-card divide-y divide-border">
+                        {signupFunnel.recentErrors.slice(0, 10).map((e, i) => (
+                          <div key={i} className="p-3 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono">{e.reason ?? "unknown"}</span>
+                              <span className="text-muted-foreground">
+                                {new Date(e.created_at).toLocaleString()}
+                              </span>
+                            </div>
+                            {e.detail && (
+                              <div className="mt-1 text-muted-foreground break-words">{e.detail}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </section>
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">

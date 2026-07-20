@@ -9,6 +9,8 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { ArrowLeft, Check, Eye, EyeOff, Phone, Loader2 } from "lucide-react";
 import { track } from "@/lib/analytics";
+import { logSignupFunnelEvent } from "@/lib/beta.functions";
+import { useServerFn } from "@tanstack/react-start";
 
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional().default("signup"),
@@ -36,6 +38,44 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<null | "google" | "apple">(null);
   const [formError, setFormError] = useState("");
+  const logFunnel = useServerFn(logSignupFunnelEvent);
+
+  function funnelSessionId(): string {
+    if (typeof window === "undefined") return "";
+    try {
+      let sid = localStorage.getItem("kf.sid");
+      if (!sid) {
+        sid =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `s-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem("kf.sid", sid);
+      }
+      return sid;
+    } catch {
+      return "";
+    }
+  }
+
+  function logStep(step:
+    | "signup_form_viewed"
+    | "signup_email_entered"
+    | "signup_password_entered"
+    | "signup_submit_clicked"
+    | "signup_validation_failed"
+    | "signup_request_sent"
+    | "signup_request_error"
+    | "signup_email_verification_sent"
+    | "signup_completed",
+    reason?: string | null,
+    detail?: string | null,
+  ) {
+    const sid = funnelSessionId();
+    if (!sid) return;
+    void logFunnel({
+      data: { step, anonymous_session_id: sid, reason: reason ?? null, detail: detail ?? null },
+    }).catch(() => {});
+  }
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -44,7 +84,11 @@ function AuthPage() {
   }, [navigate]);
 
   useEffect(() => {
-    if (mode === "signup") track("signup_started", {});
+    if (mode === "signup") {
+      track("signup_started", {});
+      logStep("signup_form_viewed");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
   const passwordChecks = useMemo(() => checkPassword(password), [password]);
@@ -81,6 +125,7 @@ function AuthPage() {
     await supabase.from("profiles").update({ onboarded: true }).eq("user_id", data.user.id);
 
     if (isNewAccount) track("signup_completed", {});
+    if (isNewAccount) logStep("signup_completed");
     navigate({ to: "/today", replace: true });
   }
 
@@ -115,23 +160,39 @@ function AuthPage() {
     const emailValue = email.trim();
     const passwordValue = password;
 
+    if (mode === "signup") logStep("signup_submit_clicked");
+
     if (!emailValue || !passwordValue) {
-      setFormError("Enter your email and password to continue.");
+      const msg = "Enter your email and password to continue.";
+      setFormError(msg);
+      if (mode === "signup") {
+        logStep(
+          "signup_validation_failed",
+          !emailValue && !passwordValue ? "missing_both" : !emailValue ? "missing_email" : "missing_password",
+          msg,
+        );
+      }
       return;
     }
     if (!emailValid) {
-      setFormError("Please enter a valid email address.");
+      const msg = "Please enter a valid email address.";
+      setFormError(msg);
+      if (mode === "signup") logStep("signup_validation_failed", "invalid_email_format", msg);
       return;
     }
 
     if (mode === "signup" && !passwordValid) {
-      setFormError("Password does not meet the requirements below.");
+      const msg = "Password does not meet the requirements below.";
+      setFormError(msg);
+      const failed = passwordChecks.filter((r) => !r.ok).map((r) => r.label).join(",");
+      logStep("signup_validation_failed", "password_requirements", failed);
       return;
     }
 
     setLoading(true);
     try {
       if (mode === "signup") {
+        logStep("signup_request_sent");
         const { data, error } = await supabase.auth.signUp({
           email: emailValue,
           password: passwordValue,
@@ -155,6 +216,9 @@ function AuthPage() {
           return;
         }
 
+        // No session returned and immediate sign-in failed → the account was
+        // created but email confirmation is required.
+        logStep("signup_email_verification_sent", null, signInError?.message ?? null);
         toast.success("Account created. Please sign in to continue.");
         setMode("signin");
       } else {
@@ -164,6 +228,16 @@ function AuthPage() {
       }
     } catch (err) {
       const message = friendlyAuthError(err);
+      const rawMessage = err instanceof Error ? err.message : String(err);
+      const status =
+        typeof (err as { status?: unknown })?.status === "number"
+          ? String((err as { status: number }).status)
+          : typeof (err as { code?: unknown })?.code === "string"
+            ? (err as { code: string }).code
+            : "error";
+      if (mode === "signup") {
+        logStep("signup_request_error", status, rawMessage);
+      }
       setFormError(message);
       toast.error(message);
     } finally {
@@ -297,7 +371,10 @@ function AuthPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  onBlur={() => setEmailTouched(true)}
+                  onBlur={() => {
+                    setEmailTouched(true);
+                    if (mode === "signup" && email.trim().length > 0) logStep("signup_email_entered");
+                  }}
                   aria-invalid={showEmailError || undefined}
                   aria-describedby={showEmailError ? "email-error" : undefined}
                   className="h-12 rounded-xl"
@@ -319,7 +396,10 @@ function AuthPage() {
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    onBlur={() => setPasswordTouched(true)}
+                    onBlur={() => {
+                      setPasswordTouched(true);
+                      if (mode === "signup" && password.length > 0) logStep("signup_password_entered");
+                    }}
                     aria-invalid={mode === "signup" && passwordTouched && !passwordValid ? true : undefined}
                     aria-describedby={mode === "signup" ? "password-requirements" : undefined}
                     className="h-12 rounded-xl pr-12"
