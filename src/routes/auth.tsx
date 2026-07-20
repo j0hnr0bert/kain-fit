@@ -810,46 +810,6 @@ function GoogleIcon({ className }: { className?: string }) {
   );
 }
 
-function friendlyAuthError(err: unknown) {
-  const message = err instanceof Error ? err.message : "Something went wrong";
-  const lower = message.toLowerCase();
-
-  if (lower.includes("weak_password") || lower.includes("password")) {
-    return "Use a stronger password that has not appeared in a data breach.";
-  }
-  if (lower.includes("invalid login credentials")) {
-    return "Email or password is incorrect.";
-  }
-  if (lower.includes("already registered") || lower.includes("already been registered")) {
-    return "This email already has an account. Sign in instead.";
-  }
-  if (lower.includes("unsupported phone provider") || lower.includes("phone provider")) {
-    return "Phone OTP is not active yet. Please use email, Google, or Apple for now.";
-  }
-  if (lower.includes("email not confirmed")) {
-    return "Please confirm your email first, then sign in.";
-  }
-
-  return message;
-}
-
-function friendlyOAuthError(message: string) {
-  const lower = message.toLowerCase();
-  if (lower.includes("popup") || lower.includes("blocked")) {
-    return "Allow the sign-in window, then try again.";
-  }
-  if (lower.includes("cancelled") || lower.includes("canceled")) {
-    return "Sign-in was cancelled. Try again when you're ready.";
-  }
-  if (lower.includes("preview mode") || lower.includes("new tab")) {
-    return "Open the preview in a new tab to finish social sign-in.";
-  }
-  if (lower.includes("unsupported") || lower.includes("provider")) {
-    return "This sign-in option is temporarily unavailable — try email instead.";
-  }
-  return message || "Sign-in is temporarily unavailable — try email instead.";
-}
-
 type OAuthProvider = "google" | "apple";
 type OAuthPopupResult =
   | { error: Error; redirected?: false; tokens?: never }
