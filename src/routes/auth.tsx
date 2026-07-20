@@ -140,43 +140,47 @@ function AuthPage() {
     logStep(provider === "google" ? "oauth_google_started" : "oauth_apple_started");
     const failStep = provider === "google" ? "oauth_google_failed" : "oauth_apple_failed";
     const unavailableMsg = "Sign-in is temporarily unavailable — try email instead.";
-    let settled = false;
-    const timeoutId = window.setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      logStep(failStep, "timeout", "no completion within 8s");
-      setFormError(unavailableMsg);
-      toast.error(unavailableMsg);
+    let completed = false;
+    const reminderId = window.setTimeout(() => {
+      if (completed) return;
+      const msg = "Finish sign-in in the window that opened. If nothing opened, allow pop-ups and try again.";
+      logStep(failStep, "still_waiting_after_8s", msg);
+      setFormError(msg);
+      toast.message(msg);
       setOauthLoading(null);
     }, 8000);
     try {
-      const result = await lovable.auth.signInWithOAuth(provider, {
-        redirect_uri: window.location.origin,
-      });
-      if (settled) return;
+      const result = isEmbeddedLovableShell()
+        ? await signInWithOAuthPopup(provider, window.location.origin)
+        : await lovable.auth.signInWithOAuth(provider, {
+            redirect_uri: window.location.origin,
+          });
+      completed = true;
+      window.clearTimeout(reminderId);
       if (result.error) {
-        settled = true;
-        window.clearTimeout(timeoutId);
-        const msg = result.error.message ?? unavailableMsg;
-        logStep(failStep, "provider_error", msg);
+        const rawMessage = result.error.message ?? unavailableMsg;
+        const msg = friendlyOAuthError(rawMessage);
+        logStep(failStep, "provider_error", rawMessage);
         setFormError(msg);
         toast.error(msg);
         setOauthLoading(null);
         return;
       }
       if (result.redirected) {
-        // Browser will navigate away; keep timeout so a hung redirect still surfaces.
+        // Browser is navigating to the managed OAuth broker.
         return;
       }
-      settled = true;
-      window.clearTimeout(timeoutId);
-      navigate({ to: "/today", replace: true });
+      if (result.tokens) {
+        const { error } = await supabase.auth.setSession(result.tokens);
+        if (error) throw error;
+      }
+      await continueAfterAuth(mode === "signup");
     } catch (e) {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timeoutId);
-      const msg = e instanceof Error ? e.message : "Sign-in failed";
-      logStep(failStep, "exception", msg);
+      completed = true;
+      window.clearTimeout(reminderId);
+      const rawMessage = e instanceof Error ? e.message : "Sign-in failed";
+      const msg = friendlyOAuthError(rawMessage);
+      logStep(failStep, "exception", rawMessage);
       setFormError(msg);
       toast.error(msg);
       setOauthLoading(null);
@@ -315,7 +319,6 @@ function AuthPage() {
 
   const submitDisabled =
     loading ||
-    oauthLoading !== null ||
     !email.trim() ||
     !password ||
     (mode === "signup" && !passwordValid);
@@ -666,4 +669,105 @@ function friendlyAuthError(err: unknown) {
   }
 
   return message;
+}
+
+function friendlyOAuthError(message: string) {
+  const lower = message.toLowerCase();
+  if (lower.includes("popup") || lower.includes("blocked")) {
+    return "Allow the sign-in window, then try again.";
+  }
+  if (lower.includes("cancelled") || lower.includes("canceled")) {
+    return "Sign-in was cancelled. Try again when you're ready.";
+  }
+  if (lower.includes("preview mode") || lower.includes("new tab")) {
+    return "Open the preview in a new tab to finish social sign-in.";
+  }
+  if (lower.includes("unsupported") || lower.includes("provider")) {
+    return "This sign-in option is temporarily unavailable — try email instead.";
+  }
+  return message || "Sign-in is temporarily unavailable — try email instead.";
+}
+
+type OAuthProvider = "google" | "apple";
+type OAuthPopupResult =
+  | { error: Error; redirected?: false; tokens?: never }
+  | { error: null; redirected?: false; tokens: { access_token: string; refresh_token: string } };
+
+function isEmbeddedLovableShell() {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.self !== window.top && /LovableApp\//i.test(navigator.userAgent);
+  } catch {
+    return true;
+  }
+}
+
+function randomOAuthState() {
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
+      b.toString(16).padStart(2, "0"),
+    ).join("");
+  }
+  return `oauth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function signInWithOAuthPopup(provider: OAuthProvider, redirectUri: string): Promise<OAuthPopupResult> {
+  const state = randomOAuthState();
+  const params = new URLSearchParams({
+    provider,
+    redirect_uri: redirectUri,
+    response_mode: "web_message",
+    state,
+  });
+  const popup = window.open(`/~oauth/initiate?${params.toString()}`, "_blank");
+  if (!popup) {
+    return Promise.resolve({ error: new Error("Popup was blocked") });
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: OAuthPopupResult) => {
+      if (settled) return;
+      settled = true;
+      window.clearInterval(closedInterval);
+      window.clearTimeout(waitingTimeout);
+      window.removeEventListener("message", onMessage);
+      popup.close();
+      resolve(result);
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== "https://oauth.lovable.app" && event.origin !== "https://lovable.dev") return;
+      const payload = event.data as { type?: string; response?: Record<string, string | undefined> } | null;
+      if (!payload || payload.type !== "authorization_response" || !payload.response) return;
+      const response = payload.response;
+      if (response.state !== state) {
+        finish({ error: new Error("State is invalid") });
+        return;
+      }
+      if (response.error) {
+        finish({ error: new Error(response.error_description ?? response.error) });
+        return;
+      }
+      if (!response.access_token || !response.refresh_token) {
+        finish({ error: new Error("No tokens received") });
+        return;
+      }
+      finish({
+        error: null,
+        tokens: {
+          access_token: response.access_token,
+          refresh_token: response.refresh_token,
+        },
+      });
+    };
+
+    window.addEventListener("message", onMessage);
+    const closedInterval = window.setInterval(() => {
+      if (popup.closed) finish({ error: new Error("Sign in was cancelled") });
+    }, 500);
+    const waitingTimeout = window.setTimeout(() => {
+      toast.message("Finish sign-in in the window that opened.");
+    }, 8000);
+  });
 }
