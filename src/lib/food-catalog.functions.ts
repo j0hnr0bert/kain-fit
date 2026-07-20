@@ -16,7 +16,11 @@ export type FoodSearchHit = {
   category: string;
   preparation_state: string;
   source: string | null;
+  source_priority: number;
+  brand: string | null;
+  barcode: string | null;
   verified: boolean;
+  last_verified_date: string | null;
   common_serving_label: string | null;
   default_serving_grams: number | null;
   per_100g: {
@@ -39,7 +43,11 @@ type RawFoodRow = {
   category: string;
   preparation_state: string;
   source: string | null;
+  source_priority: number | string | null;
+  brand_name: string | null;
+  barcode: string | null;
   verified: boolean;
+  last_verified_date: string | null;
   common_serving_label: string | null;
   default_serving_grams: number | string | null;
   calories_per_100g: number | string;
@@ -58,7 +66,11 @@ function toHit(row: RawFoodRow, match_kind: FoodSearchHit["match_kind"], score: 
     category: row.category,
     preparation_state: row.preparation_state,
     source: row.source,
+    source_priority: row.source_priority == null ? 6 : Number(row.source_priority),
+    brand: row.brand_name,
+    barcode: row.barcode,
     verified: row.verified,
+    last_verified_date: row.last_verified_date,
     common_serving_label: row.common_serving_label,
     default_serving_grams: row.default_serving_grams == null ? null : Number(row.default_serving_grams),
     per_100g: {
@@ -80,7 +92,7 @@ function normalize(s: string): string {
 }
 
 const FOOD_COLS =
-  "id, canonical_name, display_name, category, preparation_state, source, verified, common_serving_label, default_serving_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, sodium_mg_per_100g";
+  "id, canonical_name, display_name, category, preparation_state, source, source_priority, brand_name, barcode, verified, last_verified_date, common_serving_label, default_serving_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, sodium_mg_per_100g";
 
 export const searchFoods = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
