@@ -41,6 +41,9 @@ function AdminBetaPage() {
   const [csvErrors, setCsvErrors] = useState<Array<{ line: number; reason: string }>>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [importSource, setImportSource] = useState<
+    "philfct" | "manufacturer" | "restaurant" | "openfoodfacts" | "commercial_api" | "manual"
+  >("manual");
 
   async function onCsvFile(file: File) {
     const text = await file.text();
@@ -67,7 +70,7 @@ function AdminBetaPage() {
       let aliases = 0;
       for (let i = 0; i < csvRows.length; i += CHUNK) {
         const slice = csvRows.slice(i, i + CHUNK);
-        const r = await importFoods({ data: { rows: slice } });
+        const r = await importFoods({ data: { rows: slice, source_override: importSource } });
         imported += r.imported;
         aliases += r.aliases;
       }
@@ -721,11 +724,37 @@ function AdminBetaPage() {
                 <code className="mx-1 rounded bg-muted px-1 py-0.5">name</code>,
                 <code className="mx-1 rounded bg-muted px-1 py-0.5">category</code>,
                 <code className="mx-1 rounded bg-muted px-1 py-0.5">per_100g_calories</code>.
-                Optional: alt_names (| or ; separated), source, per_100g_protein_g/carbs_g/fat_g/fiber_g/sodium_mg,
-                common_serving_label, common_serving_grams, verified, preparation_state, canonical_name.
-                Existing rows are upserted by canonical_name.
+                Optional: alt_names (| or ; separated), brand, barcode (UPC/EAN, 8–14 digits),
+                per_100g_protein_g/carbs_g/fat_g/fiber_g/sodium_mg, common_serving_label,
+                common_serving_grams, verified, preparation_state, canonical_name, last_verified_date.
+                Rows are upserted by canonical_name (barcode is also indexed for direct scan lookup).
+                The selected source tier below auto-assigns trust rank and default verified flag.
               </p>
               <div className="mt-3 rounded-2xl border border-border bg-card p-4 space-y-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Label htmlFor="import-source" className="text-xs">
+                    Source tier
+                  </Label>
+                  <select
+                    id="import-source"
+                    value={importSource}
+                    onChange={(e) =>
+                      setImportSource(e.target.value as typeof importSource)
+                    }
+                    className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                  >
+                    <option value="philfct">PhilFCT (highest trust)</option>
+                    <option value="manufacturer">Manufacturer panel</option>
+                    <option value="restaurant">Restaurant chain</option>
+                    <option value="openfoodfacts">Open Food Facts</option>
+                    <option value="commercial_api">Commercial API</option>
+                    <option value="manual">Manual / placeholder</option>
+                  </select>
+                  <span className="text-[11px] text-muted-foreground">
+                    Applied to every row in this upload. PhilFCT / manufacturer / restaurant
+                    are marked verified automatically.
+                  </span>
+                </div>
                 <Input
                   type="file"
                   accept=".csv,text/csv"
@@ -762,7 +791,7 @@ function AdminBetaPage() {
                     )}
                   </Button>
                   <a
-                    href="data:text/csv;charset=utf-8,name,alt_names,category,source,per_100g_calories,per_100g_protein_g,per_100g_carbs_g,per_100g_fat_g,per_100g_fiber_g,per_100g_sodium_mg,common_serving_label,common_serving_grams,verified,preparation_state%0AApple,mansanas,fruit,manual,52,0.3,14,0.2,2.4,1,1 medium,182,true,raw"
+                    href="data:text/csv;charset=utf-8,name,alt_names,brand,barcode,category,per_100g_calories,per_100g_protein_g,per_100g_carbs_g,per_100g_fat_g,per_100g_fiber_g,per_100g_sodium_mg,common_serving_label,common_serving_grams,preparation_state,last_verified_date%0AApple,mansanas,,,fruit,52,0.3,14,0.2,2.4,1,1 medium,182,raw,%0ALucky Me Pancit Canton,,Monde Nissin,4800016641046,packaged good,440,10,60,18,3,1500,1 pack,60,n_a,2026-01-01"
                     download="kainfit-foods-template.csv"
                     className="text-xs text-primary underline underline-offset-2"
                   >

@@ -335,6 +335,7 @@ export type Database = {
           active: boolean
           barcode: string | null
           brand_id: string | null
+          brand_name: string | null
           calories_per_100g: number
           canonical_name: string
           carbs_per_100g: number
@@ -351,6 +352,7 @@ export type Database = {
           fiber_per_100g: number | null
           food_type: string
           id: string
+          last_verified_date: string | null
           local_name: string | null
           market_region: string | null
           preparation_state: string
@@ -361,6 +363,7 @@ export type Database = {
           source: string | null
           source_food_id: string | null
           source_id: string | null
+          source_priority: number | null
           sugar_per_100g: number | null
           updated_at: string
           verification_status: Database["public"]["Enums"]["food_verification_status"]
@@ -373,6 +376,7 @@ export type Database = {
           active?: boolean
           barcode?: string | null
           brand_id?: string | null
+          brand_name?: string | null
           calories_per_100g: number
           canonical_name: string
           carbs_per_100g?: number
@@ -389,6 +393,7 @@ export type Database = {
           fiber_per_100g?: number | null
           food_type?: string
           id?: string
+          last_verified_date?: string | null
           local_name?: string | null
           market_region?: string | null
           preparation_state?: string
@@ -399,6 +404,7 @@ export type Database = {
           source?: string | null
           source_food_id?: string | null
           source_id?: string | null
+          source_priority?: number | null
           sugar_per_100g?: number | null
           updated_at?: string
           verification_status?: Database["public"]["Enums"]["food_verification_status"]
@@ -411,6 +417,7 @@ export type Database = {
           active?: boolean
           barcode?: string | null
           brand_id?: string | null
+          brand_name?: string | null
           calories_per_100g?: number
           canonical_name?: string
           carbs_per_100g?: number
@@ -427,6 +434,7 @@ export type Database = {
           fiber_per_100g?: number | null
           food_type?: string
           id?: string
+          last_verified_date?: string | null
           local_name?: string | null
           market_region?: string | null
           preparation_state?: string
@@ -437,6 +445,7 @@ export type Database = {
           source?: string | null
           source_food_id?: string | null
           source_id?: string | null
+          source_priority?: number | null
           sugar_per_100g?: number | null
           updated_at?: string
           verification_status?: Database["public"]["Enums"]["food_verification_status"]
