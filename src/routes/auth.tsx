@@ -11,6 +11,7 @@ import { ArrowLeft, Check, Eye, EyeOff, Phone, Loader2 } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { logSignupFunnelEvent } from "@/lib/beta.functions";
 import { useServerFn } from "@tanstack/react-start";
+import { normalizeAuthError, type AuthProvider, type AuthOperation, type AuthRecoverySuggestion } from "@/lib/auth-errors";
 
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional().default("signup"),
@@ -39,6 +40,7 @@ function AuthPage() {
   const [oauthLoading, setOauthLoading] = useState<null | "google" | "apple">(null);
   const [formError, setFormError] = useState("");
   const [lastFailedAction, setLastFailedAction] = useState<null | "email" | "google" | "apple" | "phone_send" | "phone_verify">(null);
+  const [errorSuggestion, setErrorSuggestion] = useState<AuthRecoverySuggestion>(null);
   const logFunnel = useServerFn(logSignupFunnelEvent);
 
   function funnelSessionId(): string {
@@ -56,6 +58,56 @@ function AuthPage() {
     } catch {
       return "";
     }
+  }
+
+  function platformTag(): string {
+    if (typeof window === "undefined") return "ssr";
+    const ua = navigator.userAgent || "";
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)").matches ||
+      (navigator as unknown as { standalone?: boolean }).standalone === true;
+    if (standalone) return "pwa";
+    if (/iPhone|iPad|iPod/i.test(ua)) return "ios_safari";
+    if (/Android/i.test(ua)) return "android";
+    return "desktop";
+  }
+
+  /**
+   * Centralized telemetry for every authentication attempt.
+   * Emits one sanitized `auth_attempt_completed` event with provider,
+   * operation, success flag, backend code, HTTP status, duration, and
+   * platform. Never logs passwords, tokens, or authorization codes.
+   */
+  function recordAuthAttempt(
+    provider: AuthProvider,
+    operation: AuthOperation,
+    startedAt: number,
+    err?: unknown,
+  ) {
+    const duration = Math.max(0, Math.round(performance.now() - startedAt));
+    if (!err) {
+      track("auth_attempt_completed", {
+        provider,
+        operation,
+        success: true,
+        duration_ms: duration,
+        platform: platformTag(),
+      });
+      return null;
+    }
+    const norm = normalizeAuthError(err);
+    track("auth_attempt_completed", {
+      provider,
+      operation,
+      success: false,
+      duration_ms: duration,
+      platform: platformTag(),
+      error_code: norm.code,
+      status: norm.status ?? "n/a",
+      reason: norm.rawMessage.slice(0, 200),
+      field_target: norm.fieldTarget ?? "none",
+    });
+    return norm;
   }
 
   function logStep(step:
@@ -140,9 +192,10 @@ function AuthPage() {
     setOauthLoading(provider);
     setFormError("");
     setLastFailedAction(null);
+    setErrorSuggestion(null);
     logStep(provider === "google" ? "oauth_google_started" : "oauth_apple_started");
     const failStep = provider === "google" ? "oauth_google_failed" : "oauth_apple_failed";
-    const unavailableMsg = "Sign-in is temporarily unavailable — try email instead.";
+    const startedAt = performance.now();
     let completed = false;
     const reminderId = window.setTimeout(() => {
       if (completed) return;
@@ -161,13 +214,13 @@ function AuthPage() {
       completed = true;
       window.clearTimeout(reminderId);
       if (result.error) {
-        const rawMessage = result.error.message ?? unavailableMsg;
-        const msg = friendlyOAuthError(rawMessage);
-        logStep(failStep, "provider_error", rawMessage);
-        if (mode === "signup") track("signup_failed", { method: provider, reason: rawMessage.slice(0, 120) });
-        setFormError(msg);
+        const norm = recordAuthAttempt(provider, "oauth", startedAt, result.error)!;
+        logStep(failStep, norm.code, norm.rawMessage);
+        if (mode === "signup") track("signup_failed", { method: provider, reason: norm.rawMessage.slice(0, 120) });
+        setFormError(norm.userMessage);
+        setErrorSuggestion(norm.suggestion);
         setLastFailedAction(provider);
-        toast.error(msg);
+        toast.error(norm.userMessage);
         setOauthLoading(null);
         return;
       }
@@ -179,17 +232,18 @@ function AuthPage() {
         const { error } = await supabase.auth.setSession(result.tokens);
         if (error) throw error;
       }
+      recordAuthAttempt(provider, "oauth", startedAt);
       await continueAfterAuth(mode === "signup");
     } catch (e) {
       completed = true;
       window.clearTimeout(reminderId);
-      const rawMessage = e instanceof Error ? e.message : "Sign-in failed";
-      const msg = friendlyOAuthError(rawMessage);
-      logStep(failStep, "exception", rawMessage);
-      if (mode === "signup") track("signup_failed", { method: provider, reason: rawMessage.slice(0, 120) });
-      setFormError(msg);
+      const norm = recordAuthAttempt(provider, "oauth", startedAt, e)!;
+      logStep(failStep, norm.code, norm.rawMessage);
+      if (mode === "signup") track("signup_failed", { method: provider, reason: norm.rawMessage.slice(0, 120) });
+      setFormError(norm.userMessage);
+      setErrorSuggestion(norm.suggestion);
       setLastFailedAction(provider);
-      toast.error(msg);
+      toast.error(norm.userMessage);
       setOauthLoading(null);
     }
   }
@@ -199,6 +253,7 @@ function AuthPage() {
     if (loading) return;
     setFormError("");
     setLastFailedAction(null);
+    setErrorSuggestion(null);
     setEmailTouched(true);
     setPasswordTouched(true);
 
@@ -236,6 +291,7 @@ function AuthPage() {
     }
 
     setLoading(true);
+    const startedAt = performance.now();
     try {
       if (mode === "signup") {
         logStep("signup_request_sent");
@@ -249,6 +305,7 @@ function AuthPage() {
         });
         if (error) throw error;
         if (data.session) {
+          recordAuthAttempt("email", "signup", startedAt);
           await continueAfterAuth(true);
           return;
         }
@@ -258,6 +315,7 @@ function AuthPage() {
           password: passwordValue,
         });
         if (!signInError && signInData.session) {
+          recordAuthAttempt("email", "signup", startedAt);
           await continueAfterAuth(true);
           return;
         }
@@ -265,29 +323,29 @@ function AuthPage() {
         // No session returned and immediate sign-in failed → the account was
         // created but email confirmation is required.
         logStep("signup_email_verification_sent", null, signInError?.message ?? null);
+        recordAuthAttempt("email", "signup", startedAt);
         toast.success("Account created. Please sign in to continue.");
         setMode("signin");
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email: emailValue, password: passwordValue });
         if (error) throw error;
+        recordAuthAttempt("email", "signin", startedAt);
         await continueAfterAuth(false);
       }
     } catch (err) {
-      const message = friendlyAuthError(err);
-      const rawMessage = err instanceof Error ? err.message : String(err);
-      const status =
-        typeof (err as { status?: unknown })?.status === "number"
-          ? String((err as { status: number }).status)
-          : typeof (err as { code?: unknown })?.code === "string"
-            ? (err as { code: string }).code
-            : "error";
+      const op: AuthOperation = mode === "signup" ? "signup" : "signin";
+      const norm = recordAuthAttempt("email", op, startedAt, err)!;
+      const status = norm.status ? String(norm.status) : norm.code;
       if (mode === "signup") {
-        logStep("signup_request_error", status, rawMessage);
-        track("signup_failed", { method: "email", reason: rawMessage.slice(0, 120) });
+        logStep("signup_request_error", status, norm.rawMessage);
+        track("signup_failed", { method: "email", reason: norm.rawMessage.slice(0, 120) });
       }
-      setFormError(message);
+      setFormError(norm.userMessage);
+      setErrorSuggestion(norm.suggestion);
+      if (norm.fieldTarget === "email") setEmailTouched(true);
+      if (norm.fieldTarget === "password") setPasswordTouched(true);
       setLastFailedAction("email");
-      toast.error(message);
+      toast.error(norm.userMessage);
     } finally {
       setLoading(false);
     }
@@ -297,19 +355,23 @@ function AuthPage() {
     e?.preventDefault();
     setFormError("");
     setLastFailedAction(null);
+    setErrorSuggestion(null);
     if (mode === "signup") track("auth_method_chosen", { method: "phone", mode });
     setLoading(true);
+    const startedAt = performance.now();
     try {
       const { error } = await supabase.auth.signInWithOtp({ phone });
       if (error) throw error;
+      recordAuthAttempt("phone", "otp_send", startedAt);
       setOtpSent(true);
       toast.success("Code sent to your phone");
     } catch (err) {
-      const message = friendlyAuthError(err);
-      if (mode === "signup") track("signup_failed", { method: "phone", reason: message.slice(0, 120) });
-      setFormError(message);
+      const norm = recordAuthAttempt("phone", "otp_send", startedAt, err)!;
+      if (mode === "signup") track("signup_failed", { method: "phone", reason: norm.rawMessage.slice(0, 120) });
+      setFormError(norm.userMessage);
+      setErrorSuggestion(norm.suggestion);
       setLastFailedAction("phone_send");
-      toast.error(message);
+      toast.error(norm.userMessage);
     } finally {
       setLoading(false);
     }
@@ -319,17 +381,21 @@ function AuthPage() {
     e?.preventDefault();
     setFormError("");
     setLastFailedAction(null);
+    setErrorSuggestion(null);
     setLoading(true);
+    const startedAt = performance.now();
     try {
       const { error } = await supabase.auth.verifyOtp({ phone, token: otp, type: "sms" });
       if (error) throw error;
+      recordAuthAttempt("phone", "otp_verify", startedAt);
       await continueAfterAuth(mode === "signup");
     } catch (err) {
-      const message = friendlyAuthError(err);
-      if (mode === "signup") track("signup_failed", { method: "phone", reason: message.slice(0, 120) });
-      setFormError(message);
+      const norm = recordAuthAttempt("phone", "otp_verify", startedAt, err)!;
+      if (mode === "signup") track("signup_failed", { method: "phone", reason: norm.rawMessage.slice(0, 120) });
+      setFormError(norm.userMessage);
+      setErrorSuggestion(norm.suggestion);
       setLastFailedAction("phone_verify");
-      toast.error(message);
+      toast.error(norm.userMessage);
     } finally {
       setLoading(false);
     }
@@ -575,6 +641,18 @@ function AuthPage() {
                     </button>
                   )}
                 </div>
+                {formError && errorSuggestion === "switch_to_signin" && (
+                  <button
+                    type="button"
+                    onClick={() => updateMode("signin")}
+                    className="mt-2 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
+                  >
+                    Sign in with this email instead →
+                  </button>
+                )}
+                {formError && errorSuggestion === "reset_password" && (
+                  <p className="mt-2 text-xs opacity-80">Forgot your password? Contact support to reset it.</p>
+                )}
               </div>
 
               <Button
@@ -730,46 +808,6 @@ function GoogleIcon({ className }: { className?: string }) {
       <path fill="none" d="M0 0h48v48H0z"/>
     </svg>
   );
-}
-
-function friendlyAuthError(err: unknown) {
-  const message = err instanceof Error ? err.message : "Something went wrong";
-  const lower = message.toLowerCase();
-
-  if (lower.includes("weak_password") || lower.includes("password")) {
-    return "Use a stronger password that has not appeared in a data breach.";
-  }
-  if (lower.includes("invalid login credentials")) {
-    return "Email or password is incorrect.";
-  }
-  if (lower.includes("already registered") || lower.includes("already been registered")) {
-    return "This email already has an account. Sign in instead.";
-  }
-  if (lower.includes("unsupported phone provider") || lower.includes("phone provider")) {
-    return "Phone OTP is not active yet. Please use email, Google, or Apple for now.";
-  }
-  if (lower.includes("email not confirmed")) {
-    return "Please confirm your email first, then sign in.";
-  }
-
-  return message;
-}
-
-function friendlyOAuthError(message: string) {
-  const lower = message.toLowerCase();
-  if (lower.includes("popup") || lower.includes("blocked")) {
-    return "Allow the sign-in window, then try again.";
-  }
-  if (lower.includes("cancelled") || lower.includes("canceled")) {
-    return "Sign-in was cancelled. Try again when you're ready.";
-  }
-  if (lower.includes("preview mode") || lower.includes("new tab")) {
-    return "Open the preview in a new tab to finish social sign-in.";
-  }
-  if (lower.includes("unsupported") || lower.includes("provider")) {
-    return "This sign-in option is temporarily unavailable — try email instead.";
-  }
-  return message || "Sign-in is temporarily unavailable — try email instead.";
 }
 
 type OAuthProvider = "google" | "apple";

@@ -43,6 +43,7 @@ const ALLOWED_EVENTS = [
   "auth_method_chosen",
   "signup_failed",
   "first_food_logged",
+  "auth_attempt_completed",
 ] as const;
 
 const eventSchema = z.object({
@@ -77,6 +78,16 @@ function sanitizeProps(props: Record<string, unknown>): Record<string, unknown> 
     "meal_type",
     "reason",
     "error_code",
+    "provider",
+    "operation",
+    "success",
+    "status",
+    "duration_ms",
+    "platform",
+    "mode",
+    "method",
+    "field_target",
+    "correlation_id",
   ]);
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
@@ -735,5 +746,162 @@ export const getDemoUsage = createServerFn({ method: "GET" })
         last_reason: r.last_reason,
         updated_at: r.updated_at,
       })),
+    };
+  });
+
+// ============================================================
+// Authentication diagnostics (founder/admin)
+// Aggregates the `auth_attempt_completed` product_events emitted by
+// the centralized auth error handler.
+// ============================================================
+
+type AuthAttemptProps = {
+  provider?: string;
+  operation?: string;
+  success?: boolean;
+  status?: number | string;
+  error_code?: string;
+  reason?: string;
+  duration_ms?: number;
+  platform?: string;
+};
+
+export const getAuthDiagnostics = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    await ensureAdmin(context);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const admin = supabaseAdmin as unknown as {
+      from: (t: string) => {
+        select: (c: string) => {
+          eq: (a: string, b: string) => {
+            gte: (a: string, b: string) => Promise<{ data: unknown[] | null; error: unknown }>;
+          };
+        };
+      };
+    };
+    const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const { data } = await admin
+      .from("product_events")
+      .select("event_properties,created_at")
+      .eq("event_name", "auth_attempt_completed")
+      .gte("created_at", since);
+    const rows = (data ?? []) as Array<{
+      event_properties: AuthAttemptProps;
+      created_at: string;
+    }>;
+
+    const providers = ["email", "phone", "google", "apple"] as const;
+    type Bucket = {
+      attempts: number;
+      successes: number;
+      failures: number;
+      durations: number[];
+      errorCounts: Record<string, number>;
+      status422Details: Record<string, number>;
+      platforms: Record<string, { attempts: number; failures: number }>;
+    };
+    const empty = (): Bucket => ({
+      attempts: 0,
+      successes: 0,
+      failures: 0,
+      durations: [],
+      errorCounts: {},
+      status422Details: {},
+      platforms: {},
+    });
+    const byProvider: Record<string, Bucket> = Object.fromEntries(
+      providers.map((p) => [p, empty()]),
+    );
+    byProvider.other = empty();
+
+    const recentFailures: Array<{
+      created_at: string;
+      provider: string;
+      operation: string;
+      status: number | string | null;
+      error_code: string;
+      reason: string;
+      platform: string;
+    }> = [];
+
+    for (const row of rows) {
+      const p = row.event_properties ?? {};
+      const provider = typeof p.provider === "string" ? p.provider : "other";
+      const bucket = byProvider[provider] ?? byProvider.other;
+      bucket.attempts += 1;
+      if (p.success === true) bucket.successes += 1;
+      else bucket.failures += 1;
+      if (typeof p.duration_ms === "number" && Number.isFinite(p.duration_ms)) {
+        bucket.durations.push(p.duration_ms);
+      }
+      if (p.success !== true) {
+        const code = typeof p.error_code === "string" ? p.error_code : "unknown";
+        bucket.errorCounts[code] = (bucket.errorCounts[code] ?? 0) + 1;
+        const statusStr = String(p.status ?? "");
+        if (statusStr === "422") {
+          const key = code || "unknown";
+          bucket.status422Details[key] = (bucket.status422Details[key] ?? 0) + 1;
+        }
+        const platform = typeof p.platform === "string" ? p.platform : "unknown";
+        const platBucket = bucket.platforms[platform] ?? { attempts: 0, failures: 0 };
+        platBucket.attempts += 1;
+        platBucket.failures += 1;
+        bucket.platforms[platform] = platBucket;
+        if (recentFailures.length < 200) {
+          recentFailures.push({
+            created_at: row.created_at,
+            provider,
+            operation: typeof p.operation === "string" ? p.operation : "",
+            status: (p.status as number | string | undefined) ?? null,
+            error_code: code,
+            reason: typeof p.reason === "string" ? p.reason.slice(0, 200) : "",
+            platform,
+          });
+        }
+      } else {
+        const platform = typeof p.platform === "string" ? p.platform : "unknown";
+        const platBucket = bucket.platforms[platform] ?? { attempts: 0, failures: 0 };
+        platBucket.attempts += 1;
+        bucket.platforms[platform] = platBucket;
+      }
+    }
+
+    const percentile = (arr: number[], p: number) => {
+      if (!arr.length) return 0;
+      const sorted = [...arr].sort((a, b) => a - b);
+      const idx = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
+      return sorted[idx];
+    };
+
+    const summary = Object.entries(byProvider).map(([provider, b]) => ({
+      provider,
+      attempts: b.attempts,
+      successes: b.successes,
+      failures: b.failures,
+      successRate: b.attempts ? b.successes / b.attempts : 0,
+      p50Ms: Math.round(percentile(b.durations, 50)),
+      p95Ms: Math.round(percentile(b.durations, 95)),
+      topErrors: Object.entries(b.errorCounts)
+        .sort((a, b2) => b2[1] - a[1])
+        .slice(0, 5)
+        .map(([code, count]) => ({ code, count })),
+      status422: Object.entries(b.status422Details)
+        .sort((a, b2) => b2[1] - a[1])
+        .map(([code, count]) => ({ code, count })),
+      platforms: Object.entries(b.platforms).map(([platform, v]) => ({
+        platform,
+        attempts: v.attempts,
+        failures: v.failures,
+      })),
+    }));
+
+    recentFailures.sort((a, b) => (b.created_at > a.created_at ? 1 : -1));
+
+    return {
+      windowDays: 7,
+      totalAttempts: rows.length,
+      byProvider: summary,
+      recentFailures: recentFailures.slice(0, 30),
     };
   });

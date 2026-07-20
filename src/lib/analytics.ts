@@ -126,7 +126,8 @@ export type EventName =
   | "web_vital"
   | "auth_method_chosen"
   | "signup_failed"
-  | "first_food_logged";
+  | "first_food_logged"
+  | "auth_attempt_completed";
 
 // These fire more than once per second (e.g. web_vital LCP+INP+CLS,
 // cache_hit per item) — client-side dedupe would silently drop them.
@@ -138,6 +139,7 @@ const NO_DEDUPE = new Set<EventName>([
   "food_calculation_completed",
   "food_log_saved",
   "performance_error",
+  "auth_attempt_completed",
 ]);
 
 export function track(event: EventName, properties: Record<string, unknown> = {}): void {
