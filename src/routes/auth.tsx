@@ -66,7 +66,11 @@ function AuthPage() {
     | "signup_request_sent"
     | "signup_request_error"
     | "signup_email_verification_sent"
-    | "signup_completed",
+    | "signup_completed"
+    | "oauth_google_started"
+    | "oauth_google_failed"
+    | "oauth_apple_started"
+    | "oauth_apple_failed",
     reason?: string | null,
     detail?: string | null,
   ) {
