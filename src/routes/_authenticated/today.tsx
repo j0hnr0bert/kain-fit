@@ -32,6 +32,7 @@ import { mark, elapsed } from "@/lib/perf";
 import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
+import { QuickLogRail } from "@/components/QuickLogRail";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
 import {
@@ -818,7 +819,8 @@ function TodayPage() {
 
         {/* Entry */}
         <form onSubmit={handleSubmit} className="mt-5">
-          <div className="relative rounded-3xl bg-card border border-border shadow-sm focus-within:border-primary transition">
+          <QuickLogRail todaysEntries={entries} />
+          <div className="relative rounded-3xl bg-card border border-border shadow-sm focus-within:border-primary transition mt-3">
             <Input
               ref={inputRef}
               value={input}
