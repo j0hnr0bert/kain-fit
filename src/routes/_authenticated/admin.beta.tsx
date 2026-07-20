@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { getBetaMetrics, exportBetaCsv, getDemoUsage } from "@/lib/beta.functions";
+import { getBetaMetrics, exportBetaCsv, getDemoUsage, getSignupFunnel } from "@/lib/beta.functions";
 import { getOpsSnapshot, updateOpsSetting, warmFoodParseCache } from "@/lib/ops.functions";
 import {
   listFoodReviewQueue,
@@ -28,6 +28,7 @@ function AdminBetaPage() {
   const fetchMetrics = useServerFn(getBetaMetrics);
   const exportFn = useServerFn(exportBetaCsv);
   const fetchDemoUsage = useServerFn(getDemoUsage);
+  const fetchSignupFunnel = useServerFn(getSignupFunnel);
   const fetchOps = useServerFn(getOpsSnapshot);
   const setOps = useServerFn(updateOpsSetting);
   const warmCache = useServerFn(warmFoodParseCache);
@@ -113,6 +114,13 @@ function AdminBetaPage() {
     queryKey: ["beta-demo-usage"],
     queryFn: () => fetchDemoUsage(),
     retry: false,
+  });
+
+  const { data: signupFunnel } = useQuery({
+    queryKey: ["signup-funnel"],
+    queryFn: () => fetchSignupFunnel(),
+    retry: false,
+    refetchInterval: 15000,
   });
 
   const { data: ops } = useQuery({
