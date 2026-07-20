@@ -247,6 +247,10 @@ const SIGNUP_STEPS = [
   "signup_request_error",
   "signup_email_verification_sent",
   "signup_completed",
+  "oauth_google_started",
+  "oauth_google_failed",
+  "oauth_apple_started",
+  "oauth_apple_failed",
 ] as const;
 
 const signupFunnelSchema = z.object({
