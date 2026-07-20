@@ -819,7 +819,8 @@ function TodayPage() {
 
         {/* Entry */}
         <form onSubmit={handleSubmit} className="mt-5">
-          <div className="relative rounded-3xl bg-card border border-border shadow-sm focus-within:border-primary transition">
+          <QuickLogRail todaysEntries={entries} />
+          <div className="relative rounded-3xl bg-card border border-border shadow-sm focus-within:border-primary transition mt-3">
             <Input
               ref={inputRef}
               value={input}
