@@ -4,6 +4,11 @@ import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBetaMetrics, exportBetaCsv, getDemoUsage } from "@/lib/beta.functions";
 import { getOpsSnapshot, updateOpsSetting, warmFoodParseCache } from "@/lib/ops.functions";
+import {
+  listFoodReviewQueue,
+  reviewFoodSubmission,
+  reviewFoodRevision,
+} from "@/lib/food-review.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -26,6 +31,10 @@ function AdminBetaPage() {
   const setOps = useServerFn(updateOpsSetting);
   const warmCache = useServerFn(warmFoodParseCache);
   const [warming, setWarming] = useState(false);
+  const fetchReviewQueue = useServerFn(listFoodReviewQueue);
+  const decideSubmission = useServerFn(reviewFoodSubmission);
+  const decideRevision = useServerFn(reviewFoodRevision);
+  const [pendingDecision, setPendingDecision] = useState<string | null>(null);
 
   async function runWarm() {
     if (warming) return;
@@ -62,6 +71,32 @@ function AdminBetaPage() {
     retry: false,
     refetchInterval: 5_000,
   });
+
+  const { data: reviewQueue } = useQuery({
+    queryKey: ["food-review-queue"],
+    queryFn: () => fetchReviewQueue(),
+    retry: false,
+  });
+
+  async function decide(
+    kind: "submission" | "revision",
+    id: string,
+    action: "approve" | "reject",
+  ) {
+    const key = `${kind}:${id}:${action}`;
+    if (pendingDecision) return;
+    setPendingDecision(key);
+    try {
+      if (kind === "submission") await decideSubmission({ data: { id, action } });
+      else await decideRevision({ data: { id, action } });
+      await qc.invalidateQueries({ queryKey: ["food-review-queue"] });
+      toast.success(`${kind} ${action}d`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Review failed");
+    } finally {
+      setPendingDecision(null);
+    }
+  }
 
   const [bannerDraft, setBannerDraft] = useState<string>("");
   const [allowanceDraft, setAllowanceDraft] = useState<string>("");
