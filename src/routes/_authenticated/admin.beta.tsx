@@ -41,6 +41,9 @@ function AdminBetaPage() {
   const [csvErrors, setCsvErrors] = useState<Array<{ line: number; reason: string }>>([]);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<string | null>(null);
+  const [importSource, setImportSource] = useState<
+    "philfct" | "manufacturer" | "restaurant" | "openfoodfacts" | "commercial_api" | "manual"
+  >("manual");
 
   async function onCsvFile(file: File) {
     const text = await file.text();
@@ -67,7 +70,7 @@ function AdminBetaPage() {
       let aliases = 0;
       for (let i = 0; i < csvRows.length; i += CHUNK) {
         const slice = csvRows.slice(i, i + CHUNK);
-        const r = await importFoods({ data: { rows: slice } });
+        const r = await importFoods({ data: { rows: slice, source_override: importSource } });
         imported += r.imported;
         aliases += r.aliases;
       }
