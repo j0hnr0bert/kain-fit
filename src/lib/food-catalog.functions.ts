@@ -563,6 +563,15 @@ const CSV_COLUMN_ALIASES: Record<string, string> = {
   preparation_state: "preparation_state",
   preparation: "preparation_state",
   canonical_name: "canonical_name",
+  brand: "brand",
+  brand_name: "brand",
+  manufacturer: "brand",
+  restaurant: "brand",
+  barcode: "barcode",
+  upc: "barcode",
+  ean: "barcode",
+  last_verified_date: "last_verified_date",
+  verified_at: "last_verified_date",
 };
 
 export type CsvMappingResult = {
@@ -595,8 +604,10 @@ export function mapCsvRows(records: Record<string, string>[]): CsvMappingResult 
     const rowInput: BulkImportRow = {
       name: mapped.name,
       alt_names: alt,
+      brand: mapped.brand || null,
+      barcode: mapped.barcode || null,
       category: mapped.category,
-      source: mapped.source ? mapped.source : "manual",
+      source: (mapped.source ? mapped.source.toLowerCase() : "manual") as BulkImportRow["source"],
       per_100g_calories: mapped.per_100g_calories as unknown as number,
       per_100g_protein_g: (mapped.per_100g_protein_g ?? "0") as unknown as number,
       per_100g_carbs_g: (mapped.per_100g_carbs_g ?? "0") as unknown as number,
@@ -608,6 +619,7 @@ export function mapCsvRows(records: Record<string, string>[]): CsvMappingResult 
       verified: mapped.verified,
       preparation_state: (mapped.preparation_state as "raw" | "cooked" | "n_a") || "n_a",
       canonical_name: mapped.canonical_name || undefined,
+      last_verified_date: mapped.last_verified_date || null,
     };
     const parsed = importRowSchema.safeParse(rowInput);
     if (!parsed.success) {
