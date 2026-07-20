@@ -40,6 +40,9 @@ const ALLOWED_EVENTS = [
   "food_calculation_completed",
   "food_log_saved",
   "performance_error",
+  "auth_method_chosen",
+  "signup_failed",
+  "first_food_logged",
 ] as const;
 
 const eventSchema = z.object({

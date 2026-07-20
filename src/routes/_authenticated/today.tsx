@@ -390,6 +390,16 @@ function TodayPage() {
         number_of_items: rows.length,
         save_mode: options.automatic ? "automatic" : "manual",
       });
+      try {
+        const flagKey = "kf.firstFoodLogged";
+        if (typeof window !== "undefined" && !localStorage.getItem(flagKey)) {
+          localStorage.setItem(flagKey, "1");
+          track("first_food_logged", {
+            number_of_items: rows.length,
+            save_mode: options.automatic ? "automatic" : "manual",
+          });
+        }
+      } catch { /* ignore */ }
       track("food_log_saved", {
         number_of_items: rows.length,
         save_mode: options.automatic ? "automatic" : "manual",

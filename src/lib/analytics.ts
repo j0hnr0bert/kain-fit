@@ -8,6 +8,9 @@ import { trackEvent } from "./beta.functions";
 
 const SESSION_KEY = "kf.sid";
 const SOURCE_KEY = "kf.src";
+const UTM_KEY = "kf.utm";
+const UTM_PARAMS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"] as const;
+type UtmParams = Partial<Record<(typeof UTM_PARAMS)[number], string>>;
 
 function isBrowser() {
   return typeof window !== "undefined";
@@ -26,6 +29,30 @@ function readSource(): string | null {
   } catch {
     return null;
   }
+}
+
+function readUtm(): UtmParams {
+  if (!isBrowser()) return {};
+  try {
+    const url = new URL(window.location.href);
+    const fresh: UtmParams = {};
+    for (const key of UTM_PARAMS) {
+      const v = url.searchParams.get(key);
+      if (v) fresh[key] = v.slice(0, 128);
+    }
+    if (Object.keys(fresh).length > 0) {
+      sessionStorage.setItem(UTM_KEY, JSON.stringify(fresh));
+      return fresh;
+    }
+    const cached = sessionStorage.getItem(UTM_KEY);
+    return cached ? (JSON.parse(cached) as UtmParams) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getUtmParams(): UtmParams {
+  return readUtm();
 }
 
 export function getAcquisitionSource(): string | null {
@@ -96,7 +123,10 @@ export type EventName =
   | "cache_hit"
   | "cache_miss"
   | "performance_error"
-  | "web_vital";
+  | "web_vital"
+  | "auth_method_chosen"
+  | "signup_failed"
+  | "first_food_logged";
 
 // These fire more than once per second (e.g. web_vital LCP+INP+CLS,
 // cache_hit per item) — client-side dedupe would silently drop them.
@@ -121,8 +151,10 @@ export function track(event: EventName, properties: Record<string, unknown> = {}
 
   const sid = getSessionId();
   const source = readSource();
+  const utm = readUtm();
   const props: Record<string, unknown> = {
     device_category: deviceCategory(),
+    ...utm,
     ...properties,
   };
 

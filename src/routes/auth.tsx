@@ -38,6 +38,7 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<null | "google" | "apple">(null);
   const [formError, setFormError] = useState("");
+  const [lastFailedAction, setLastFailedAction] = useState<null | "email" | "google" | "apple" | "phone_send" | "phone_verify">(null);
   const logFunnel = useServerFn(logSignupFunnelEvent);
 
   function funnelSessionId(): string {
@@ -135,8 +136,10 @@ function AuthPage() {
 
   async function handleOAuth(provider: "google" | "apple") {
     if (oauthLoading || loading) return;
+    track("auth_method_chosen", { method: provider, mode });
     setOauthLoading(provider);
     setFormError("");
+    setLastFailedAction(null);
     logStep(provider === "google" ? "oauth_google_started" : "oauth_apple_started");
     const failStep = provider === "google" ? "oauth_google_failed" : "oauth_apple_failed";
     const unavailableMsg = "Sign-in is temporarily unavailable — try email instead.";
@@ -161,7 +164,9 @@ function AuthPage() {
         const rawMessage = result.error.message ?? unavailableMsg;
         const msg = friendlyOAuthError(rawMessage);
         logStep(failStep, "provider_error", rawMessage);
+        if (mode === "signup") track("signup_failed", { method: provider, reason: rawMessage.slice(0, 120) });
         setFormError(msg);
+        setLastFailedAction(provider);
         toast.error(msg);
         setOauthLoading(null);
         return;
@@ -181,7 +186,9 @@ function AuthPage() {
       const rawMessage = e instanceof Error ? e.message : "Sign-in failed";
       const msg = friendlyOAuthError(rawMessage);
       logStep(failStep, "exception", rawMessage);
+      if (mode === "signup") track("signup_failed", { method: provider, reason: rawMessage.slice(0, 120) });
       setFormError(msg);
+      setLastFailedAction(provider);
       toast.error(msg);
       setOauthLoading(null);
     }
@@ -191,6 +198,7 @@ function AuthPage() {
     e?.preventDefault();
     if (loading) return;
     setFormError("");
+    setLastFailedAction(null);
     setEmailTouched(true);
     setPasswordTouched(true);
 
@@ -198,6 +206,7 @@ function AuthPage() {
     const passwordValue = password;
 
     if (mode === "signup") logStep("signup_submit_clicked");
+    if (mode === "signup") track("auth_method_chosen", { method: "email", mode });
 
     if (!emailValue || !passwordValue) {
       const msg = "Enter your email and password to continue.";
@@ -274,8 +283,10 @@ function AuthPage() {
             : "error";
       if (mode === "signup") {
         logStep("signup_request_error", status, rawMessage);
+        track("signup_failed", { method: "email", reason: rawMessage.slice(0, 120) });
       }
       setFormError(message);
+      setLastFailedAction("email");
       toast.error(message);
     } finally {
       setLoading(false);
@@ -285,6 +296,8 @@ function AuthPage() {
   async function handlePhoneSend(e?: React.FormEvent) {
     e?.preventDefault();
     setFormError("");
+    setLastFailedAction(null);
+    if (mode === "signup") track("auth_method_chosen", { method: "phone", mode });
     setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({ phone });
@@ -293,7 +306,9 @@ function AuthPage() {
       toast.success("Code sent to your phone");
     } catch (err) {
       const message = friendlyAuthError(err);
+      if (mode === "signup") track("signup_failed", { method: "phone", reason: message.slice(0, 120) });
       setFormError(message);
+      setLastFailedAction("phone_send");
       toast.error(message);
     } finally {
       setLoading(false);
@@ -303,6 +318,7 @@ function AuthPage() {
   async function handlePhoneVerify(e?: React.FormEvent) {
     e?.preventDefault();
     setFormError("");
+    setLastFailedAction(null);
     setLoading(true);
     try {
       const { error } = await supabase.auth.verifyOtp({ phone, token: otp, type: "sms" });
@@ -310,10 +326,34 @@ function AuthPage() {
       await continueAfterAuth(mode === "signup");
     } catch (err) {
       const message = friendlyAuthError(err);
+      if (mode === "signup") track("signup_failed", { method: "phone", reason: message.slice(0, 120) });
       setFormError(message);
+      setLastFailedAction("phone_verify");
       toast.error(message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function retryLastAction() {
+    switch (lastFailedAction) {
+      case "email":
+        void handleEmail();
+        break;
+      case "google":
+        void handleOAuth("google");
+        break;
+      case "apple":
+        void handleOAuth("apple");
+        break;
+      case "phone_send":
+        void handlePhoneSend();
+        break;
+      case "phone_verify":
+        void handlePhoneVerify();
+        break;
+      default:
+        break;
     }
   }
 
@@ -343,29 +383,33 @@ function AuthPage() {
       </button>
 
       <div className="flex-1 flex flex-col max-w-sm mx-auto w-full pt-2">
+        {/* Brand header */}
+        <div className="flex items-center gap-2 mb-4">
+          <div className="h-10 w-10 rounded-2xl bg-primary flex items-center justify-center text-primary-foreground font-bold text-lg">
+            K
+          </div>
+          <div className="flex items-baseline gap-2">
+            <span className="text-xl font-semibold tracking-tight">KainFit</span>
+          </div>
+        </div>
         <h1 className="text-3xl font-bold tracking-tight">
           {mode === "signup" ? "Create your account" : "Welcome back"}
         </h1>
-        <p className="mt-1 text-muted-foreground">
-          {mode === "signup" ? "Start tracking in seconds." : "Sign in to continue tracking."}
+        <p className="mt-1 text-lg font-medium text-foreground">
+          Know what you ate. <span className="text-primary">Instantly.</span>
         </p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Fast macro tracking built for Filipino food.
+        </p>
+        {mode === "signup" && (
+          <p className="mt-3 inline-flex flex-wrap items-center gap-1 text-[12px] font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5 w-fit">
+            Free beta · No credit card · Start in under 30 seconds
+          </p>
+        )}
 
         {method === "main" && (
           <div className="mt-6 space-y-3">
-            {/* Social first */}
-            <button
-              type="button"
-              onClick={() => handleOAuth("apple")}
-              disabled={loading || oauthLoading !== null}
-              className="w-full h-12 rounded-2xl bg-foreground text-background font-medium inline-flex items-center justify-center gap-2 transition active:scale-[0.99] hover:bg-foreground/90 disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:active:scale-100"
-            >
-              {oauthLoading === "apple" ? (
-                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-              ) : (
-                <AppleIcon className="h-5 w-5" />
-              )}
-              <span>Continue with Apple</span>
-            </button>
+            {/* Priority order: Google → Phone → Apple → Email */}
             <button
               type="button"
               onClick={() => handleOAuth("google")}
@@ -378,6 +422,28 @@ function AuthPage() {
                 <GoogleIcon className="h-5 w-5" />
               )}
               <span>Continue with Google</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setMethod("phone")}
+              disabled={loading || oauthLoading !== null}
+              className="w-full h-12 rounded-2xl bg-card border border-border text-foreground font-medium inline-flex items-center justify-center gap-2 transition active:scale-[0.99] hover:bg-muted disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:active:scale-100"
+            >
+              <Phone className="h-5 w-5" />
+              <span>Continue with phone</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOAuth("apple")}
+              disabled={loading || oauthLoading !== null}
+              className="w-full h-12 rounded-2xl bg-foreground text-background font-medium inline-flex items-center justify-center gap-2 transition active:scale-[0.99] hover:bg-foreground/90 disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:active:scale-100"
+            >
+              {oauthLoading === "apple" ? (
+                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+              ) : (
+                <AppleIcon className="h-5 w-5" />
+              )}
+              <span>Continue with Apple</span>
             </button>
 
             {/* Divider */}
@@ -497,7 +563,18 @@ function AuthPage() {
                     : "sr-only"
                 }
               >
-                {formError}
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex-1">{formError}</span>
+                  {formError && lastFailedAction && (
+                    <button
+                      type="button"
+                      onClick={retryLastAction}
+                      className="shrink-0 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
               </div>
 
               <Button
@@ -532,13 +609,6 @@ function AuthPage() {
               )}
             </form>
 
-            <button
-              type="button"
-              onClick={() => setMethod("phone")}
-              className="w-full h-11 rounded-xl text-sm text-muted-foreground inline-flex items-center justify-center gap-2 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Phone className="h-4 w-4" /> Use phone number instead
-            </button>
           </div>
         )}
 
@@ -563,7 +633,14 @@ function AuthPage() {
             </div>
             {formError && (
               <div role="alert" aria-live="assertive" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {formError}
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex-1">{formError}</span>
+                  {lastFailedAction && (
+                    <button type="button" onClick={retryLastAction} className="shrink-0 text-xs font-semibold underline underline-offset-2">
+                      Retry
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
@@ -588,7 +665,14 @@ function AuthPage() {
             </div>
             {formError && (
               <div role="alert" aria-live="assertive" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {formError}
+                <div className="flex items-start justify-between gap-2">
+                  <span className="flex-1">{formError}</span>
+                  {lastFailedAction && (
+                    <button type="button" onClick={retryLastAction} className="shrink-0 text-xs font-semibold underline underline-offset-2">
+                      Retry
+                    </button>
+                  )}
+                </div>
               </div>
             )}
             <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
