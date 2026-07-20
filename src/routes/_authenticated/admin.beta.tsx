@@ -462,6 +462,8 @@ function AdminBetaPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Performance
               </h2>
+
+            {/* placeholder anchor for auth diagnostics section — replaced below */}
               <p className="mt-1 text-xs text-muted-foreground">
                 End-to-end parse latency measured client-side. AI stage measured server-side.
               </p>
