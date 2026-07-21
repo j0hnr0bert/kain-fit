@@ -189,6 +189,32 @@ function RootComponent() {
       if (event !== "SIGNED_IN" && event !== "SIGNED_OUT" && event !== "USER_UPDATED") return;
       router.invalidate();
       if (event !== "SIGNED_OUT") queryClient.invalidateQueries();
+      // First-touch attribution: fire once per browser after the user is
+      // signed in. The server RPC is idempotent (only writes when
+      // profiles.first_touched_at IS NULL), and localStorage stops us from
+      // hammering it on every SIGNED_IN / USER_UPDATED event.
+      if (event === "SIGNED_IN" || event === "USER_UPDATED") {
+        void (async () => {
+          try {
+            if (localStorage.getItem("kf.firstTouchSent") === "1") return;
+            const { recordFirstTouch } = await import("@/lib/beta.functions");
+            const { getAcquisitionSource, getUtmParams } = await import("@/lib/analytics");
+            const utm = getUtmParams();
+            await recordFirstTouch({
+              data: {
+                source: getAcquisitionSource(),
+                utm: Object.keys(utm).length > 0 ? utm : null,
+              },
+            });
+            localStorage.setItem("kf.firstTouchSent", "1");
+          } catch {
+            // never break the app for attribution
+          }
+        })();
+      }
+      if (event === "SIGNED_OUT") {
+        try { localStorage.removeItem("kf.firstTouchSent"); } catch { /* ignore */ }
+      }
     });
     return () => sub.subscription.unsubscribe();
   }, [router, queryClient]);
