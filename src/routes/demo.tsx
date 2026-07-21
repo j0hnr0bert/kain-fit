@@ -344,7 +344,9 @@ function DemoPage() {
   function requireAccount() {
     if (entries.length > 0) {
       try {
-        sessionStorage.setItem(
+        // Use localStorage so the pending import survives an OAuth redirect
+        // (mobile Safari drops sessionStorage across the provider round-trip).
+        localStorage.setItem(
           PENDING_STORAGE_KEY,
           JSON.stringify({ savedAt: Date.now(), entries }),
         );
