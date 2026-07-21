@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -288,6 +288,26 @@ function TodayPage() {
     markReturned();
   }, []);
 
+  // Prefill / focus from the Food Scale Guide's "Try it on Today" button.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const prefill = sessionStorage.getItem("kf.scalePrefill");
+      const focus = sessionStorage.getItem("kf.scaleFocus");
+      if (prefill) {
+        setInput(prefill);
+        sessionStorage.setItem("kf.scaleExamplePending", "1");
+        sessionStorage.removeItem("kf.scalePrefill");
+      }
+      if (focus) {
+        sessionStorage.removeItem("kf.scaleFocus");
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ["entries", "today"],
     queryFn: async () => {
@@ -426,6 +446,12 @@ function TodayPage() {
         food_log_total_duration_ms: elapsed(saveStarted),
         database_query_duration_ms,
       });
+      try {
+        if (typeof window !== "undefined" && sessionStorage.getItem("kf.scaleExamplePending")) {
+          sessionStorage.removeItem("kf.scaleExamplePending");
+          track("scale_example_logged", { number_of_items: rows.length });
+        }
+      } catch { /* ignore */ }
       setPending(null);
       setInput("");
       toast.success("Added to Today", {
@@ -875,6 +901,15 @@ function TodayPage() {
           <p className="mt-2 px-1 text-xs text-muted-foreground">
             Try: <span className="text-foreground/80">{placeholderExamples[placeholderIdx]}</span>
           </p>
+          <div className="mt-1 px-1">
+            <Link
+              to="/scale-guide"
+              search={{ from: "today_help" as const }}
+              className="text-xs text-primary hover:underline"
+            >
+              Use a food scale →
+            </Link>
+          </div>
         </form>
 
         {/* Log */}
