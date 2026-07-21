@@ -17,6 +17,7 @@ import { Route as AuthRouteImport } from './routes/auth'
 import { Route as AuthenticatedRouteRouteImport } from './routes/_authenticated/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AuthenticatedTodayRouteImport } from './routes/_authenticated/today'
+import { Route as AuthenticatedScaleGuideRouteImport } from './routes/_authenticated/scale-guide'
 import { Route as AuthenticatedProfileRouteImport } from './routes/_authenticated/profile'
 import { Route as AuthenticatedOnboardingRouteImport } from './routes/_authenticated/onboarding'
 import { Route as AuthenticatedHistoryRouteImport } from './routes/_authenticated/history'
@@ -61,6 +62,11 @@ const AuthenticatedTodayRoute = AuthenticatedTodayRouteImport.update({
   path: '/today',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedScaleGuideRoute = AuthenticatedScaleGuideRouteImport.update({
+  id: '/scale-guide',
+  path: '/scale-guide',
+  getParentRoute: () => AuthenticatedRouteRoute,
+} as any)
 const AuthenticatedProfileRoute = AuthenticatedProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -92,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/history': typeof AuthenticatedHistoryRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/scale-guide': typeof AuthenticatedScaleGuideRoute
   '/today': typeof AuthenticatedTodayRoute
   '/admin/beta': typeof AuthenticatedAdminBetaRoute
 }
@@ -105,6 +112,7 @@ export interface FileRoutesByTo {
   '/history': typeof AuthenticatedHistoryRoute
   '/onboarding': typeof AuthenticatedOnboardingRoute
   '/profile': typeof AuthenticatedProfileRoute
+  '/scale-guide': typeof AuthenticatedScaleGuideRoute
   '/today': typeof AuthenticatedTodayRoute
   '/admin/beta': typeof AuthenticatedAdminBetaRoute
 }
@@ -120,6 +128,7 @@ export interface FileRoutesById {
   '/_authenticated/history': typeof AuthenticatedHistoryRoute
   '/_authenticated/onboarding': typeof AuthenticatedOnboardingRoute
   '/_authenticated/profile': typeof AuthenticatedProfileRoute
+  '/_authenticated/scale-guide': typeof AuthenticatedScaleGuideRoute
   '/_authenticated/today': typeof AuthenticatedTodayRoute
   '/_authenticated/admin/beta': typeof AuthenticatedAdminBetaRoute
 }
@@ -135,6 +144,7 @@ export interface FileRouteTypes {
     | '/history'
     | '/onboarding'
     | '/profile'
+    | '/scale-guide'
     | '/today'
     | '/admin/beta'
   fileRoutesByTo: FileRoutesByTo
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | '/history'
     | '/onboarding'
     | '/profile'
+    | '/scale-guide'
     | '/today'
     | '/admin/beta'
   id:
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | '/_authenticated/history'
     | '/_authenticated/onboarding'
     | '/_authenticated/profile'
+    | '/_authenticated/scale-guide'
     | '/_authenticated/today'
     | '/_authenticated/admin/beta'
   fileRoutesById: FileRoutesById
@@ -234,6 +246,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedTodayRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/scale-guide': {
+      id: '/_authenticated/scale-guide'
+      path: '/scale-guide'
+      fullPath: '/scale-guide'
+      preLoaderRoute: typeof AuthenticatedScaleGuideRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/profile': {
       id: '/_authenticated/profile'
       path: '/profile'
@@ -269,6 +288,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedHistoryRoute: typeof AuthenticatedHistoryRoute
   AuthenticatedOnboardingRoute: typeof AuthenticatedOnboardingRoute
   AuthenticatedProfileRoute: typeof AuthenticatedProfileRoute
+  AuthenticatedScaleGuideRoute: typeof AuthenticatedScaleGuideRoute
   AuthenticatedTodayRoute: typeof AuthenticatedTodayRoute
   AuthenticatedAdminBetaRoute: typeof AuthenticatedAdminBetaRoute
 }
@@ -277,6 +297,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedHistoryRoute: AuthenticatedHistoryRoute,
   AuthenticatedOnboardingRoute: AuthenticatedOnboardingRoute,
   AuthenticatedProfileRoute: AuthenticatedProfileRoute,
+  AuthenticatedScaleGuideRoute: AuthenticatedScaleGuideRoute,
   AuthenticatedTodayRoute: AuthenticatedTodayRoute,
   AuthenticatedAdminBetaRoute: AuthenticatedAdminBetaRoute,
 }

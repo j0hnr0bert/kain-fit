@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -875,6 +875,15 @@ function TodayPage() {
           <p className="mt-2 px-1 text-xs text-muted-foreground">
             Try: <span className="text-foreground/80">{placeholderExamples[placeholderIdx]}</span>
           </p>
+          <div className="mt-1 px-1">
+            <Link
+              to="/scale-guide"
+              search={{ from: "today_help" as const }}
+              className="text-xs text-primary hover:underline"
+            >
+              Use a food scale →
+            </Link>
+          </div>
         </form>
 
         {/* Log */}
