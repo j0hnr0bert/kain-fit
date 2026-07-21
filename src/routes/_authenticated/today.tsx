@@ -446,6 +446,12 @@ function TodayPage() {
         food_log_total_duration_ms: elapsed(saveStarted),
         database_query_duration_ms,
       });
+      try {
+        if (typeof window !== "undefined" && sessionStorage.getItem("kf.scaleExamplePending")) {
+          sessionStorage.removeItem("kf.scaleExamplePending");
+          track("scale_example_logged", { number_of_items: rows.length });
+        }
+      } catch { /* ignore */ }
       setPending(null);
       setInput("");
       toast.success("Added to Today", {
