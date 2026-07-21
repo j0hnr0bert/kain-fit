@@ -22,10 +22,16 @@ function readSource(): string | null {
     const url = new URL(window.location.href);
     const fromUrl = url.searchParams.get("source");
     if (fromUrl) {
-      sessionStorage.setItem(SOURCE_KEY, fromUrl.slice(0, 64));
-      return fromUrl.slice(0, 64);
+      const v = fromUrl.slice(0, 64);
+      // Durable: survives OAuth redirect and browser restart.
+      localStorage.setItem(SOURCE_KEY, v);
+      return v;
     }
-    return sessionStorage.getItem(SOURCE_KEY);
+    const stored = localStorage.getItem(SOURCE_KEY) ?? sessionStorage.getItem(SOURCE_KEY);
+    if (stored && !localStorage.getItem(SOURCE_KEY)) {
+      localStorage.setItem(SOURCE_KEY, stored); // migrate legacy session value
+    }
+    return stored;
   } catch {
     return null;
   }
