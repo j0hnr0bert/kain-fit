@@ -178,6 +178,7 @@ function TodayPage() {
   } | null>(null);
   const editedRef = useRef(false);
   const [demoImport, setDemoImport] = useState<{
+    savedAt: number;
     entries: Array<{
       meal: Entry["meal_type"];
       name: string;
@@ -203,6 +204,7 @@ function TodayPage() {
         sessionStorage.getItem("kf.demoPendingImport");
       if (!raw) return;
       const parsed = JSON.parse(raw) as {
+        savedAt?: number;
         entries: Array<Record<string, unknown>>;
       };
       const list = Array.isArray(parsed?.entries) ? parsed.entries : [];
@@ -212,6 +214,7 @@ function TodayPage() {
         return;
       }
       setDemoImport({
+        savedAt: typeof parsed?.savedAt === "number" ? parsed.savedAt : Date.now(),
         entries: list.map((e) => ({
           meal: (e.meal as Entry["meal_type"]) ?? "snacks",
           name: String(e.name ?? "Demo item"),
@@ -236,7 +239,7 @@ function TodayPage() {
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
     const loggedAt = new Date().toISOString();
-    const rows = demoImport.entries.map((i) => ({
+    const rows = demoImport.entries.map((i, idx) => ({
       user_id: u.user!.id,
       logged_at: loggedAt,
       meal_type: i.meal,
@@ -253,9 +256,9 @@ function TodayPage() {
       data_source: i.data_source,
       confidence: i.confidence ?? 0.7,
       is_estimate: i.is_estimate,
-      // Stable idempotency key so a repeated auto-import (double-mount, retry)
-      // cannot insert the same demo row twice.
-      client_request_id: createUuid(),
+      // Deterministic idempotency key derived from user + saved batch + index,
+      // so retries/double-clicks after signup cannot insert the row twice.
+      client_request_id: `demo:${u.user!.id}:${demoImport.savedAt}:${idx}`,
     }));
     const { error } = await supabase
       .from("food_entries")
