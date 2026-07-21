@@ -934,22 +934,11 @@ export const getAuthDiagnostics = createServerFn({ method: "GET" })
 // Retention & activation cohorts (Manila TZ)
 // ============================================================
 
-// Manila is UTC+8 with no DST — a fixed offset is exact.
-const MANILA_OFFSET_MS = 8 * 60 * 60 * 1000;
-function manilaDay(iso: string): string {
-  const d = new Date(new Date(iso).getTime() + MANILA_OFFSET_MS);
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD in Manila
-}
-function addDaysISO(day: string, n: number): string {
-  const d = new Date(day + "T00:00:00Z");
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
 export const getRetentionCohorts = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
     await ensureAdmin(context);
+    const { computeRetention } = await import("./retention");
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => {
@@ -959,10 +948,10 @@ export const getRetentionCohorts = createServerFn({ method: "GET" })
       };
     };
 
-    // 30-day lookback for signups; entries need +7 days beyond that for D7.
+    // 30-day lookback for signups; entries need +8 days beyond that so D7 windows can fully mature.
     const now = Date.now();
     const signupSince = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const entriesSince = new Date(now - 38 * 24 * 60 * 60 * 1000).toISOString();
+    const entriesSince = new Date(now - 39 * 24 * 60 * 60 * 1000).toISOString();
 
     const [{ data: profileRows }, { data: entryRows }] = await Promise.all([
       admin.from("profiles").select("user_id,created_at").gte("created_at", signupSince),
@@ -972,110 +961,13 @@ export const getRetentionCohorts = createServerFn({ method: "GET" })
     const signups = (profileRows ?? []) as Array<{ user_id: string; created_at: string }>;
     const entries = (entryRows ?? []) as Array<{ user_id: string; logged_at: string }>;
 
-    // Build per-user set of active Manila days.
-    const activeDays = new Map<string, Set<string>>();
-    for (const e of entries) {
-      let s = activeDays.get(e.user_id);
-      if (!s) {
-        s = new Set();
-        activeDays.set(e.user_id, s);
-      }
-      s.add(manilaDay(e.logged_at));
-    }
-
-    // Per-user signup day (Manila).
-    const signupDayByUser = new Map<string, string>();
-    for (const p of signups) signupDayByUser.set(p.user_id, manilaDay(p.created_at));
-
-    // Group by signup week (Manila) starting Monday.
-    function weekStart(day: string): string {
-      const d = new Date(day + "T00:00:00Z");
-      const dow = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
-      d.setUTCDate(d.getUTCDate() - dow);
-      return d.toISOString().slice(0, 10);
-    }
-
-    type Cohort = {
-      cohort: string; // week start (Manila)
-      users: number;
-      activated: number; // logged ≥1 food on signup day
-      d1: number; // active on day +1
-      d7: number; // active any day in +1..+7
-      matureForD1: number; // cohorts old enough to evaluate D1
-      matureForD7: number; // cohorts old enough to evaluate D7
-    };
-    const cohorts = new Map<string, Cohort>();
-    const todayManila = manilaDay(new Date().toISOString());
-
-    let overallUsers = 0;
-    let overallActivated = 0;
-    let overallD1 = 0;
-    let overallD1Mature = 0;
-    let overallD7 = 0;
-    let overallD7Mature = 0;
-
-    for (const [uid, signupDay] of signupDayByUser) {
-      const bucket = weekStart(signupDay);
-      let c = cohorts.get(bucket);
-      if (!c) {
-        c = { cohort: bucket, users: 0, activated: 0, d1: 0, d7: 0, matureForD1: 0, matureForD7: 0 };
-        cohorts.set(bucket, c);
-      }
-      c.users += 1;
-      overallUsers += 1;
-      const active = activeDays.get(uid) ?? new Set<string>();
-      if (active.has(signupDay)) {
-        c.activated += 1;
-        overallActivated += 1;
-      }
-      // D1: only counted if signupDay+1 <= today (mature)
-      const d1Day = addDaysISO(signupDay, 1);
-      if (d1Day <= todayManila) {
-        c.matureForD1 += 1;
-        overallD1Mature += 1;
-        if (active.has(d1Day)) {
-          c.d1 += 1;
-          overallD1 += 1;
-        }
-      }
-      // D7: only counted if signupDay+7 <= today
-      const d7Day = addDaysISO(signupDay, 7);
-      if (d7Day <= todayManila) {
-        c.matureForD7 += 1;
-        overallD7Mature += 1;
-        let hit = false;
-        for (let i = 1; i <= 7; i++) {
-          if (active.has(addDaysISO(signupDay, i))) {
-            hit = true;
-            break;
-          }
-        }
-        if (hit) {
-          c.d7 += 1;
-          overallD7 += 1;
-        }
-      }
-    }
-
-    const list = Array.from(cohorts.values()).sort((a, b) =>
-      b.cohort.localeCompare(a.cohort),
-    );
+    const { overall, cohorts } = computeRetention(signups, entries, new Date(now));
 
     return {
       generatedAt: new Date().toISOString(),
       timezone: "Asia/Manila",
       windowDays: 30,
-      overall: {
-        users: overallUsers,
-        activated: overallActivated,
-        activationRate: overallUsers ? overallActivated / overallUsers : 0,
-        d1: overallD1,
-        d1Mature: overallD1Mature,
-        d1Rate: overallD1Mature ? overallD1 / overallD1Mature : 0,
-        d7: overallD7,
-        d7Mature: overallD7Mature,
-        d7Rate: overallD7Mature ? overallD7 / overallD7Mature : 0,
-      },
-      cohorts: list,
+      overall,
+      cohorts,
     };
   });

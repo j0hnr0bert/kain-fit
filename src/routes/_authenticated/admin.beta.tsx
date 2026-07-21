@@ -559,8 +559,10 @@ function AdminBetaPage() {
                 Activation &amp; Retention (Manila TZ)
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Activation = signed up and logged ≥1 food on signup day. D1 / D7 measured
-                against mature cohorts only (users whose day +1 / +7 has already elapsed).
+                Activation = signed up and logged ≥1 food on signup day. D1 = active on
+                Manila calendar day signup+1. D7 (exact) = active on signup+7. 7-day return
+                = active any day in signup+1..signup+7. Denominators exclude cohorts whose
+                window has not fully elapsed (shown as “pending”).
               </p>
               {!retention ? (
                 <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
@@ -574,11 +576,15 @@ function AdminBetaPage() {
                     />
                     <Metric
                       label="D1 retention"
-                      value={`${Math.round(retention.overall.d1Rate * 100)}% (${retention.overall.d1}/${retention.overall.d1Mature})`}
+                      value={`${Math.round(retention.overall.d1Rate * 100)}% (${retention.overall.d1}/${retention.overall.matureD1})`}
                     />
                     <Metric
-                      label="D7 retention"
-                      value={`${Math.round(retention.overall.d7Rate * 100)}% (${retention.overall.d7}/${retention.overall.d7Mature})`}
+                      label="D7 retention (exact)"
+                      value={`${Math.round(retention.overall.d7ExactRate * 100)}% (${retention.overall.d7Exact}/${retention.overall.matureD7})`}
+                    />
+                    <Metric
+                      label="7-day return rate"
+                      value={`${Math.round(retention.overall.d7ReturnRate * 100)}% (${retention.overall.d7Return}/${retention.overall.matureD7})`}
                     />
                   </div>
                   <div className="mt-3 overflow-x-auto">
@@ -589,13 +595,14 @@ function AdminBetaPage() {
                           <th className="py-1 pr-3">Signups</th>
                           <th className="py-1 pr-3">Activated</th>
                           <th className="py-1 pr-3">D1</th>
-                          <th className="py-1 pr-3">D7</th>
+                          <th className="py-1 pr-3">D7 (exact)</th>
+                          <th className="py-1 pr-3">7-day return</th>
                         </tr>
                       </thead>
                       <tbody>
                         {retention.cohorts.length === 0 ? (
                           <tr>
-                            <td colSpan={5} className="py-2 text-muted-foreground">
+                            <td colSpan={6} className="py-2 text-muted-foreground">
                               No signups in the last 30 days.
                             </td>
                           </tr>
@@ -610,13 +617,18 @@ function AdminBetaPage() {
                                   : "—"}
                               </td>
                               <td className="py-1 pr-3">
-                                {c.matureForD1
-                                  ? `${Math.round((c.d1 / c.matureForD1) * 100)}% (${c.d1}/${c.matureForD1})`
+                                {c.matureD1
+                                  ? `${Math.round((c.d1 / c.matureD1) * 100)}% (${c.d1}/${c.matureD1})`
                                   : "pending"}
                               </td>
                               <td className="py-1 pr-3">
-                                {c.matureForD7
-                                  ? `${Math.round((c.d7 / c.matureForD7) * 100)}% (${c.d7}/${c.matureForD7})`
+                                {c.matureD7
+                                  ? `${Math.round((c.d7Exact / c.matureD7) * 100)}% (${c.d7Exact}/${c.matureD7})`
+                                  : "pending"}
+                              </td>
+                              <td className="py-1 pr-3">
+                                {c.matureD7
+                                  ? `${Math.round((c.d7Return / c.matureD7) * 100)}% (${c.d7Return}/${c.matureD7})`
                                   : "pending"}
                               </td>
                             </tr>
