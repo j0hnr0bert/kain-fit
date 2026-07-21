@@ -136,7 +136,11 @@ export type EventName =
   | "auth_method_chosen"
   | "signup_failed"
   | "first_food_logged"
-  | "auth_attempt_completed";
+  | "auth_attempt_completed"
+  | "scale_guide_opened"
+  | "scale_guide_completed"
+  | "scale_example_started"
+  | "scale_example_logged";
 
 // These fire more than once per second (e.g. web_vital LCP+INP+CLS,
 // cache_hit per item) — client-side dedupe would silently drop them.
