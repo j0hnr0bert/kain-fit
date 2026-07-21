@@ -47,10 +47,13 @@ function readUtm(): UtmParams {
       if (v) fresh[key] = v.slice(0, 128);
     }
     if (Object.keys(fresh).length > 0) {
-      sessionStorage.setItem(UTM_KEY, JSON.stringify(fresh));
+      localStorage.setItem(UTM_KEY, JSON.stringify(fresh));
       return fresh;
     }
-    const cached = sessionStorage.getItem(UTM_KEY);
+    const cached = localStorage.getItem(UTM_KEY) ?? sessionStorage.getItem(UTM_KEY);
+    if (cached && !localStorage.getItem(UTM_KEY)) {
+      localStorage.setItem(UTM_KEY, cached); // migrate legacy session value
+    }
     return cached ? (JSON.parse(cached) as UtmParams) : {};
   } catch {
     return {};
