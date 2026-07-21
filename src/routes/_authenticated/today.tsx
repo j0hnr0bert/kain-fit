@@ -178,6 +178,7 @@ function TodayPage() {
   } | null>(null);
   const editedRef = useRef(false);
   const [demoImport, setDemoImport] = useState<{
+    savedAt: number;
     entries: Array<{
       meal: Entry["meal_type"];
       name: string;
@@ -196,17 +197,24 @@ function TodayPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = sessionStorage.getItem("kf.demoPendingImport");
+      // Read from localStorage (survives OAuth redirect); also drain legacy
+      // sessionStorage entries from older demo sessions.
+      const raw =
+        localStorage.getItem("kf.demoPendingImport") ??
+        sessionStorage.getItem("kf.demoPendingImport");
       if (!raw) return;
       const parsed = JSON.parse(raw) as {
+        savedAt?: number;
         entries: Array<Record<string, unknown>>;
       };
       const list = Array.isArray(parsed?.entries) ? parsed.entries : [];
       if (list.length === 0) {
+        localStorage.removeItem("kf.demoPendingImport");
         sessionStorage.removeItem("kf.demoPendingImport");
         return;
       }
       setDemoImport({
+        savedAt: typeof parsed?.savedAt === "number" ? parsed.savedAt : Date.now(),
         entries: list.map((e) => ({
           meal: (e.meal as Entry["meal_type"]) ?? "snacks",
           name: String(e.name ?? "Demo item"),
@@ -231,7 +239,7 @@ function TodayPage() {
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) return;
     const loggedAt = new Date().toISOString();
-    const rows = demoImport.entries.map((i) => ({
+    const rows = demoImport.entries.map((i, idx) => ({
       user_id: u.user!.id,
       logged_at: loggedAt,
       meal_type: i.meal,
@@ -248,20 +256,31 @@ function TodayPage() {
       data_source: i.data_source,
       confidence: i.confidence ?? 0.7,
       is_estimate: i.is_estimate,
+      // Deterministic idempotency key derived from user + saved batch + index,
+      // so retries/double-clicks after signup cannot insert the row twice.
+      client_request_id: `demo:${u.user!.id}:${demoImport.savedAt}:${idx}`,
     }));
-    const { error } = await supabase.from("food_entries").insert(rows);
+    const { error } = await supabase
+      .from("food_entries")
+      .upsert(rows, { onConflict: "client_request_id", ignoreDuplicates: true });
     if (error) {
       toast.error(error.message);
       return;
     }
-    try { sessionStorage.removeItem("kf.demoPendingImport"); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem("kf.demoPendingImport");
+      sessionStorage.removeItem("kf.demoPendingImport");
+    } catch { /* ignore */ }
     setDemoImport(null);
     qc.invalidateQueries({ queryKey: ["entries", "today"] });
     toast.success(`Imported ${rows.length} demo ${rows.length === 1 ? "entry" : "entries"}`);
   }
 
   function dismissDemoImport() {
-    try { sessionStorage.removeItem("kf.demoPendingImport"); } catch { /* ignore */ }
+    try {
+      localStorage.removeItem("kf.demoPendingImport");
+      sessionStorage.removeItem("kf.demoPendingImport");
+    } catch { /* ignore */ }
     setDemoImport(null);
   }
 
