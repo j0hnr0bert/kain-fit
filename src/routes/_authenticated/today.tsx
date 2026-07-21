@@ -3,6 +3,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { sumNutrients } from "@/lib/nutrient-totals";
 import { parseFood, recalcItem } from "@/lib/food.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -477,17 +478,7 @@ function TodayPage() {
     qc.invalidateQueries({ queryKey: ["beta-usage"] });
   }, [entries.length, qc]);
 
-  const totals = useMemo(() => {
-    return entries.reduce(
-      (acc, e) => ({
-        calories: acc.calories + Number(e.calories),
-        protein: acc.protein + Number(e.protein_g),
-        carbs: acc.carbs + Number(e.carbs_g),
-        fat: acc.fat + Number(e.fat_g),
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0 },
-    );
-  }, [entries]);
+  const totals = useMemo(() => sumNutrients(entries), [entries]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
