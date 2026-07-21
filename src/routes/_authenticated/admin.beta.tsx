@@ -559,8 +559,10 @@ function AdminBetaPage() {
                 Activation &amp; Retention (Manila TZ)
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Activation = signed up and logged ≥1 food on signup day. D1 / D7 measured
-                against mature cohorts only (users whose day +1 / +7 has already elapsed).
+                Activation = signed up and logged ≥1 food on signup day. D1 = active on
+                Manila calendar day signup+1. D7 (exact) = active on signup+7. 7-day return
+                = active any day in signup+1..signup+7. Denominators exclude cohorts whose
+                window has not fully elapsed (shown as “pending”).
               </p>
               {!retention ? (
                 <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
