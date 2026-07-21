@@ -288,6 +288,26 @@ function TodayPage() {
     markReturned();
   }, []);
 
+  // Prefill / focus from the Food Scale Guide's "Try it on Today" button.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const prefill = sessionStorage.getItem("kf.scalePrefill");
+      const focus = sessionStorage.getItem("kf.scaleFocus");
+      if (prefill) {
+        setInput(prefill);
+        sessionStorage.setItem("kf.scaleExamplePending", "1");
+        sessionStorage.removeItem("kf.scalePrefill");
+      }
+      if (focus) {
+        sessionStorage.removeItem("kf.scaleFocus");
+        requestAnimationFrame(() => inputRef.current?.focus());
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const { data: entries = [], isLoading } = useQuery({
     queryKey: ["entries", "today"],
     queryFn: async () => {
