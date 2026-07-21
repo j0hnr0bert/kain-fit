@@ -44,6 +44,10 @@ const ALLOWED_EVENTS = [
   "signup_failed",
   "first_food_logged",
   "auth_attempt_completed",
+  "scale_guide_opened",
+  "scale_guide_completed",
+  "scale_example_started",
+  "scale_example_logged",
 ] as const;
 
 const eventSchema = z.object({
@@ -88,6 +92,7 @@ function sanitizeProps(props: Record<string, unknown>): Record<string, unknown> 
     "method",
     "field_target",
     "correlation_id",
+    "entry_point",
   ]);
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
