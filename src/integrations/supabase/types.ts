@@ -743,6 +743,9 @@ export type Database = {
           age: number | null
           created_at: string
           display_name: string | null
+          first_touch_source: string | null
+          first_touch_utm: Json | null
+          first_touched_at: string | null
           height_cm: number | null
           id: string
           manual_targets_enabled: boolean
@@ -764,6 +767,9 @@ export type Database = {
           age?: number | null
           created_at?: string
           display_name?: string | null
+          first_touch_source?: string | null
+          first_touch_utm?: Json | null
+          first_touched_at?: string | null
           height_cm?: number | null
           id?: string
           manual_targets_enabled?: boolean
@@ -785,6 +791,9 @@ export type Database = {
           age?: number | null
           created_at?: string
           display_name?: string | null
+          first_touch_source?: string | null
+          first_touch_utm?: Json | null
+          first_touched_at?: string | null
           height_cm?: number | null
           id?: string
           manual_targets_enabled?: boolean
@@ -1186,6 +1195,10 @@ export type Database = {
           _key: string
           _meal_hint: string
         }
+        Returns: undefined
+      }
+      record_first_touch: {
+        Args: { _source: string; _utm: Json }
         Returns: undefined
       }
       release_demo_slot: {
