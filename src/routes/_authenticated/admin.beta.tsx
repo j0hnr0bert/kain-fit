@@ -558,6 +558,87 @@ function AdminBetaPage() {
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Performance
               </h2>
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Activation &amp; Retention (Manila TZ)
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Activation = signed up and logged ≥1 food on signup day. D1 / D7 measured
+                against mature cohorts only (users whose day +1 / +7 has already elapsed).
+              </p>
+              {!retention ? (
+                <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
+              ) : (
+                <>
+                  <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <Metric label="Signups (30d)" value={retention.overall.users} />
+                    <Metric
+                      label="Activation"
+                      value={`${Math.round(retention.overall.activationRate * 100)}% (${retention.overall.activated}/${retention.overall.users})`}
+                    />
+                    <Metric
+                      label="D1 retention"
+                      value={`${Math.round(retention.overall.d1Rate * 100)}% (${retention.overall.d1}/${retention.overall.d1Mature})`}
+                    />
+                    <Metric
+                      label="D7 retention"
+                      value={`${Math.round(retention.overall.d7Rate * 100)}% (${retention.overall.d7}/${retention.overall.d7Mature})`}
+                    />
+                  </div>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="text-muted-foreground">
+                        <tr className="text-left">
+                          <th className="py-1 pr-3">Cohort week</th>
+                          <th className="py-1 pr-3">Signups</th>
+                          <th className="py-1 pr-3">Activated</th>
+                          <th className="py-1 pr-3">D1</th>
+                          <th className="py-1 pr-3">D7</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {retention.cohorts.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="py-2 text-muted-foreground">
+                              No signups in the last 30 days.
+                            </td>
+                          </tr>
+                        ) : (
+                          retention.cohorts.map((c) => (
+                            <tr key={c.cohort} className="border-t border-border/50">
+                              <td className="py-1 pr-3 font-mono">{c.cohort}</td>
+                              <td className="py-1 pr-3">{c.users}</td>
+                              <td className="py-1 pr-3">
+                                {c.users
+                                  ? `${Math.round((c.activated / c.users) * 100)}% (${c.activated}/${c.users})`
+                                  : "—"}
+                              </td>
+                              <td className="py-1 pr-3">
+                                {c.matureForD1
+                                  ? `${Math.round((c.d1 / c.matureForD1) * 100)}% (${c.d1}/${c.matureForD1})`
+                                  : "pending"}
+                              </td>
+                              <td className="py-1 pr-3">
+                                {c.matureForD7
+                                  ? `${Math.round((c.d7 / c.matureForD7) * 100)}% (${c.d7}/${c.matureForD7})`
+                                  : "pending"}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Performance
+              </h2>
 
               <p className="mt-1 text-xs text-muted-foreground">
                 End-to-end parse latency measured client-side. AI stage measured server-side.
