@@ -300,6 +300,30 @@ export const logSignupFunnelEvent = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+// First-touch attribution. Writes profiles.first_touch_* exactly once per
+// user (the SQL function is idempotent — it only updates when
+// first_touched_at IS NULL). Callable by any authenticated user.
+const firstTouchSchema = z.object({
+  source: z.string().max(64).nullable().optional(),
+  utm: z.record(z.string(), z.string().max(128)).nullable().optional(),
+});
+
+export const recordFirstTouch = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => firstTouchSchema.parse(d))
+  .handler(async ({ data, context }) => {
+    const { error } = await (context.supabase as unknown as {
+      rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+    }).rpc("record_first_touch", {
+      _source: data.source ?? null,
+      _utm: data.utm ?? null,
+    });
+    if (error) {
+      console.error("[recordFirstTouch]", error);
+    }
+    return { ok: true };
+  });
+
 export const getSignupFunnel = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {
