@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
-import { LogOut, Download, MessageSquare, Shield, Lock } from "lucide-react";
+import { LogOut, Download, MessageSquare, Shield, Lock, Scale as ScaleIcon } from "lucide-react";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { BetaBadge } from "@/components/BetaBadge";
 
@@ -580,6 +580,11 @@ function ProfilePage() {
         <div className="mt-4 rounded-3xl bg-card border border-border p-5 space-y-3">
           <Button onClick={() => setFeedbackOpen(true)} variant="outline" className="w-full h-11 rounded-2xl justify-start">
             <MessageSquare className="h-4 w-4 mr-2" /> Send feedback
+          </Button>
+          <Button asChild variant="outline" className="w-full h-11 rounded-2xl justify-start">
+            <Link to="/scale-guide" search={{ from: "profile_help" as const }}>
+              <ScaleIcon className="h-4 w-4 mr-2" /> Food scale guide
+            </Link>
           </Button>
           {isAdmin && (
             <Button asChild variant="outline" className="w-full h-11 rounded-2xl justify-start">
