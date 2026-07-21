@@ -317,9 +317,11 @@ export const recordFirstTouch = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => firstTouchSchema.parse(d))
   .handler(async ({ data, context }) => {
-    const { error } = await (context.supabase as unknown as {
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await (supabaseAdmin as unknown as {
       rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
     }).rpc("record_first_touch", {
+      _user_id: context.userId,
       _source: data.source ?? null,
       _utm: data.utm ?? null,
     });
