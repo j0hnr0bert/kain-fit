@@ -1198,7 +1198,7 @@ export type Database = {
         Returns: undefined
       }
       record_first_touch: {
-        Args: { _source: string; _utm: Json }
+        Args: { _source: string; _user_id: string; _utm: Json }
         Returns: undefined
       }
       release_demo_slot: {
