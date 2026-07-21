@@ -556,12 +556,6 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Performance
-              </h2>
-            </section>
-
-            <section className="mt-8">
-              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Activation &amp; Retention (Manila TZ)
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
