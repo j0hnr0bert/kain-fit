@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { sumNutrients } from "@/lib/nutrient-totals";
+import { manilaDay, computeCurrentStreak } from "@/lib/retention";
 import { parseFood, recalcItem } from "@/lib/food.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +26,15 @@ import {
 import { BottomNav } from "@/components/BottomNav";
 import { toast } from "sonner";
 import {
-  ArrowUp, Mic, Sparkles, Trash2, Pencil, Loader2, AlertCircle, Flag,
+  ArrowUp,
+  Mic,
+  Sparkles,
+  Trash2,
+  Pencil,
+  Loader2,
+  AlertCircle,
+  Flag,
+  Flame,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { track, markReturned } from "@/lib/analytics";
@@ -36,12 +45,7 @@ import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/_authenticated/today")({
   component: TodayPage,
@@ -270,9 +274,11 @@ function TodayPage() {
     try {
       localStorage.removeItem("kf.demoPendingImport");
       sessionStorage.removeItem("kf.demoPendingImport");
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setDemoImport(null);
-    qc.invalidateQueries({ queryKey: ["entries", "today"] });
+    qc.invalidateQueries({ queryKey: ["entries"] });
     toast.success(`Imported ${rows.length} demo ${rows.length === 1 ? "entry" : "entries"}`);
   }
 
@@ -280,7 +286,9 @@ function TodayPage() {
     try {
       localStorage.removeItem("kf.demoPendingImport");
       sessionStorage.removeItem("kf.demoPendingImport");
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     setDemoImport(null);
   }
 
@@ -329,6 +337,28 @@ function TodayPage() {
     },
   });
 
+  // Last 60 days of logged calendar days (Manila), for the streak badge.
+  // RLS scopes this to the current user automatically, same as the
+  // `entries` query above.
+  const { data: streakDays = [] } = useQuery({
+    queryKey: ["entries", "streak-days"],
+    queryFn: async () => {
+      const since = new Date();
+      since.setDate(since.getDate() - 60);
+      const { data, error } = await supabase
+        .from("food_entries")
+        .select("logged_at")
+        .gte("logged_at", since.toISOString());
+      if (error) throw error;
+      return (data ?? []).map((row) => manilaDay(row.logged_at as string));
+    },
+    staleTime: 60_000,
+  });
+  const currentStreak = useMemo(
+    () => computeCurrentStreak(streakDays, manilaDay(new Date())),
+    [streakDays],
+  );
+
   async function saveFoodItems(
     items: PendingItem[],
     sourceInput: string,
@@ -348,7 +378,8 @@ function TodayPage() {
         return false;
       }
 
-      if (editedRef.current) track("food_edited_before_confirmation", { number_of_items: items.length });
+      if (editedRef.current)
+        track("food_edited_before_confirmation", { number_of_items: items.length });
       const loggedAt = new Date().toISOString();
       const stampedItems = stampClientRequestIds(items);
       const rows = stampedItems.map((i) => ({
@@ -394,7 +425,7 @@ function TodayPage() {
             });
             setPending(null);
             setInput("");
-            await qc.invalidateQueries({ queryKey: ["entries", "today"] });
+            await qc.invalidateQueries({ queryKey: ["entries"] });
             await qc.invalidateQueries({ queryKey: ["beta-usage"] });
             toast.success("Added to Today");
             return true;
@@ -411,10 +442,13 @@ function TodayPage() {
       const savedRows = (data ?? []) as Entry[];
       if (savedRows.length !== rows.length) {
         const msg = `Saved ${savedRows.length} of ${rows.length} items. Please retry.`;
-        console.error("[today] food_entries insert returned unexpected row count", { savedRows, rows });
+        console.error("[today] food_entries insert returned unexpected row count", {
+          savedRows,
+          rows,
+        });
         setSaveError(msg);
         toast.error(msg);
-        await qc.invalidateQueries({ queryKey: ["entries", "today"] });
+        await qc.invalidateQueries({ queryKey: ["entries"] });
         return false;
       }
 
@@ -430,16 +464,21 @@ function TodayPage() {
         number_of_items: rows.length,
         save_mode: options.automatic ? "automatic" : "manual",
       });
+      let isFirstEverSave = false;
       try {
         const flagKey = "kf.firstFoodLogged";
         if (typeof window !== "undefined" && !localStorage.getItem(flagKey)) {
+          isFirstEverSave = true;
           localStorage.setItem(flagKey, "1");
           track("first_food_logged", {
             number_of_items: rows.length,
             save_mode: options.automatic ? "automatic" : "manual",
+            explainer_shown: options.automatic,
           });
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       track("food_log_saved", {
         number_of_items: rows.length,
         save_mode: options.automatic ? "automatic" : "manual",
@@ -451,29 +490,40 @@ function TodayPage() {
           sessionStorage.removeItem("kf.scaleExamplePending");
           track("scale_example_logged", { number_of_items: rows.length });
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       setPending(null);
       setInput("");
-      toast.success("Added to Today", {
-        duration: options.automatic ? 5000 : 3000,
-        action: options.automatic
-          ? {
-              label: "Undo",
-              onClick: async () => {
-                const ids = savedRows.map((row) => row.id);
-                if (ids.length === 0) return;
-                const { error: undoError } = await supabase.from("food_entries").delete().in("id", ids);
-                if (undoError) {
-                  toast.error(formatDbError(undoError));
-                  return;
-                }
-                await qc.invalidateQueries({ queryKey: ["entries", "today"] });
-                toast("Meal removed");
-              },
-            }
-          : undefined,
-      });
-      await qc.invalidateQueries({ queryKey: ["entries", "today"] });
+      const showFirstSaveExplainer = isFirstEverSave && options.automatic;
+      toast.success(
+        showFirstSaveExplainer
+          ? "Saved automatically — tap Undo if that's wrong"
+          : "Added to Today",
+        {
+          duration: options.automatic ? 5000 : 3000,
+          action: options.automatic
+            ? {
+                label: "Undo",
+                onClick: async () => {
+                  const ids = savedRows.map((row) => row.id);
+                  if (ids.length === 0) return;
+                  const { error: undoError } = await supabase
+                    .from("food_entries")
+                    .delete()
+                    .in("id", ids);
+                  if (undoError) {
+                    toast.error(formatDbError(undoError));
+                    return;
+                  }
+                  await qc.invalidateQueries({ queryKey: ["entries"] });
+                  toast("Meal removed");
+                },
+              }
+            : undefined,
+        },
+      );
+      await qc.invalidateQueries({ queryKey: ["entries"] });
       await qc.invalidateQueries({ queryKey: ["beta-usage"] });
       return true;
     } finally {
@@ -490,7 +540,9 @@ function TodayPage() {
       if (!u.user) return null;
       const { data } = await supabase
         .from("profiles")
-        .select("manual_targets_enabled,target_calories,target_protein_g,target_carbs_g,target_fat_g")
+        .select(
+          "manual_targets_enabled,target_calories,target_protein_g,target_carbs_g,target_fat_g",
+        )
         .eq("user_id", u.user.id)
         .maybeSingle();
       return data as {
@@ -504,10 +556,10 @@ function TodayPage() {
   });
   const targetsActive = Boolean(
     profile?.manual_targets_enabled &&
-      profile.target_calories &&
-      profile.target_protein_g !== null &&
-      profile.target_carbs_g !== null &&
-      profile.target_fat_g !== null,
+    profile.target_calories &&
+    profile.target_protein_g !== null &&
+    profile.target_carbs_g !== null &&
+    profile.target_fat_g !== null,
   );
 
   // Server-authoritative beta submission usage.
@@ -524,6 +576,9 @@ function TodayPage() {
   }, [entries.length, qc]);
 
   const totals = useMemo(() => sumNutrients(entries), [entries]);
+  const proteinRemaining = targetsActive
+    ? Math.max(0, (profile!.target_protein_g ?? 0) - totals.protein)
+    : 0;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -613,7 +668,8 @@ function TodayPage() {
 
   function startVoice() {
     const SR: any =
-      (typeof window !== "undefined" && ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition));
+      typeof window !== "undefined" &&
+      ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
     if (!SR) {
       toast.error("Voice input isn't supported on this device.");
       return;
@@ -648,7 +704,7 @@ function TodayPage() {
       return;
     }
     track("food_deleted", {});
-    qc.invalidateQueries({ queryKey: ["entries", "today"] });
+    qc.invalidateQueries({ queryKey: ["entries"] });
     toast("Entry deleted", {
       duration: 5000,
       action: {
@@ -657,7 +713,7 @@ function TodayPage() {
           if (!uid) return;
           const { id, ...rest } = entry;
           await supabase.from("food_entries").insert({ ...rest, user_id: uid });
-          qc.invalidateQueries({ queryKey: ["entries", "today"] });
+          qc.invalidateQueries({ queryKey: ["entries"] });
         },
       },
     });
@@ -682,15 +738,12 @@ function TodayPage() {
       carbs_g: Math.round(Number(entry.carbs_g) * ratio),
       fat_g: Math.round(Number(entry.fat_g) * ratio),
     };
-    const { error } = await supabase
-      .from("food_entries")
-      .update(patch)
-      .eq("id", entry.id);
+    const { error } = await supabase.from("food_entries").update(patch).eq("id", entry.id);
     if (error) {
       toast.error(error.message);
       return false;
     }
-    qc.invalidateQueries({ queryKey: ["entries", "today"] });
+    qc.invalidateQueries({ queryKey: ["entries"] });
     return true;
   }
 
@@ -798,9 +851,22 @@ function TodayPage() {
             <div className="text-xs text-muted-foreground">{greeting}</div>
             <div className="flex items-center gap-2">
               <div className="text-lg font-semibold">
-                {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
+                {new Date().toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "short",
+                  day: "numeric",
+                })}
               </div>
               <BetaBadge />
+              {currentStreak >= 1 && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-2 py-0.5"
+                  aria-label={`${currentStreak}-day logging streak`}
+                >
+                  <Flame className="h-3 w-3" aria-hidden="true" />
+                  {currentStreak}
+                </span>
+              )}
             </div>
           </div>
           <button
@@ -850,18 +916,26 @@ function TodayPage() {
               color="text-[oklch(0.68_0.17_25)]"
             />
           </div>
+          {targetsActive && proteinRemaining > 0 && (
+            <div className="mt-3 text-xs text-muted-foreground">
+              {Math.round(proteinRemaining)}g protein to go —{" "}
+              <span className="text-foreground font-medium">kaya mo yan!</span>
+            </div>
+          )}
         </div>
-        {betaUsage?.enabled && betaUsage.cap > 0 && (
-          betaUsage.reachedLimit ? (
+        {betaUsage?.enabled &&
+          betaUsage.cap > 0 &&
+          (betaUsage.reachedLimit ? (
             <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-              You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.
+              You've reached today's beta limit. Your allowance resets at midnight. Existing entries
+              can still be edited.
             </div>
           ) : betaUsage.remaining !== null && betaUsage.remaining <= 5 ? (
             <div className="mt-3 text-[11px] text-muted-foreground px-1">
-              {betaUsage.remaining} beta {betaUsage.remaining === 1 ? "entry" : "entries"} remaining today
+              {betaUsage.remaining} beta {betaUsage.remaining === 1 ? "entry" : "entries"} remaining
+              today
             </div>
-          ) : null
-        )}
+          ) : null)}
 
         {/* Entry */}
         <form onSubmit={handleSubmit} className="mt-5">
@@ -882,7 +956,9 @@ function TodayPage() {
                 disabled={parsing}
                 className={cn(
                   "h-10 w-10 rounded-full flex items-center justify-center",
-                  listening ? "bg-coral text-coral-foreground animate-pulse" : "text-muted-foreground hover:bg-muted",
+                  listening
+                    ? "bg-coral text-coral-foreground animate-pulse"
+                    : "text-muted-foreground hover:bg-muted",
                 )}
                 aria-label="Voice input"
               >
@@ -894,7 +970,11 @@ function TodayPage() {
                 className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
                 aria-label="Submit"
               >
-                {parsing ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowUp className="h-5 w-5" />}
+                {parsing ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <ArrowUp className="h-5 w-5" />
+                )}
               </button>
             </div>
           </div>
@@ -917,12 +997,13 @@ function TodayPage() {
           <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
             Today's Log
           </div>
-          {isLoading && (
-            <div className="text-sm text-muted-foreground">Loading today's log…</div>
-          )}
+          {isLoading && <div className="text-sm text-muted-foreground">Loading today's log…</div>}
           {!isLoading && entries.length === 0 && (
             <div className="text-center py-8 text-sm text-muted-foreground">
-              Nothing logged yet. Type what you ate above.
+              <p>Nothing logged yet. Type what you ate above.</p>
+              <p className="mt-0.5 text-xs">
+                Wala ka pang na-log — i-type mo lang kung ano&apos;ng kinain mo.
+              </p>
             </div>
           )}
           <div className="space-y-2">
@@ -947,8 +1028,8 @@ function TodayPage() {
                     />
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal ·
-                    P {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
+                    {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal · P{" "}
+                    {Math.round(e.protein_g)} · C {Math.round(e.carbs_g)} · F {Math.round(e.fat_g)}
                   </div>
                   <button
                     type="button"
@@ -1001,8 +1082,8 @@ function TodayPage() {
               <Sparkles className="h-4 w-4 text-primary" /> Review before adding
             </SheetTitle>
             <SheetDescription id="today-review-desc">
-              Check each item's amount and nutrition. Answer any preparation
-              questions, edit values if needed, then add them to your day.
+              Check each item's amount and nutrition. Answer any preparation questions, edit values
+              if needed, then add them to your day.
             </SheetDescription>
           </SheetHeader>
           <div className="mt-4 space-y-3">
@@ -1012,12 +1093,10 @@ function TodayPage() {
                 item={item}
                 recalcing={recalcingRows.has(idx)}
                 onRecalc={(next) => void recalcRow(idx, next)}
-                onChange={(next) =>
-                  {
-                    editedRef.current = true;
-                    setPending((p) => p!.map((it, i) => (i === idx ? next : it)));
-                  }
-                }
+                onChange={(next) => {
+                  editedRef.current = true;
+                  setPending((p) => p!.map((it, i) => (i === idx ? next : it)));
+                }}
                 onRemove={() =>
                   setPending((p) => (p!.length > 1 ? p!.filter((_, i) => i !== idx) : null))
                 }
@@ -1039,7 +1118,10 @@ function TodayPage() {
             ))}
           </div>
           {saveError && (
-            <div role="alert" className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            <div
+              role="alert"
+              className="mt-4 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive"
+            >
               {saveError}
             </div>
           )}
@@ -1057,8 +1139,10 @@ function TodayPage() {
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" /> Recalculating…
                 </span>
+              ) : saveError ? (
+                "Retry save"
               ) : (
-                saveError ? "Retry save" : "Add to Today"
+                "Add to Today"
               )}
             </Button>
             <Button
@@ -1078,7 +1162,9 @@ function TodayPage() {
 
       <ReportMacrosDialog
         open={reportTarget !== null}
-        onOpenChange={(v) => { if (!v) setReportTarget(null); }}
+        onOpenChange={(v) => {
+          if (!v) setReportTarget(null);
+        }}
         foodEntryId={reportTarget?.id ?? null}
         originalValues={reportTarget?.values ?? {}}
       />
@@ -1143,9 +1229,7 @@ function MacroPill({
       <div className={cn("mt-0.5 text-xl font-semibold", color)}>
         {Math.round(value)}
         {target != null ? (
-          <span className="text-xs font-normal text-muted-foreground ml-0.5">
-            / {target}g
-          </span>
+          <span className="text-xs font-normal text-muted-foreground ml-0.5">/ {target}g</span>
         ) : (
           <span className="text-xs font-normal text-muted-foreground ml-0.5">g</span>
         )}
@@ -1155,7 +1239,12 @@ function MacroPill({
 }
 
 function PendingRow({
-  item, onChange, onRemove, onReport, onRecalc, recalcing,
+  item,
+  onChange,
+  onRemove,
+  onReport,
+  onRecalc,
+  recalcing,
 }: {
   item: PendingItem;
   onChange: (next: PendingItem) => void;
@@ -1182,10 +1271,10 @@ function PendingRow({
     prep === "raw"
       ? "Calculated using raw weight."
       : prep === "cooked"
-      ? "Calculated using cooked weight."
-      : prep === "estimated"
-      ? "Preparation estimated — using a middle-ground estimate. You can change this any time."
-      : null;
+        ? "Calculated using cooked weight."
+        : prep === "estimated"
+          ? "Preparation estimated — using a middle-ground estimate. You can change this any time."
+          : null;
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       {item.clarification_needed && item.clarification_question && !prepClarification && (
@@ -1237,9 +1326,7 @@ function PendingRow({
           <div className="font-medium">{item.display_name}</div>
           <div className="text-xs text-muted-foreground mt-0.5">
             {formatQuantity(item.quantity, item.unit)}
-            {item.preparation && item.preparation !== "estimated"
-              ? ` · ${item.preparation}`
-              : ""}
+            {item.preparation && item.preparation !== "estimated" ? ` · ${item.preparation}` : ""}
             {recalcing && (
               <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" /> Recalculating…
@@ -1248,19 +1335,47 @@ function PendingRow({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setEditing((v) => !v)} className="p-2 text-muted-foreground hover:text-foreground" aria-label="Edit">
+          <button
+            onClick={() => setEditing((v) => !v)}
+            className="p-2 text-muted-foreground hover:text-foreground"
+            aria-label="Edit"
+          >
             <Pencil className="h-4 w-4" />
           </button>
-          <button onClick={onRemove} className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
+          <button
+            onClick={onRemove}
+            className="p-2 text-muted-foreground hover:text-destructive"
+            aria-label="Remove"
+          >
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-        <NumCell label="kcal" value={item.calories} onChange={(v) => onChange({ ...item, calories: v })} editing={editing} />
-        <NumCell label="P" value={item.protein_g} onChange={(v) => onChange({ ...item, protein_g: v })} editing={editing} />
-        <NumCell label="C" value={item.carbs_g} onChange={(v) => onChange({ ...item, carbs_g: v })} editing={editing} />
-        <NumCell label="F" value={item.fat_g} onChange={(v) => onChange({ ...item, fat_g: v })} editing={editing} />
+        <NumCell
+          label="kcal"
+          value={item.calories}
+          onChange={(v) => onChange({ ...item, calories: v })}
+          editing={editing}
+        />
+        <NumCell
+          label="P"
+          value={item.protein_g}
+          onChange={(v) => onChange({ ...item, protein_g: v })}
+          editing={editing}
+        />
+        <NumCell
+          label="C"
+          value={item.carbs_g}
+          onChange={(v) => onChange({ ...item, carbs_g: v })}
+          editing={editing}
+        />
+        <NumCell
+          label="F"
+          value={item.fat_g}
+          onChange={(v) => onChange({ ...item, fat_g: v })}
+          editing={editing}
+        />
       </div>
       {editing && (
         <div className="mt-3 space-y-2">
@@ -1308,9 +1423,7 @@ function PendingRow({
           is_estimate={item.is_estimate}
           preparation={item.preparation}
         />
-        {item.confidence < 0.6 && (
-          <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>
-        )}
+        {item.confidence < 0.6 && <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>}
         <button
           type="button"
           onClick={onReport}
@@ -1324,8 +1437,16 @@ function PendingRow({
 }
 
 function NumCell({
-  label, value, onChange, editing,
-}: { label: string; value: number; onChange: (v: number) => void; editing: boolean }) {
+  label,
+  value,
+  onChange,
+  editing,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  editing: boolean;
+}) {
   return (
     <div className="rounded-xl bg-muted/60 p-2">
       <div className="text-[10px] uppercase text-muted-foreground">{label}</div>
@@ -1378,9 +1499,7 @@ function StatusBadge({
             {info.label}
           </span>
         </TooltipTrigger>
-        <TooltipContent className="max-w-xs text-xs leading-relaxed">
-          {info.tooltip}
-        </TooltipContent>
+        <TooltipContent className="max-w-xs text-xs leading-relaxed">{info.tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
@@ -1529,17 +1648,23 @@ function EditEntrySheet({
     qty.trim() === "" || Number.isNaN(parsed)
       ? "Enter an amount."
       : parsed <= 0
-      ? "Amount must be greater than 0."
-      : parsed > 100000
-      ? "That amount looks too large."
-      : null;
+        ? "Amount must be greater than 0."
+        : parsed > 100000
+          ? "That amount looks too large."
+          : null;
   return (
-    <Sheet open={!!entry} onOpenChange={(o) => { if (!o) onClose(); }}>
+    <Sheet
+      open={!!entry}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
       <SheetContent side="bottom" className="rounded-t-3xl max-h-[85vh] overflow-y-auto">
         <SheetHeader>
           <SheetTitle>{entry?.display_name}</SheetTitle>
           <SheetDescription>
-            Adjust the amount. Nutrition recalculates instantly from the stored per-{unitLabel.replace(/s$/, "") || "unit"} values — no new AI calculation is used.
+            Adjust the amount. Nutrition recalculates instantly from the stored per-
+            {unitLabel.replace(/s$/, "") || "unit"} values — no new AI calculation is used.
           </SheetDescription>
         </SheetHeader>
         <div className="mt-4 space-y-4">
@@ -1560,8 +1685,9 @@ function EditEntrySheet({
           </label>
           {entry && (
             <div className="rounded-2xl bg-muted/60 p-3 text-xs text-muted-foreground">
-              Current: {formatQuantity(entry.quantity, entry.unit)} · {Math.round(entry.calories)} kcal ·
-              P {Math.round(entry.protein_g)} · C {Math.round(entry.carbs_g)} · F {Math.round(entry.fat_g)}
+              Current: {formatQuantity(entry.quantity, entry.unit)} · {Math.round(entry.calories)}{" "}
+              kcal · P {Math.round(entry.protein_g)} · C {Math.round(entry.carbs_g)} · F{" "}
+              {Math.round(entry.fat_g)}
             </div>
           )}
           <div className="flex gap-2">

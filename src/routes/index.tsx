@@ -70,27 +70,32 @@ function Welcome() {
             <br />
             <span className="text-primary">Instantly.</span>
           </h1>
+          <p className="mt-2 text-lg font-medium text-primary">Kain mo. Klaro agad.</p>
           <p className="mt-4 text-base text-muted-foreground leading-relaxed">
-            Fast, accurate macro tracking built for the way Filipinos eat. Type or say
-            what you had — in English, Filipino, or Taglish.
+            Fast, accurate macro tracking built for the way Filipinos eat. Type or say what you had
+            — in English, Filipino, or Taglish.
           </p>
         </div>
         <div className="space-y-3 mt-6">
           <Button asChild size="lg" className="w-full h-14 text-base rounded-2xl">
-            <Link to="/auth" search={{ mode: "signup" }}>Get started</Link>
+            <Link to="/auth" search={{ mode: "signup" }}>
+              Get started
+            </Link>
           </Button>
           <Button asChild variant="outline" size="lg" className="w-full h-14 text-base rounded-2xl">
             <Link to="/demo">Try the demo</Link>
           </Button>
           <Button asChild variant="ghost" size="lg" className="w-full h-14 text-base rounded-2xl">
-            <Link to="/auth" search={{ mode: "signin" }}>I already have an account</Link>
+            <Link to="/auth" search={{ mode: "signin" }}>
+              I already have an account
+            </Link>
           </Button>
         </div>
       </main>
       <footer className="mt-10 max-w-md mx-auto w-full">
         <p className="text-sm text-muted-foreground/90 text-center leading-relaxed">
-          KainFit provides nutrition estimates for personal tracking. Values may vary
-          based on ingredients and preparation.
+          KainFit provides nutrition estimates for personal tracking. Values may vary based on
+          ingredients and preparation.
         </p>
       </footer>
     </div>

@@ -4,32 +4,9 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { ensureAdmin } from "./admin-guard.server";
 
-type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | JsonValue[]
-  | { [k: string]: JsonValue };
-
-async function ensureAdmin(ctx: { supabase: unknown; userId: string }): Promise<void> {
-  const supa = ctx.supabase as {
-    from: (t: string) => {
-      select: (c: string) => {
-        eq: (a: string, b: string) => {
-          in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }>;
-        };
-      };
-    };
-  };
-  const { data } = await supa
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", ctx.userId)
-    .in("role", ["admin", "founder"]);
-  if (!data || data.length === 0) throw new Error("Forbidden");
-}
+type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
 
 type PendingSubmission = {
   id: string;
@@ -61,7 +38,10 @@ export const listFoodReviewQueue = createServerFn({ method: "GET" })
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => {
         select: (c: string) => {
-          in: (a: string, b: string[]) => {
+          in: (
+            a: string,
+            b: string[],
+          ) => {
             order: (
               a: string,
               opts: { ascending: boolean },
@@ -175,7 +155,10 @@ export const reviewFoodRevision = createServerFn({ method: "POST" })
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => {
         select: (c: string) => {
-          eq: (a: string, b: string) => {
+          eq: (
+            a: string,
+            b: string,
+          ) => {
             maybeSingle: () => Promise<{
               data: { food_record_id: string; proposed_values: JsonValue | null } | null;
               error: unknown;
@@ -219,7 +202,11 @@ export const reviewFoodRevision = createServerFn({ method: "POST" })
 
     const upd = await admin
       .from("food_revisions")
-      .update({ review_status: nextStatus, reviewed_by: context.userId, reviewed_at: new Date().toISOString() })
+      .update({
+        review_status: nextStatus,
+        reviewed_by: context.userId,
+        reviewed_at: new Date().toISOString(),
+      })
       .eq("id", data.id);
     if (upd.error) throw new Error("Failed to update revision");
 
@@ -231,7 +218,9 @@ async function logAudit(key: string, targetId: string, actorId: string): Promise
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const admin = supabaseAdmin as unknown as {
-      from: (t: string) => { insert: (row: Record<string, unknown>) => Promise<{ error: unknown }> };
+      from: (t: string) => {
+        insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
+      };
     };
     await admin.from("ops_audit_log").insert({
       actor_id: actorId,

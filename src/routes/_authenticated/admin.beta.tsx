@@ -16,7 +16,12 @@ import {
   reviewFoodSubmission,
   reviewFoodRevision,
 } from "@/lib/food-review.functions";
-import { bulkImportFoods, parseCsv, mapCsvRows, type BulkImportRow } from "@/lib/food-catalog.functions";
+import {
+  bulkImportFoods,
+  parseCsv,
+  mapCsvRows,
+  type BulkImportRow,
+} from "@/lib/food-catalog.functions";
 import { Button } from "@/components/ui/button";
 import { Download, Loader2, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -26,7 +31,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export const Route = createFileRoute("/_authenticated/admin/beta")({
-  head: () => ({ meta: [{ title: "Founder dashboard — KainFit" }, { name: "robots", content: "noindex" }] }),
+  head: () => ({
+    meta: [{ title: "Founder dashboard — KainFit" }, { name: "robots", content: "noindex" }],
+  }),
   component: AdminBetaPage,
 });
 
@@ -159,11 +166,7 @@ function AdminBetaPage() {
     retry: false,
   });
 
-  async function decide(
-    kind: "submission" | "revision",
-    id: string,
-    action: "approve" | "reject",
-  ) {
+  async function decide(kind: "submission" | "revision", id: string, action: "approve" | "reject") {
     const key = `${kind}:${id}:${action}`;
     if (pendingDecision) return;
     setPendingDecision(key);
@@ -323,7 +326,10 @@ function AdminBetaPage() {
     <div className="min-h-[100dvh] bg-background pb-24">
       <div className="max-w-3xl mx-auto px-5 pt-6">
         <div className="flex items-center justify-between">
-          <Link to="/profile" className="inline-flex items-center gap-1 text-sm text-muted-foreground -ml-2 px-2 py-1">
+          <Link
+            to="/profile"
+            className="inline-flex items-center gap-1 text-sm text-muted-foreground -ml-2 px-2 py-1"
+          >
             <ArrowLeft className="h-4 w-4" /> Back
           </Link>
           <div className="flex gap-2">
@@ -334,7 +340,11 @@ function AdminBetaPage() {
               disabled={exporting !== null}
               className="rounded-xl"
             >
-              {exporting === "metrics" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exporting === "metrics" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
               <span className="ml-1">Metrics CSV</span>
             </Button>
             <Button
@@ -344,14 +354,20 @@ function AdminBetaPage() {
               disabled={exporting !== null}
               className="rounded-xl"
             >
-              {exporting === "feedback" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              {exporting === "feedback" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
               <span className="ml-1">Feedback CSV</span>
             </Button>
           </div>
         </div>
 
         <h1 className="text-2xl font-bold tracking-tight mt-4">Founder dashboard</h1>
-        <p className="text-sm text-muted-foreground">Aggregated metrics only. No raw food text is shown here.</p>
+        <p className="text-sm text-muted-foreground">
+          Aggregated metrics only. No raw food text is shown here.
+        </p>
 
         {isLoading || !data ? (
           <div className="mt-8 text-sm text-muted-foreground">Loading metrics…</div>
@@ -364,8 +380,14 @@ function AdminBetaPage() {
               <Metric label="Signups started" value={data.signupsStarted} />
               <Metric label="Users w/ 1st entry" value={data.firstConfirmedByUser} />
               <Metric label="Median parse time" value={`${data.medianProcessingMs} ms`} />
-              <Metric label="Parse fail rate" value={`${(data.parseFailureRate * 100).toFixed(1)}%`} />
-              <Metric label="Correction rate" value={`${(data.correctionRate * 100).toFixed(1)}%`} />
+              <Metric
+                label="Parse fail rate"
+                value={`${(data.parseFailureRate * 100).toFixed(1)}%`}
+              />
+              <Metric
+                label="Correction rate"
+                value={`${(data.correctionRate * 100).toFixed(1)}%`}
+              />
               <Metric label="Incorrect-macro reports" value={data.incorrectMacroReports} />
               <Metric label="Day-1 returning" value={data.day1Return} />
               <Metric label="Day-7 returning" value={data.day7Return} />
@@ -377,7 +399,8 @@ function AdminBetaPage() {
                 Signup funnel (email/password)
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Unique sessions that reached each step. Drop-off between rows is where people abandon.
+                Unique sessions that reached each step. Drop-off between rows is where people
+                abandon.
               </p>
               {!signupFunnel ? (
                 <div className="mt-3 text-sm text-muted-foreground">Loading funnel…</div>
@@ -419,9 +442,14 @@ function AdminBetaPage() {
                         {Object.entries(signupFunnel.validationReasons)
                           .sort((a, b) => (b[1] as number) - (a[1] as number))
                           .map(([reason, count]) => (
-                            <div key={reason} className="flex items-center justify-between p-3 text-sm">
+                            <div
+                              key={reason}
+                              className="flex items-center justify-between p-3 text-sm"
+                            >
                               <span className="font-mono text-xs">{reason}</span>
-                              <span className="tabular-nums text-muted-foreground">{count as number}</span>
+                              <span className="tabular-nums text-muted-foreground">
+                                {count as number}
+                              </span>
                             </div>
                           ))}
                       </div>
@@ -438,9 +466,14 @@ function AdminBetaPage() {
                         {Object.entries(signupFunnel.requestErrorReasons)
                           .sort((a, b) => (b[1] as number) - (a[1] as number))
                           .map(([reason, count]) => (
-                            <div key={reason} className="flex items-center justify-between p-3 text-sm">
+                            <div
+                              key={reason}
+                              className="flex items-center justify-between p-3 text-sm"
+                            >
                               <span className="font-mono text-xs">{reason}</span>
-                              <span className="tabular-nums text-muted-foreground">{count as number}</span>
+                              <span className="tabular-nums text-muted-foreground">
+                                {count as number}
+                              </span>
                             </div>
                           ))}
                       </div>
@@ -462,7 +495,9 @@ function AdminBetaPage() {
                               </span>
                             </div>
                             {e.detail && (
-                              <div className="mt-1 text-muted-foreground break-words">{e.detail}</div>
+                              <div className="mt-1 text-muted-foreground break-words">
+                                {e.detail}
+                              </div>
                             )}
                           </div>
                         ))}
@@ -475,10 +510,52 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                Post-signup activation
+              </h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Of everyone who finished signing up, how far they got on their own signup day.
+                Drop-off between rows is where people abandon before their first log.
+              </p>
+              <div className="mt-3 rounded-2xl border border-border bg-card divide-y divide-border">
+                {[
+                  { step: "Signed up", count: data.activationFunnel.signedUp },
+                  {
+                    step: "Typed and submitted a food",
+                    count: data.activationFunnel.submittedFood,
+                  },
+                  { step: "Got a result back", count: data.activationFunnel.calculationCompleted },
+                  { step: "Saved it to their log", count: data.activationFunnel.confirmedFood },
+                ].map((s, i, arr) => {
+                  const top = arr[0]?.count ?? 0;
+                  const prev = i > 0 ? arr[i - 1].count : s.count;
+                  const pctTop = top ? Math.round((s.count / top) * 100) : 0;
+                  const drop = prev - s.count;
+                  return (
+                    <div key={s.step} className="flex items-center justify-between p-3 text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className="tabular-nums text-muted-foreground w-6">{i + 1}.</span>
+                        <span className="font-medium">{s.step}</span>
+                      </div>
+                      <div className="flex items-center gap-4 tabular-nums">
+                        <span className="text-muted-foreground text-xs">{pctTop}% of top</span>
+                        {i > 0 && drop > 0 && (
+                          <span className="text-destructive text-xs">−{drop}</span>
+                        )}
+                        <span className="font-semibold">{s.count}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="mt-8">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
                 Authentication Diagnostics
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Sanitized `auth_attempt_completed` events from the last 7 days. No passwords or tokens are stored.
+                Sanitized `auth_attempt_completed` events from the last 7 days. No passwords or
+                tokens are stored.
               </p>
               {!authDiag ? (
                 <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
@@ -526,7 +603,9 @@ function AdminBetaPage() {
                   </div>
                   {authDiag.recentFailures.length > 0 && (
                     <div className="mt-4">
-                      <h3 className="text-xs font-semibold text-muted-foreground">Recent failures</h3>
+                      <h3 className="text-xs font-semibold text-muted-foreground">
+                        Recent failures
+                      </h3>
                       <div className="mt-2 space-y-1 max-h-64 overflow-y-auto pr-2 text-xs">
                         {authDiag.recentFailures.map((f, i) => (
                           <div key={i} className="rounded border border-border/50 p-2">
@@ -543,7 +622,9 @@ function AdminBetaPage() {
                               {f.status ? <> · status {String(f.status)}</> : null} · {f.platform}
                             </div>
                             {f.reason && (
-                              <div className="mt-1 text-muted-foreground break-words">{f.reason}</div>
+                              <div className="mt-1 text-muted-foreground break-words">
+                                {f.reason}
+                              </div>
                             )}
                           </div>
                         ))}
@@ -559,10 +640,10 @@ function AdminBetaPage() {
                 Activation &amp; Retention (Manila TZ)
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Activation = signed up and logged ≥1 food on signup day. D1 = active on
-                Manila calendar day signup+1. D7 (exact) = active on signup+7. 7-day return
-                = active any day in signup+1..signup+7. Denominators exclude cohorts whose
-                window has not fully elapsed (shown as “pending”).
+                Activation = signed up and logged ≥1 food on signup day. D1 = active on Manila
+                calendar day signup+1. D7 (exact) = active on signup+7. 7-day return = active any
+                day in signup+1..signup+7. Denominators exclude cohorts whose window has not fully
+                elapsed (shown as “pending”).
               </p>
               {!retention ? (
                 <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
@@ -655,13 +736,28 @@ function AdminBetaPage() {
                 <Metric label="p75 (total)" value={`${data.performance?.p75 ?? 0} ms`} />
                 <Metric label="p90 (total)" value={`${data.performance?.p90 ?? 0} ms`} />
                 <Metric label="p95 (total)" value={`${data.performance?.p95 ?? 0} ms`} />
-                <Metric label="% under 3s" value={`${((data.performance?.under3s ?? 0) * 100).toFixed(0)}%`} />
-                <Metric label="% under 5s" value={`${((data.performance?.under5s ?? 0) * 100).toFixed(0)}%`} />
-                <Metric label="% under 8s" value={`${((data.performance?.under8s ?? 0) * 100).toFixed(0)}%`} />
-                <Metric label="% under 10s" value={`${((data.performance?.under10s ?? 0) * 100).toFixed(0)}%`} />
+                <Metric
+                  label="% under 3s"
+                  value={`${((data.performance?.under3s ?? 0) * 100).toFixed(0)}%`}
+                />
+                <Metric
+                  label="% under 5s"
+                  value={`${((data.performance?.under5s ?? 0) * 100).toFixed(0)}%`}
+                />
+                <Metric
+                  label="% under 8s"
+                  value={`${((data.performance?.under8s ?? 0) * 100).toFixed(0)}%`}
+                />
+                <Metric
+                  label="% under 10s"
+                  value={`${((data.performance?.under10s ?? 0) * 100).toFixed(0)}%`}
+                />
                 <Metric label="AI p50" value={`${data.performance?.aiP50 ?? 0} ms`} />
                 <Metric label="AI p95" value={`${data.performance?.aiP95 ?? 0} ms`} />
-                <Metric label="Timeout rate" value={`${((data.performance?.timeoutRate ?? 0) * 100).toFixed(1)}%`} />
+                <Metric
+                  label="Timeout rate"
+                  value={`${((data.performance?.timeoutRate ?? 0) * 100).toFixed(1)}%`}
+                />
               </div>
             </section>
 
@@ -678,12 +774,20 @@ function AdminBetaPage() {
                   value={`${((data.resolution?.cacheHitRate ?? 0) * 100).toFixed(0)}%`}
                 />
                 <Metric label="Cache hits (all-time)" value={data.resolution?.cacheHits ?? 0} />
-                <Metric label="Cache entries (live)" value={data.resolution?.cacheStats?.live_entries ?? 0} />
-                <Metric label="Cache hits (24h)" value={data.resolution?.cacheStats?.hits_last_24h ?? 0} />
+                <Metric
+                  label="Cache entries (live)"
+                  value={data.resolution?.cacheStats?.live_entries ?? 0}
+                />
+                <Metric
+                  label="Cache hits (24h)"
+                  value={data.resolution?.cacheStats?.hits_last_24h ?? 0}
+                />
               </div>
               <div className="mt-3 rounded-2xl border border-border bg-card divide-y divide-border">
                 {Object.entries(data.resolution?.counts ?? {}).length === 0 && (
-                  <div className="p-4 text-sm text-muted-foreground">No resolutions recorded yet.</div>
+                  <div className="p-4 text-sm text-muted-foreground">
+                    No resolutions recorded yet.
+                  </div>
                 )}
                 {Object.entries(data.resolution?.counts ?? {})
                   .sort((a, b) => (b[1] as number) - (a[1] as number))
@@ -701,7 +805,8 @@ function AdminBetaPage() {
                 Operations (live)
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Refreshes every 5s. Capacity numbers reflect one server instance; queued may fan out across instances during a burst.
+                Refreshes every 5s. Capacity numbers reflect one server instance; queued may fan out
+                across instances during a burst.
               </p>
               {!ops ? (
                 <div className="mt-2 text-sm text-muted-foreground">Loading ops…</div>
@@ -736,10 +841,16 @@ function AdminBetaPage() {
                     <Metric label="AI calls / min" value={ops.lastMinute.aiCalls} />
                     <Metric label="Rate-limited (1m)" value={ops.lastMinute.rateLimited} />
                     <Metric label="Retries (1m)" value={ops.lastMinute.retries} />
-                    <Metric label="Error rate (1m)" value={`${(ops.lastMinute.errorRate * 100).toFixed(1)}%`} />
+                    <Metric
+                      label="Error rate (1m)"
+                      value={`${(ops.lastMinute.errorRate * 100).toFixed(1)}%`}
+                    />
                     <Metric label="p50 latency (1m)" value={`${ops.lastMinute.p50Ms} ms`} />
                     <Metric label="p95 latency (1m)" value={`${ops.lastMinute.p95Ms} ms`} />
-                    <Metric label="Cache hit rate (1m)" value={`${(ops.lastMinute.cacheHitRate * 100).toFixed(0)}%`} />
+                    <Metric
+                      label="Cache hit rate (1m)"
+                      value={`${(ops.lastMinute.cacheHitRate * 100).toFixed(0)}%`}
+                    />
                   </div>
 
                   <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -747,7 +858,11 @@ function AdminBetaPage() {
                     <Metric label="AI calls this month" value={ops.globals?.aiCallsMonth ?? 0} />
                     <Metric
                       label="Monthly cap"
-                      value={ops.settings.monthly_ai_call_cap > 0 ? ops.settings.monthly_ai_call_cap : "off"}
+                      value={
+                        ops.settings.monthly_ai_call_cap > 0
+                          ? ops.settings.monthly_ai_call_cap
+                          : "off"
+                      }
                     />
                     <Metric
                       label="Daily alert"
@@ -780,8 +895,12 @@ function AdminBetaPage() {
                     />
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="allowance" className="text-sm">Demo allowance (per browser)</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Applies to new demo attempts.</p>
+                        <Label htmlFor="allowance" className="text-sm">
+                          Demo allowance (per browser)
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Applies to new demo attempts.
+                        </p>
                       </div>
                       <Input
                         id="allowance"
@@ -792,12 +911,18 @@ function AdminBetaPage() {
                         onChange={(e) => setAllowanceDraft(e.target.value)}
                         className="w-24 rounded-xl"
                       />
-                      <Button size="sm" onClick={saveAllowance} className="rounded-xl">Save</Button>
+                      <Button size="sm" onClick={saveAllowance} className="rounded-xl">
+                        Save
+                      </Button>
                     </div>
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="banner" className="text-sm">High-demand banner</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Empty = no banner. Max 200 chars.</p>
+                        <Label htmlFor="banner" className="text-sm">
+                          High-demand banner
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Empty = no banner. Max 200 chars.
+                        </p>
                       </div>
                       <Input
                         id="banner"
@@ -807,12 +932,18 @@ function AdminBetaPage() {
                         maxLength={200}
                         className="flex-1 min-w-[220px] rounded-xl"
                       />
-                      <Button size="sm" onClick={saveBanner} className="rounded-xl">Save</Button>
+                      <Button size="sm" onClick={saveBanner} className="rounded-xl">
+                        Save
+                      </Button>
                     </div>
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="burst" className="text-sm">Burst limit (per session, /min)</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">0 disables the check. Default 6.</p>
+                        <Label htmlFor="burst" className="text-sm">
+                          Burst limit (per session, /min)
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          0 disables the check. Default 6.
+                        </p>
                       </div>
                       <Input
                         id="burst"
@@ -825,7 +956,9 @@ function AdminBetaPage() {
                       />
                       <Button
                         size="sm"
-                        onClick={() => saveNumberSetting("session_burst_per_min", burstDraft, "Burst limit")}
+                        onClick={() =>
+                          saveNumberSetting("session_burst_per_min", burstDraft, "Burst limit")
+                        }
                         className="rounded-xl"
                       >
                         Save
@@ -833,8 +966,12 @@ function AdminBetaPage() {
                     </div>
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="userDaily" className="text-sm">User daily AI cap</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Max successful parses per user per day. 0 disables.</p>
+                        <Label htmlFor="userDaily" className="text-sm">
+                          User daily AI cap
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Max successful parses per user per day. 0 disables.
+                        </p>
                       </div>
                       <Input
                         id="userDaily"
@@ -847,7 +984,9 @@ function AdminBetaPage() {
                       />
                       <Button
                         size="sm"
-                        onClick={() => saveNumberSetting("user_daily_ai_cap", userDailyDraft, "User daily cap")}
+                        onClick={() =>
+                          saveNumberSetting("user_daily_ai_cap", userDailyDraft, "User daily cap")
+                        }
                         className="rounded-xl"
                       >
                         Save
@@ -855,8 +994,12 @@ function AdminBetaPage() {
                     </div>
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="monthlyCap" className="text-sm">Monthly AI-call cap (global)</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Hard stop for the whole app. 0 disables.</p>
+                        <Label htmlFor="monthlyCap" className="text-sm">
+                          Monthly AI-call cap (global)
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Hard stop for the whole app. 0 disables.
+                        </p>
                       </div>
                       <Input
                         id="monthlyCap"
@@ -868,7 +1011,9 @@ function AdminBetaPage() {
                       />
                       <Button
                         size="sm"
-                        onClick={() => saveNumberSetting("monthly_ai_call_cap", monthlyCapDraft, "Monthly cap")}
+                        onClick={() =>
+                          saveNumberSetting("monthly_ai_call_cap", monthlyCapDraft, "Monthly cap")
+                        }
                         className="rounded-xl"
                       >
                         Save
@@ -876,8 +1021,12 @@ function AdminBetaPage() {
                     </div>
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="dailyAlert" className="text-sm">Daily volume alert</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Highlights the dashboard when daily calls reach this number. 0 disables.</p>
+                        <Label htmlFor="dailyAlert" className="text-sm">
+                          Daily volume alert
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Highlights the dashboard when daily calls reach this number. 0 disables.
+                        </p>
                       </div>
                       <Input
                         id="dailyAlert"
@@ -889,7 +1038,9 @@ function AdminBetaPage() {
                       />
                       <Button
                         size="sm"
-                        onClick={() => saveNumberSetting("daily_ai_call_alert", dailyAlertDraft, "Daily alert")}
+                        onClick={() =>
+                          saveNumberSetting("daily_ai_call_alert", dailyAlertDraft, "Daily alert")
+                        }
                         className="rounded-xl"
                       >
                         Save
@@ -903,8 +1054,12 @@ function AdminBetaPage() {
                     />
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="betaCap" className="text-sm">Beta daily submission cap (per user)</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Successful parses per PHT day. 0 disables. Default 20.</p>
+                        <Label htmlFor="betaCap" className="text-sm">
+                          Beta daily submission cap (per user)
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Successful parses per PHT day. 0 disables. Default 20.
+                        </p>
                       </div>
                       <Input
                         id="betaCap"
@@ -917,7 +1072,13 @@ function AdminBetaPage() {
                       />
                       <Button
                         size="sm"
-                        onClick={() => saveNumberSetting("beta_daily_submission_cap", betaCapDraft, "Beta daily cap")}
+                        onClick={() =>
+                          saveNumberSetting(
+                            "beta_daily_submission_cap",
+                            betaCapDraft,
+                            "Beta daily cap",
+                          )
+                        }
                         className="rounded-xl"
                       >
                         Save
@@ -925,8 +1086,12 @@ function AdminBetaPage() {
                     </div>
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="betaInputLen" className="text-sm">Max input length (chars)</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Rejects submissions longer than this. 10–2000. Default 500.</p>
+                        <Label htmlFor="betaInputLen" className="text-sm">
+                          Max input length (chars)
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Rejects submissions longer than this. 10–2000. Default 500.
+                        </p>
                       </div>
                       <Input
                         id="betaInputLen"
@@ -939,7 +1104,13 @@ function AdminBetaPage() {
                       />
                       <Button
                         size="sm"
-                        onClick={() => saveNumberSetting("beta_max_input_length", betaInputLenDraft, "Input length")}
+                        onClick={() =>
+                          saveNumberSetting(
+                            "beta_max_input_length",
+                            betaInputLenDraft,
+                            "Input length",
+                          )
+                        }
                         className="rounded-xl"
                       >
                         Save
@@ -947,8 +1118,12 @@ function AdminBetaPage() {
                     </div>
                     <div className="p-4 flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
-                        <Label htmlFor="betaMaxFoods" className="text-sm">Max foods per submission</Label>
-                        <p className="text-xs text-muted-foreground mt-0.5">Caps items parsed from one submission. 1–50. Default 10.</p>
+                        <Label htmlFor="betaMaxFoods" className="text-sm">
+                          Max foods per submission
+                        </Label>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          Caps items parsed from one submission. 1–50. Default 10.
+                        </p>
                       </div>
                       <Input
                         id="betaMaxFoods"
@@ -961,7 +1136,13 @@ function AdminBetaPage() {
                       />
                       <Button
                         size="sm"
-                        onClick={() => saveNumberSetting("beta_max_foods_per_submission", betaMaxFoodsDraft, "Max foods")}
+                        onClick={() =>
+                          saveNumberSetting(
+                            "beta_max_foods_per_submission",
+                            betaMaxFoodsDraft,
+                            "Max foods",
+                          )
+                        }
                         className="rounded-xl"
                       >
                         Save
@@ -971,15 +1152,12 @@ function AdminBetaPage() {
                       <div className="flex-1 min-w-[180px]">
                         <div className="text-sm font-medium">Pre-warm parse cache</div>
                         <p className="text-xs text-muted-foreground mt-0.5">
-                          Seeds the shared cache with common Filipino inputs so the first few users hit the cache instead of the AI. Safe to run anytime; entries already cached are skipped.
+                          Seeds the shared cache with common Filipino inputs so the first few users
+                          hit the cache instead of the AI. Safe to run anytime; entries already
+                          cached are skipped.
                         </p>
                       </div>
-                      <Button
-                        size="sm"
-                        onClick={runWarm}
-                        disabled={warming}
-                        className="rounded-xl"
-                      >
+                      <Button size="sm" onClick={runWarm} disabled={warming} className="rounded-xl">
                         {warming ? <Loader2 className="h-4 w-4 animate-spin" /> : "Warm now"}
                       </Button>
                     </div>
@@ -1027,9 +1205,10 @@ function AdminBetaPage() {
                 <code className="mx-1 rounded bg-muted px-1 py-0.5">per_100g_calories</code>.
                 Optional: alt_names (| or ; separated), brand, barcode (UPC/EAN, 8–14 digits),
                 per_100g_protein_g/carbs_g/fat_g/fiber_g/sodium_mg, common_serving_label,
-                common_serving_grams, verified, preparation_state, canonical_name, last_verified_date.
-                Rows are upserted by canonical_name (barcode is also indexed for direct scan lookup).
-                The selected source tier below auto-assigns trust rank and default verified flag.
+                common_serving_grams, verified, preparation_state, canonical_name,
+                last_verified_date. Rows are upserted by canonical_name (barcode is also indexed for
+                direct scan lookup). The selected source tier below auto-assigns trust rank and
+                default verified flag.
               </p>
               <div className="mt-3 rounded-2xl border border-border bg-card p-4 space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
@@ -1039,9 +1218,7 @@ function AdminBetaPage() {
                   <select
                     id="import-source"
                     value={importSource}
-                    onChange={(e) =>
-                      setImportSource(e.target.value as typeof importSource)
-                    }
+                    onChange={(e) => setImportSource(e.target.value as typeof importSource)}
                     className="h-8 rounded-md border border-input bg-background px-2 text-xs"
                   >
                     <option value="philfct">PhilFCT (highest trust)</option>
@@ -1052,8 +1229,8 @@ function AdminBetaPage() {
                     <option value="manual">Manual / placeholder</option>
                   </select>
                   <span className="text-[11px] text-muted-foreground">
-                    Applied to every row in this upload. PhilFCT / manufacturer / restaurant
-                    are marked verified automatically.
+                    Applied to every row in this upload. PhilFCT / manufacturer / restaurant are
+                    marked verified automatically.
                   </span>
                 </div>
                 <Input
@@ -1082,7 +1259,11 @@ function AdminBetaPage() {
                   </div>
                 )}
                 <div className="flex items-center gap-2">
-                  <Button size="sm" onClick={runImport} disabled={csvRows.length === 0 || importing}>
+                  <Button
+                    size="sm"
+                    onClick={runImport}
+                    disabled={csvRows.length === 0 || importing}
+                  >
                     {importing ? (
                       <>
                         <Loader2 className="mr-1 h-3 w-3 animate-spin" /> Importing…
@@ -1099,9 +1280,7 @@ function AdminBetaPage() {
                     Download template
                   </a>
                 </div>
-                {importResult && (
-                  <div className="text-xs text-emerald-600">{importResult}</div>
-                )}
+                {importResult && <div className="text-xs text-emerald-600">{importResult}</div>}
               </div>
             </section>
 
@@ -1267,8 +1446,16 @@ function AdminBetaPage() {
                       {f.acquisition_source && <span>src: {f.acquisition_source}</span>}
                       {f.allow_contact && <span className="text-primary">Contact ok</span>}
                     </div>
-                    {f.confusing && <p className="mt-1"><span className="text-muted-foreground">Confusing:</span> {f.confusing}</p>}
-                    {f.missed_food && <p className="mt-1"><span className="text-muted-foreground">Missed:</span> {f.missed_food}</p>}
+                    {f.confusing && (
+                      <p className="mt-1">
+                        <span className="text-muted-foreground">Confusing:</span> {f.confusing}
+                      </p>
+                    )}
+                    {f.missed_food && (
+                      <p className="mt-1">
+                        <span className="text-muted-foreground">Missed:</span> {f.missed_food}
+                      </p>
+                    )}
                     {f.comment && <p className="mt-1">{f.comment}</p>}
                   </div>
                 ))}
@@ -1330,9 +1517,7 @@ function AdminBetaPage() {
                         <td className="p-2">{s.used}</td>
                         <td className="p-2">{s.remaining}</td>
                         <td className="p-2 text-muted-foreground">
-                          {s.last_success_at
-                            ? new Date(s.last_success_at).toLocaleString()
-                            : "—"}
+                          {s.last_success_at ? new Date(s.last_success_at).toLocaleString() : "—"}
                         </td>
                         <td className="p-2 text-muted-foreground">{s.last_reason ?? "—"}</td>
                       </tr>

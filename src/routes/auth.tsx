@@ -11,7 +11,12 @@ import { ArrowLeft, Check, Eye, EyeOff, Phone, Loader2 } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { logSignupFunnelEvent } from "@/lib/beta.functions";
 import { useServerFn } from "@tanstack/react-start";
-import { normalizeAuthError, type AuthProvider, type AuthOperation, type AuthRecoverySuggestion } from "@/lib/auth-errors";
+import {
+  normalizeAuthError,
+  type AuthProvider,
+  type AuthOperation,
+  type AuthRecoverySuggestion,
+} from "@/lib/auth-errors";
 
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional().default("signup"),
@@ -39,7 +44,9 @@ function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<null | "google" | "apple">(null);
   const [formError, setFormError] = useState("");
-  const [lastFailedAction, setLastFailedAction] = useState<null | "email" | "google" | "apple" | "phone_send" | "phone_verify">(null);
+  const [lastFailedAction, setLastFailedAction] = useState<
+    null | "email" | "google" | "apple" | "phone_send" | "phone_verify"
+  >(null);
   const [errorSuggestion, setErrorSuggestion] = useState<AuthRecoverySuggestion>(null);
   const logFunnel = useServerFn(logSignupFunnelEvent);
 
@@ -110,20 +117,21 @@ function AuthPage() {
     return norm;
   }
 
-  function logStep(step:
-    | "signup_form_viewed"
-    | "signup_email_entered"
-    | "signup_password_entered"
-    | "signup_submit_clicked"
-    | "signup_validation_failed"
-    | "signup_request_sent"
-    | "signup_request_error"
-    | "signup_email_verification_sent"
-    | "signup_completed"
-    | "oauth_google_started"
-    | "oauth_google_failed"
-    | "oauth_apple_started"
-    | "oauth_apple_failed",
+  function logStep(
+    step:
+      | "signup_form_viewed"
+      | "signup_email_entered"
+      | "signup_password_entered"
+      | "signup_submit_clicked"
+      | "signup_validation_failed"
+      | "signup_request_sent"
+      | "signup_request_error"
+      | "signup_email_verification_sent"
+      | "signup_completed"
+      | "oauth_google_started"
+      | "oauth_google_failed"
+      | "oauth_apple_started"
+      | "oauth_apple_failed",
     reason?: string | null,
     detail?: string | null,
   ) {
@@ -199,7 +207,8 @@ function AuthPage() {
     let completed = false;
     const reminderId = window.setTimeout(() => {
       if (completed) return;
-      const msg = "Finish sign-in in the window that opened. If nothing opened, allow pop-ups and try again.";
+      const msg =
+        "Finish sign-in in the window that opened. If nothing opened, allow pop-ups and try again.";
       logStep(failStep, "still_waiting_after_8s", msg);
       setFormError(msg);
       toast.message(msg);
@@ -216,7 +225,8 @@ function AuthPage() {
       if (result.error) {
         const norm = recordAuthAttempt(provider, "oauth", startedAt, result.error)!;
         logStep(failStep, norm.code, norm.rawMessage);
-        if (mode === "signup") track("signup_failed", { method: provider, reason: norm.rawMessage.slice(0, 120) });
+        if (mode === "signup")
+          track("signup_failed", { method: provider, reason: norm.rawMessage.slice(0, 120) });
         setFormError(norm.userMessage);
         setErrorSuggestion(norm.suggestion);
         setLastFailedAction(provider);
@@ -239,7 +249,8 @@ function AuthPage() {
       window.clearTimeout(reminderId);
       const norm = recordAuthAttempt(provider, "oauth", startedAt, e)!;
       logStep(failStep, norm.code, norm.rawMessage);
-      if (mode === "signup") track("signup_failed", { method: provider, reason: norm.rawMessage.slice(0, 120) });
+      if (mode === "signup")
+        track("signup_failed", { method: provider, reason: norm.rawMessage.slice(0, 120) });
       setFormError(norm.userMessage);
       setErrorSuggestion(norm.suggestion);
       setLastFailedAction(provider);
@@ -269,7 +280,11 @@ function AuthPage() {
       if (mode === "signup") {
         logStep(
           "signup_validation_failed",
-          !emailValue && !passwordValue ? "missing_both" : !emailValue ? "missing_email" : "missing_password",
+          !emailValue && !passwordValue
+            ? "missing_both"
+            : !emailValue
+              ? "missing_email"
+              : "missing_password",
           msg,
         );
       }
@@ -285,7 +300,10 @@ function AuthPage() {
     if (mode === "signup" && !passwordValid) {
       const msg = "Password does not meet the requirements below.";
       setFormError(msg);
-      const failed = passwordChecks.filter((r) => !r.ok).map((r) => r.label).join(",");
+      const failed = passwordChecks
+        .filter((r) => !r.ok)
+        .map((r) => r.label)
+        .join(",");
       logStep("signup_validation_failed", "password_requirements", failed);
       return;
     }
@@ -327,7 +345,10 @@ function AuthPage() {
         toast.success("Account created. Please sign in to continue.");
         setMode("signin");
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: emailValue, password: passwordValue });
+        const { error } = await supabase.auth.signInWithPassword({
+          email: emailValue,
+          password: passwordValue,
+        });
         if (error) throw error;
         recordAuthAttempt("email", "signin", startedAt);
         await continueAfterAuth(false);
@@ -367,7 +388,8 @@ function AuthPage() {
       toast.success("Code sent to your phone");
     } catch (err) {
       const norm = recordAuthAttempt("phone", "otp_send", startedAt, err)!;
-      if (mode === "signup") track("signup_failed", { method: "phone", reason: norm.rawMessage.slice(0, 120) });
+      if (mode === "signup")
+        track("signup_failed", { method: "phone", reason: norm.rawMessage.slice(0, 120) });
       setFormError(norm.userMessage);
       setErrorSuggestion(norm.suggestion);
       setLastFailedAction("phone_send");
@@ -391,7 +413,8 @@ function AuthPage() {
       await continueAfterAuth(mode === "signup");
     } catch (err) {
       const norm = recordAuthAttempt("phone", "otp_verify", startedAt, err)!;
-      if (mode === "signup") track("signup_failed", { method: "phone", reason: norm.rawMessage.slice(0, 120) });
+      if (mode === "signup")
+        track("signup_failed", { method: "phone", reason: norm.rawMessage.slice(0, 120) });
       setFormError(norm.userMessage);
       setErrorSuggestion(norm.suggestion);
       setLastFailedAction("phone_verify");
@@ -424,10 +447,7 @@ function AuthPage() {
   }
 
   const submitDisabled =
-    loading ||
-    !email.trim() ||
-    !password ||
-    (mode === "signup" && !passwordValid);
+    loading || !email.trim() || !password || (mode === "signup" && !passwordValid);
 
   const showEmailError = emailTouched && email.length > 0 && !emailValid;
 
@@ -464,6 +484,7 @@ function AuthPage() {
         <p className="mt-1 text-lg font-medium text-foreground">
           Know what you ate. <span className="text-primary">Instantly.</span>
         </p>
+        <p className="mt-0.5 text-sm font-medium text-primary">Kain mo. Klaro agad.</p>
         <p className="mt-1 text-sm text-muted-foreground">
           Fast macro tracking built for Filipino food.
         </p>
@@ -541,7 +562,8 @@ function AuthPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   onBlur={() => {
                     setEmailTouched(true);
-                    if (mode === "signup" && email.trim().length > 0) logStep("signup_email_entered");
+                    if (mode === "signup" && email.trim().length > 0)
+                      logStep("signup_email_entered");
                   }}
                   aria-invalid={showEmailError || undefined}
                   aria-describedby={showEmailError ? "email-error" : undefined}
@@ -566,9 +588,12 @@ function AuthPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     onBlur={() => {
                       setPasswordTouched(true);
-                      if (mode === "signup" && password.length > 0) logStep("signup_password_entered");
+                      if (mode === "signup" && password.length > 0)
+                        logStep("signup_password_entered");
                     }}
-                    aria-invalid={mode === "signup" && passwordTouched && !passwordValid ? true : undefined}
+                    aria-invalid={
+                      mode === "signup" && passwordTouched && !passwordValid ? true : undefined
+                    }
                     aria-describedby={mode === "signup" ? "password-requirements" : undefined}
                     className="h-12 rounded-xl pr-12"
                   />
@@ -651,7 +676,9 @@ function AuthPage() {
                   </button>
                 )}
                 {formError && errorSuggestion === "reset_password" && (
-                  <p className="mt-2 text-xs opacity-80">Forgot your password? Contact support to reset it.</p>
+                  <p className="mt-2 text-xs opacity-80">
+                    Forgot your password? Contact support to reset it.
+                  </p>
                 )}
               </div>
 
@@ -675,18 +702,23 @@ function AuthPage() {
               {mode === "signup" && (
                 <p className="text-[12px] text-muted-foreground text-center leading-relaxed px-2">
                   By creating an account, you agree to our{" "}
-                  <Link to="/terms" className="text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                  <Link
+                    to="/terms"
+                    className="text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                  >
                     Terms of Service
                   </Link>{" "}
                   and acknowledge our{" "}
-                  <Link to="/privacy" className="text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded">
+                  <Link
+                    to="/privacy"
+                    className="text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                  >
                     Privacy Policy
                   </Link>
                   .
                 </p>
               )}
             </form>
-
           </div>
         )}
 
@@ -710,11 +742,19 @@ function AuthPage() {
               </p>
             </div>
             {formError && (
-              <div role="alert" aria-live="assertive" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
                 <div className="flex items-start justify-between gap-2">
                   <span className="flex-1">{formError}</span>
                   {lastFailedAction && (
-                    <button type="button" onClick={retryLastAction} className="shrink-0 text-xs font-semibold underline underline-offset-2">
+                    <button
+                      type="button"
+                      onClick={retryLastAction}
+                      className="shrink-0 text-xs font-semibold underline underline-offset-2"
+                    >
                       Retry
                     </button>
                   )}
@@ -742,11 +782,19 @@ function AuthPage() {
               />
             </div>
             {formError && (
-              <div role="alert" aria-live="assertive" className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <div
+                role="alert"
+                aria-live="assertive"
+                className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              >
                 <div className="flex items-start justify-between gap-2">
                   <span className="flex-1">{formError}</span>
                   {lastFailedAction && (
-                    <button type="button" onClick={retryLastAction} className="shrink-0 text-xs font-semibold underline underline-offset-2">
+                    <button
+                      type="button"
+                      onClick={retryLastAction}
+                      className="shrink-0 text-xs font-semibold underline underline-offset-2"
+                    >
                       Retry
                     </button>
                   )}
@@ -763,14 +811,22 @@ function AuthPage() {
           {mode === "signup" ? (
             <>
               Already have an account?{" "}
-              <button type="button" onClick={() => updateMode("signin")} className="text-primary font-medium underline underline-offset-2">
+              <button
+                type="button"
+                onClick={() => updateMode("signin")}
+                className="text-primary font-medium underline underline-offset-2"
+              >
                 Sign in
               </button>
             </>
           ) : (
             <>
               New here?{" "}
-              <button type="button" onClick={() => updateMode("signup")} className="text-primary font-medium underline underline-offset-2">
+              <button
+                type="button"
+                onClick={() => updateMode("signup")}
+                className="text-primary font-medium underline underline-offset-2"
+              >
                 Create account
               </button>
             </>
@@ -793,7 +849,7 @@ function checkPassword(password: string) {
 function AppleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 24 24" className={className} aria-hidden="true" fill="currentColor">
-      <path d="M16.365 1.43c0 1.14-.42 2.23-1.24 3.06-.83.84-2 1.47-3.14 1.38-.13-1.1.4-2.24 1.16-3.02.83-.86 2.15-1.49 3.22-1.42zM20.5 17.06c-.55 1.27-.81 1.83-1.52 2.94-.99 1.55-2.39 3.48-4.12 3.5-1.54.02-1.93-1-4.02-.99-2.09.01-2.52 1.01-4.06.99-1.73-.03-3.06-1.77-4.05-3.31C0.99 16.94.3 12.83 2.02 10.03c1.22-1.99 3.15-3.16 4.96-3.16 1.85 0 3 1.02 4.53 1.02 1.48 0 2.39-1.02 4.53-1.02 1.62 0 3.34.88 4.57 2.4-4.01 2.2-3.36 7.94-.11 8.79z"/>
+      <path d="M16.365 1.43c0 1.14-.42 2.23-1.24 3.06-.83.84-2 1.47-3.14 1.38-.13-1.1.4-2.24 1.16-3.02.83-.86 2.15-1.49 3.22-1.42zM20.5 17.06c-.55 1.27-.81 1.83-1.52 2.94-.99 1.55-2.39 3.48-4.12 3.5-1.54.02-1.93-1-4.02-.99-2.09.01-2.52 1.01-4.06.99-1.73-.03-3.06-1.77-4.05-3.31C0.99 16.94.3 12.83 2.02 10.03c1.22-1.99 3.15-3.16 4.96-3.16 1.85 0 3 1.02 4.53 1.02 1.48 0 2.39-1.02 4.53-1.02 1.62 0 3.34.88 4.57 2.4-4.01 2.2-3.36 7.94-.11 8.79z" />
     </svg>
   );
 }
@@ -801,11 +857,23 @@ function AppleIcon({ className }: { className?: string }) {
 function GoogleIcon({ className }: { className?: string }) {
   return (
     <svg viewBox="0 0 48 48" className={className} aria-hidden="true">
-      <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-      <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-      <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-      <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-      <path fill="none" d="M0 0h48v48H0z"/>
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+      />
+      <path fill="none" d="M0 0h48v48H0z" />
     </svg>
   );
 }
@@ -833,7 +901,10 @@ function randomOAuthState() {
   return `oauth-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function signInWithOAuthPopup(provider: OAuthProvider, redirectUri: string): Promise<OAuthPopupResult> {
+function signInWithOAuthPopup(
+  provider: OAuthProvider,
+  redirectUri: string,
+): Promise<OAuthPopupResult> {
   const state = randomOAuthState();
   const params = new URLSearchParams({
     provider,
@@ -858,8 +929,12 @@ function signInWithOAuthPopup(provider: OAuthProvider, redirectUri: string): Pro
     };
 
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== "https://oauth.lovable.app" && event.origin !== "https://lovable.dev") return;
-      const payload = event.data as { type?: string; response?: Record<string, string | undefined> } | null;
+      if (event.origin !== "https://oauth.lovable.app" && event.origin !== "https://lovable.dev")
+        return;
+      const payload = event.data as {
+        type?: string;
+        response?: Record<string, string | undefined>;
+      } | null;
       if (!payload || payload.type !== "authorization_response" || !payload.response) return;
       const response = payload.response;
       if (response.state !== state) {

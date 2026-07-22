@@ -6,6 +6,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { track } from "@/lib/analytics";
 
 export const Route = createFileRoute("/_authenticated/history")({
   component: HistoryPage,
@@ -64,10 +65,25 @@ function HistoryPage() {
     setDate(d);
   }
 
-  async function del(id: string) {
-    const { error } = await supabase.from("food_entries").delete().eq("id", id);
+  async function del(entry: (typeof entries)[number]) {
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u.user?.id;
+    const { error } = await supabase.from("food_entries").delete().eq("id", entry.id);
     if (error) return toast.error(error.message);
+    track("food_deleted", {});
     qc.invalidateQueries({ queryKey: ["entries"] });
+    toast("Entry deleted", {
+      duration: 5000,
+      action: {
+        label: "Undo",
+        onClick: async () => {
+          if (!uid) return;
+          const { id, ...rest } = entry;
+          await supabase.from("food_entries").insert({ ...rest, user_id: uid });
+          qc.invalidateQueries({ queryKey: ["entries"] });
+        },
+      },
+    });
   }
 
   return (
@@ -79,7 +95,11 @@ function HistoryPage() {
         <h1 className="text-2xl font-bold tracking-tight mb-4">History</h1>
         <div className="rounded-3xl bg-card border border-border p-4">
           <div className="flex items-center justify-between">
-            <button onClick={() => shift(-1)} className="p-2 -ml-2 text-muted-foreground" aria-label="Previous day">
+            <button
+              onClick={() => shift(-1)}
+              className="p-2 -ml-2 text-muted-foreground"
+              aria-label="Previous day"
+            >
               <ChevronLeft className="h-5 w-5" />
             </button>
             <div className="text-center">
@@ -107,18 +127,27 @@ function HistoryPage() {
           {isLoading && <div className="text-sm text-muted-foreground">Loading…</div>}
           {!isLoading && entries.length === 0 && (
             <div className="text-center py-10 text-sm text-muted-foreground">
-              Nothing logged this day.
+              <p>Nothing logged this day.</p>
+              <p className="mt-0.5 text-xs">Walang na-log sa araw na ito.</p>
             </div>
           )}
           {entries.map((e) => (
-            <div key={e.id} className="rounded-2xl bg-card border border-border p-4 flex items-center gap-3">
+            <div
+              key={e.id}
+              className="rounded-2xl bg-card border border-border p-4 flex items-center gap-3"
+            >
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{e.display_name}</div>
                 <div className="text-xs text-muted-foreground">
-                  {Number(e.quantity)}{e.unit} · {Math.round(Number(e.calories))} kcal · {e.meal_type}
+                  {Number(e.quantity)}
+                  {e.unit} · {Math.round(Number(e.calories))} kcal · {e.meal_type}
                 </div>
               </div>
-              <button onClick={() => del(e.id)} className="p-2 text-muted-foreground" aria-label="Delete">
+              <button
+                onClick={() => del(e)}
+                className="p-2 text-muted-foreground"
+                aria-label="Delete"
+              >
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>

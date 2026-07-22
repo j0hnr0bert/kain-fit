@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { manilaDay, addDaysISO, computeRetention } from "../retention";
+import { manilaDay, addDaysISO, computeRetention, computeCurrentStreak } from "../retention";
 
 describe("manilaDay boundary (UTC+8)", () => {
   it("15:59Z is still previous Manila day (23:59)", () => {
@@ -96,5 +96,39 @@ describe("computeRetention", () => {
     const e = [entryOn(signup, "sameDay"), entryOn(addDaysISO(signup, 1), "nextDay")];
     const r = computeRetention(s, e, now);
     expect(r.overall.activated).toBe(1);
+  });
+});
+
+describe("computeCurrentStreak", () => {
+  const today = "2026-08-10";
+
+  it("is 0 with no active days", () => {
+    expect(computeCurrentStreak([], today)).toBe(0);
+  });
+
+  it("counts consecutive days ending today", () => {
+    const days = [today, addDaysISO(today, -1), addDaysISO(today, -2)];
+    expect(computeCurrentStreak(days, today)).toBe(3);
+  });
+
+  it("stays alive if today has no entry yet but yesterday does", () => {
+    const days = [addDaysISO(today, -1), addDaysISO(today, -2)];
+    expect(computeCurrentStreak(days, today)).toBe(2);
+  });
+
+  it("breaks on a gap even if today is active", () => {
+    // active on today and 3 days ago, but not yesterday or 2 days ago
+    const days = [today, addDaysISO(today, -3)];
+    expect(computeCurrentStreak(days, today)).toBe(1);
+  });
+
+  it("is 0 if the most recent active day was more than 1 day ago", () => {
+    const days = [addDaysISO(today, -2)];
+    expect(computeCurrentStreak(days, today)).toBe(0);
+  });
+
+  it("ignores duplicate day entries and unrelated far-past days", () => {
+    const days = [today, today, addDaysISO(today, -1), addDaysISO(today, -1), "2020-01-01"];
+    expect(computeCurrentStreak(days, today)).toBe(2);
   });
 });

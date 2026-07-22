@@ -1,29 +1,41 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
 import { BottomNav } from "@/components/BottomNav";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { LogOut, Download, MessageSquare, Shield, Lock, Scale as ScaleIcon } from "lucide-react";
+import {
+  LogOut,
+  Download,
+  MessageSquare,
+  Shield,
+  Lock,
+  Loader2,
+  Scale as ScaleIcon,
+} from "lucide-react";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { BetaBadge } from "@/components/BetaBadge";
+import { deleteOwnAccount } from "@/lib/account.functions";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
 });
 
-type Units = "metric" | "imperial";
 type Sex = "male" | "female" | "prefer_not_to_say";
-type Activity =
-  | "sedentary"
-  | "light"
-  | "moderate"
-  | "very_active"
-  | "extremely_active";
+type Activity = "sedentary" | "light" | "moderate" | "very_active" | "extremely_active";
 
 const ACTIVITY_OPTIONS: { value: Activity; label: string }[] = [
   { value: "sedentary", label: "Mostly seated" },
@@ -33,21 +45,14 @@ const ACTIVITY_OPTIONS: { value: Activity; label: string }[] = [
   { value: "extremely_active", label: "Extremely active" },
 ];
 
-// Metric is the storage format. Imperial is a display-only preference.
-const CM_PER_INCH = 2.54;
-const KG_PER_LB = 0.45359237;
-
-function cmToInches(cm: number): number {
-  return cm / CM_PER_INCH;
-}
-function inchesToCm(inches: number): number {
-  return inches * CM_PER_INCH;
-}
-function kgToLb(kg: number): number {
-  return kg / KG_PER_LB;
-}
-function lbToKg(lb: number): number {
-  return lb * KG_PER_LB;
+// Numbers/plain text pass through unquoted; only quote+escape a cell when
+// it actually needs it. Fixes exported numeric columns opening as text
+// (e.g. "150" instead of 150) in spreadsheet apps.
+function csvCell(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  const s = String(v).replace(/"/g, '""');
+  if (/[",\n]/.test(s)) return `"${s}"`;
+  return s;
 }
 
 function ProfilePage() {
@@ -65,7 +70,6 @@ function ProfilePage() {
   const [heightCm, setHeightCm] = useState<number | null>(null);
   const [weightKg, setWeightKg] = useState<number | null>(null);
   const [activity, setActivity] = useState<Activity>("moderate");
-  const [units, setUnits] = useState<Units>("metric");
   const [detailsUpdatedAt, setDetailsUpdatedAt] = useState<string | null>(null);
 
   // Draft fields for the height/weight inputs (unit-aware, string-based).
@@ -81,6 +85,9 @@ function ProfilePage() {
 
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingTargets, setSavingTargets] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const deleteAccountFn = useServerFn(deleteOwnAccount);
 
   useEffect(() => {
     (async () => {
@@ -99,11 +106,7 @@ function ProfilePage() {
         setHeightCm(data.height_cm != null ? Number(data.height_cm) : null);
         setWeightKg(data.weight_kg != null ? Number(data.weight_kg) : null);
         const act = (data.activity_level ?? "moderate") as Activity;
-        setActivity(
-          ACTIVITY_OPTIONS.some((o) => o.value === act) ? act : "moderate",
-        );
-        const u2 = (data.preferred_units as Units | null) ?? "metric";
-        setUnits(u2 === "imperial" ? "imperial" : "metric");
+        setActivity(ACTIVITY_OPTIONS.some((o) => o.value === act) ? act : "moderate");
         setDetailsUpdatedAt(
           (data as unknown as { profile_details_updated_at?: string | null })
             .profile_details_updated_at ?? null,
@@ -122,15 +125,20 @@ function ProfilePage() {
         setTCarbs(targets.target_carbs_g != null ? String(targets.target_carbs_g) : "");
         setTFat(targets.target_fat_g != null ? String(targets.target_fat_g) : "");
       }
-      const { data: roleRow } = await (supabase as unknown as {
-        from: (t: string) => {
-          select: (c: string) => {
-            eq: (a: string, b: string) => {
-              in: (a: string, b: string[]) => Promise<{ data: { role: string }[] | null }>;
+      const { data: roleRow } = await (
+        supabase as unknown as {
+          from: (t: string) => {
+            select: (c: string) => {
+              eq: (
+                a: string,
+                b: string,
+              ) => {
+                in: (a: string, b: string[]) => Promise<{ data: { role: string }[] | null }>;
+              };
             };
           };
-        };
-      })
+        }
+      )
         .from("user_roles")
         .select("role")
         .eq("user_id", u.user.id)
@@ -140,30 +148,13 @@ function ProfilePage() {
     })();
   }, []);
 
-  // Recompute unit-facing inputs whenever the underlying metric value or
-  // the display unit changes.
+  // Recompute the display input whenever the underlying stored value changes.
   useEffect(() => {
-    if (heightCm == null) {
-      setHeightInput("");
-    } else {
-      setHeightInput(
-        units === "metric"
-          ? String(Math.round(heightCm * 10) / 10)
-          : String(Math.round(cmToInches(heightCm) * 10) / 10),
-      );
-    }
-  }, [heightCm, units]);
+    setHeightInput(heightCm == null ? "" : String(Math.round(heightCm * 10) / 10));
+  }, [heightCm]);
   useEffect(() => {
-    if (weightKg == null) {
-      setWeightInput("");
-    } else {
-      setWeightInput(
-        units === "metric"
-          ? String(Math.round(weightKg * 10) / 10)
-          : String(Math.round(kgToLb(weightKg) * 10) / 10),
-      );
-    }
-  }, [weightKg, units]);
+    setWeightInput(weightKg == null ? "" : String(Math.round(weightKg * 10) / 10));
+  }, [weightKg]);
 
   const detailsUpdatedLabel = useMemo(() => {
     if (!detailsUpdatedAt) return null;
@@ -190,22 +181,20 @@ function ProfilePage() {
       if (heightInput.trim() !== "") {
         const raw = Number(heightInput);
         if (!Number.isFinite(raw) || raw <= 0) throw new Error("Height must be a positive number.");
-        heightCmVal = units === "metric" ? raw : inchesToCm(raw);
-        if (heightCmVal < 50 || heightCmVal > 260) {
+        if (raw < 50 || raw > 260) {
           throw new Error("Height looks out of range.");
         }
-        heightCmVal = Math.round(heightCmVal * 10) / 10;
+        heightCmVal = Math.round(raw * 10) / 10;
       }
 
       let weightKgVal: number | null = null;
       if (weightInput.trim() !== "") {
         const raw = Number(weightInput);
         if (!Number.isFinite(raw) || raw <= 0) throw new Error("Weight must be a positive number.");
-        weightKgVal = units === "metric" ? raw : lbToKg(raw);
-        if (weightKgVal < 20 || weightKgVal > 500) {
+        if (raw < 20 || raw > 500) {
           throw new Error("Weight looks out of range.");
         }
-        weightKgVal = Math.round(weightKgVal * 10) / 10;
+        weightKgVal = Math.round(raw * 10) / 10;
       }
 
       const nowIso = new Date().toISOString();
@@ -218,7 +207,6 @@ function ProfilePage() {
           height_cm: heightCmVal,
           weight_kg: weightKgVal,
           activity_level: activity,
-          preferred_units: units,
           profile_details_updated_at: nowIso,
         } as never)
         .eq("user_id", u.user.id);
@@ -314,15 +302,19 @@ function ProfilePage() {
     if (error) return toast.error(error.message);
     const rows = data ?? [];
     const headers = [
-      "logged_at","meal_type","display_name","quantity","unit","calories",
-      "protein_g","carbs_g","fat_g","data_source",
+      "logged_at",
+      "meal_type",
+      "display_name",
+      "quantity",
+      "unit",
+      "calories",
+      "protein_g",
+      "carbs_g",
+      "fat_g",
+      "data_source",
     ];
     const csv = [headers.join(",")]
-      .concat(
-        rows.map((r: Record<string, unknown>) =>
-          headers.map((h) => JSON.stringify(r[h] ?? "")).join(","),
-        ),
-      )
+      .concat(rows.map((r: Record<string, unknown>) => headers.map((h) => csvCell(r[h])).join(",")))
       .join("\n");
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -340,15 +332,19 @@ function ProfilePage() {
     navigate({ to: "/auth", search: { mode: "signin" }, replace: true });
   }
 
-  async function deleteAccount() {
-    if (!confirm("Delete your account and all data? This cannot be undone.")) return;
-    const { data: u } = await supabase.auth.getUser();
-    if (!u.user) return;
-    await supabase.from("food_entries").delete().eq("user_id", u.user.id);
-    await supabase.from("saved_foods").delete().eq("user_id", u.user.id);
-    await supabase.from("profiles").delete().eq("user_id", u.user.id);
+  async function confirmDeleteAccount() {
+    setDeletingAccount(true);
+    try {
+      await deleteAccountFn();
+    } catch (err) {
+      setDeletingAccount(false);
+      toast.error(err instanceof Error ? err.message : "Could not delete your account.");
+      return;
+    }
+    await qc.cancelQueries();
+    qc.clear();
     await supabase.auth.signOut();
-    toast("Account data deleted");
+    toast.success("Your account and data have been deleted.");
     navigate({ to: "/", replace: true });
   }
 
@@ -401,27 +397,6 @@ function ProfilePage() {
           </div>
 
           <div className="space-y-2">
-            <Label>Measurement system</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {(["metric", "imperial"] as const).map((u) => (
-                <button
-                  key={u}
-                  type="button"
-                  onClick={() => setUnits(u)}
-                  className={
-                    "h-10 rounded-xl border text-sm font-medium capitalize " +
-                    (units === u
-                      ? "border-primary bg-primary/5"
-                      : "border-border text-muted-foreground")
-                  }
-                >
-                  {u}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-2">
             <Label>Sex</Label>
             <select
               value={sex}
@@ -446,7 +421,7 @@ function ProfilePage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="wt">Weight ({units === "metric" ? "kg" : "lb"})</Label>
+              <Label htmlFor="wt">Weight (kg)</Label>
               <Input
                 id="wt"
                 inputMode="decimal"
@@ -456,7 +431,7 @@ function ProfilePage() {
               />
             </div>
             <div className="space-y-2 col-span-2">
-              <Label htmlFor="ht">Height ({units === "metric" ? "cm" : "in"})</Label>
+              <Label htmlFor="ht">Height (cm)</Label>
               <Input
                 id="ht"
                 inputMode="decimal"
@@ -482,7 +457,11 @@ function ProfilePage() {
             </select>
           </div>
 
-          <Button onClick={saveDetails} disabled={savingDetails || !loaded} className="w-full h-11 rounded-2xl">
+          <Button
+            onClick={saveDetails}
+            disabled={savingDetails || !loaded}
+            className="w-full h-11 rounded-2xl"
+          >
             {savingDetails ? "Saving…" : "Save personal details"}
           </Button>
           {detailsUpdatedLabel && (
@@ -578,7 +557,11 @@ function ProfilePage() {
 
         {/* Actions */}
         <div className="mt-4 rounded-3xl bg-card border border-border p-5 space-y-3">
-          <Button onClick={() => setFeedbackOpen(true)} variant="outline" className="w-full h-11 rounded-2xl justify-start">
+          <Button
+            onClick={() => setFeedbackOpen(true)}
+            variant="outline"
+            className="w-full h-11 rounded-2xl justify-start"
+          >
             <MessageSquare className="h-4 w-4 mr-2" /> Send feedback
           </Button>
           <Button asChild variant="outline" className="w-full h-11 rounded-2xl justify-start">
@@ -593,14 +576,22 @@ function ProfilePage() {
               </Link>
             </Button>
           )}
-          <Button onClick={exportHistory} variant="outline" className="w-full h-11 rounded-2xl justify-start">
+          <Button
+            onClick={exportHistory}
+            variant="outline"
+            className="w-full h-11 rounded-2xl justify-start"
+          >
             <Download className="h-4 w-4 mr-2" /> Export food history (CSV)
           </Button>
-          <Button onClick={signOut} variant="outline" className="w-full h-11 rounded-2xl justify-start">
+          <Button
+            onClick={signOut}
+            variant="outline"
+            className="w-full h-11 rounded-2xl justify-start"
+          >
             <LogOut className="h-4 w-4 mr-2" /> Sign out
           </Button>
           <Button
-            onClick={deleteAccount}
+            onClick={() => setDeleteDialogOpen(true)}
             variant="ghost"
             className="w-full h-11 rounded-2xl justify-start text-destructive hover:text-destructive"
           >
@@ -616,8 +607,50 @@ function ProfilePage() {
       <FeedbackDialog
         open={feedbackOpen}
         onOpenChange={setFeedbackOpen}
-        anonymousSessionId={typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""}
+        anonymousSessionId={
+          typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""
+        }
       />
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(o) => {
+          if (!deletingAccount) setDeleteDialogOpen(o);
+        }}
+      >
+        <DialogContent className="max-w-sm rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Delete your account?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes your profile, food history, saved foods, and saved meals.
+              This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button
+              variant="destructive"
+              onClick={confirmDeleteAccount}
+              disabled={deletingAccount}
+              className="w-full h-12 rounded-2xl"
+            >
+              {deletingAccount ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Deleting…
+                </span>
+              ) : (
+                "Yes, delete my account"
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => setDeleteDialogOpen(false)}
+              disabled={deletingAccount}
+              className="w-full h-12 rounded-2xl"
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <BottomNav />
     </div>
   );

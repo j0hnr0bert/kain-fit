@@ -6,6 +6,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { ensureAdmin } from "./admin-guard.server";
 
 // ---------------- Search ----------------
 
@@ -58,7 +59,12 @@ type RawFoodRow = {
   sodium_mg_per_100g: number | string | null;
 };
 
-function toHit(row: RawFoodRow, match_kind: FoodSearchHit["match_kind"], score: number, matched_alias: string | null = null): FoodSearchHit {
+function toHit(
+  row: RawFoodRow,
+  match_kind: FoodSearchHit["match_kind"],
+  score: number,
+  matched_alias: string | null = null,
+): FoodSearchHit {
   return {
     id: row.id,
     name: row.display_name,
@@ -72,7 +78,8 @@ function toHit(row: RawFoodRow, match_kind: FoodSearchHit["match_kind"], score: 
     verified: row.verified,
     last_verified_date: row.last_verified_date,
     common_serving_label: row.common_serving_label,
-    default_serving_grams: row.default_serving_grams == null ? null : Number(row.default_serving_grams),
+    default_serving_grams:
+      row.default_serving_grams == null ? null : Number(row.default_serving_grams),
     per_100g: {
       calories: Number(row.calories_per_100g),
       protein_g: Number(row.protein_per_100g),
@@ -94,6 +101,32 @@ function normalize(s: string): string {
 const FOOD_COLS =
   "id, canonical_name, display_name, category, preparation_state, source, source_priority, brand_name, barcode, verified, last_verified_date, common_serving_label, default_serving_grams, calories_per_100g, protein_per_100g, carbs_per_100g, fat_per_100g, fiber_per_100g, sodium_mg_per_100g";
 
+// BUG (deferred) — do not fix now; not reachable, no live caller.
+// File/function: this file, searchFoods, the `.or(orFilter)` query at the
+// "contains" match tier (~15 lines below) and the alias `.or(...)` a few
+// lines after that.
+// Plain-English risk: the search text is dropped into a PostgREST filter
+// string with only backslash/%/_ escaped. Commas and parentheses are not
+// escaped, and both are syntactically significant in PostgREST's
+// `or=(...)` filter grammar — a crafted query string could break out of
+// the intended filter and append unintended conditions against this
+// table's columns (e.g. force-match rows the ilike was never meant to
+// return). Impact is bounded today: this table is public-read, admin-
+// write-only, and holds no sensitive data, and nothing calls this
+// function, so there is no live path to trigger it.
+// Trigger conditions: only reachable once `searchFoods` is wired into a
+// UI (planned: Stage 5's "change match" search) — a signed-in user typing
+// a comma or parenthesis into that search box.
+// Smallest safe fix: stop hand-building the filter string; either
+// properly escape `,` and `)` for PostgREST's or-filter syntax, or
+// replace the `.or(...)` calls with separate `.ilike()` chains /
+// `.textSearch()` so no manual filter-string construction is needed.
+// Tests required: a unit test asserting a query containing `,` or `)`
+// cannot alter the result set beyond what the literal search text should
+// match.
+// Dependency: this fix must land BEFORE Stage 5's search UI ships — not
+// optional polish once that UI exists.
+// Priority: blocked/deferred — not current work.
 export const searchFoods = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
@@ -123,11 +156,18 @@ export const searchFoods = createServerFn({ method: "POST" })
 
     // ---- barcode fast-path: 8-14 digits ----
     if (/^\d{8,14}$/.test(q)) {
-      const bcRes = await (supa.from("food_records").select(FOOD_COLS) as unknown as {
-        eq: (a: string, b: unknown) => {
-          limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
-        };
-      }).eq("barcode", q).limit(5);
+      const bcRes = await (
+        supa.from("food_records").select(FOOD_COLS) as unknown as {
+          eq: (
+            a: string,
+            b: unknown,
+          ) => {
+            limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
+          };
+        }
+      )
+        .eq("barcode", q)
+        .limit(5);
       const rows = (bcRes.data ?? []) as RawFoodRow[];
       for (const row of rows) hitsById.set(row.id, toHit(row, "exact", 2000));
       if (hitsById.size > 0) {
@@ -139,17 +179,30 @@ export const searchFoods = createServerFn({ method: "POST" })
     // ---- personal: recent + frequent from food_entries ----
     if (data.include_personal) {
       try {
-        const recentBuilder = (supa.from("food_entries").select("display_name, normalized_name, quantity, created_at") as unknown as {
-          eq: (a: string, b: unknown) => {
-            order: (a: string, o: { ascending: boolean }) => {
-              limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
+        const recentBuilder = (
+          supa
+            .from("food_entries")
+            .select("display_name, normalized_name, quantity, created_at") as unknown as {
+            eq: (
+              a: string,
+              b: unknown,
+            ) => {
+              order: (
+                a: string,
+                o: { ascending: boolean },
+              ) => {
+                limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
+              };
             };
-          };
-        })
+          }
+        )
           .eq("user_id", context.userId)
           .order("created_at", { ascending: false });
         const recentRes = await recentBuilder.limit(80);
-        const recent = (recentRes.data ?? []) as Array<{ display_name: string; normalized_name: string | null }>;
+        const recent = (recentRes.data ?? []) as Array<{
+          display_name: string;
+          normalized_name: string | null;
+        }>;
         // dedupe by normalized_name preserving order
         const seen = new Set<string>();
         const recentNames: string[] = [];
@@ -166,9 +219,11 @@ export const searchFoods = createServerFn({ method: "POST" })
         // Match recent names against food_records by canonical_name OR alias.
         const wanted = recentNames.slice(0, 12);
         if (wanted.length > 0) {
-          const rowsRes = await (supa.from("food_records").select(FOOD_COLS) as unknown as {
-            in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }>;
-          }).in("canonical_name", wanted);
+          const rowsRes = await (
+            supa.from("food_records").select(FOOD_COLS) as unknown as {
+              in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }>;
+            }
+          ).in("canonical_name", wanted);
           const rows = (rowsRes.data ?? []) as RawFoodRow[];
           for (const row of rows) {
             const key = row.canonical_name.toLowerCase();
@@ -189,11 +244,18 @@ export const searchFoods = createServerFn({ method: "POST" })
       // Exact match on canonical_name / display_name via lower().
       const like = q.replace(/[\\%_]/g, "\\$&");
       const orFilter = `canonical_name.ilike.${like}%,display_name.ilike.${like}%,brand_name.ilike.${like}%,canonical_name.ilike.%${like}%,display_name.ilike.%${like}%,brand_name.ilike.%${like}%`;
-      const catRes = await (supa.from("food_records").select(FOOD_COLS) as unknown as {
-        eq: (a: string, b: unknown) => {
-          or: (s: string) => { limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }> };
-        };
-      })
+      const catRes = await (
+        supa.from("food_records").select(FOOD_COLS) as unknown as {
+          eq: (
+            a: string,
+            b: unknown,
+          ) => {
+            or: (s: string) => {
+              limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
+            };
+          };
+        }
+      )
         .eq("active", true)
         .or(orFilter)
         .limit(60);
@@ -205,24 +267,53 @@ export const searchFoods = createServerFn({ method: "POST" })
         const bn = (row.brand_name ?? "").toLowerCase();
         let kind: FoodSearchHit["match_kind"] = "partial";
         let score = 100;
-        if (dn === q || cn === q) { kind = "exact"; score = 500; }
-        else if (dn.startsWith(q) || cn.startsWith(q)) { kind = "prefix"; score = 300; }
-        else if (bn && (bn === q || bn.startsWith(q))) { kind = "prefix"; score = 260; }
+        if (dn === q || cn === q) {
+          kind = "exact";
+          score = 500;
+        } else if (dn.startsWith(q) || cn.startsWith(q)) {
+          kind = "prefix";
+          score = 300;
+        } else if (bn && (bn === q || bn.startsWith(q))) {
+          kind = "prefix";
+          score = 260;
+        }
         hitsById.set(row.id, toHit(row, kind, score));
       }
 
       // Alias search: pull alias hits and merge (upgrade kind/score if better).
-      const aliasRes = await (supa.from("food_aliases").select("food_record_id, alias, normalized_alias, priority") as unknown as {
-        or: (s: string) => { limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }> };
-      }).or(`normalized_alias.ilike.${like}%,normalized_alias.ilike.%${like}%`).limit(80);
-      const aliasRows = (aliasRes.data ?? []) as Array<{ food_record_id: string; alias: string; normalized_alias: string; priority: number }>;
+      const aliasRes = await (
+        supa
+          .from("food_aliases")
+          .select("food_record_id, alias, normalized_alias, priority") as unknown as {
+          or: (s: string) => {
+            limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
+          };
+        }
+      )
+        .or(`normalized_alias.ilike.${like}%,normalized_alias.ilike.%${like}%`)
+        .limit(80);
+      const aliasRows = (aliasRes.data ?? []) as Array<{
+        food_record_id: string;
+        alias: string;
+        normalized_alias: string;
+        priority: number;
+      }>;
       const missingIds = aliasRows.map((a) => a.food_record_id).filter((id) => !hitsById.has(id));
       const uniqueMissing = Array.from(new Set(missingIds)).slice(0, 40);
       let missingRows: RawFoodRow[] = [];
       if (uniqueMissing.length > 0) {
-        const mRes = await (supa.from("food_records").select(FOOD_COLS) as unknown as {
-          eq: (a: string, b: unknown) => { in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }> };
-        }).eq("active", true).in("id", uniqueMissing);
+        const mRes = await (
+          supa.from("food_records").select(FOOD_COLS) as unknown as {
+            eq: (
+              a: string,
+              b: unknown,
+            ) => {
+              in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }>;
+            };
+          }
+        )
+          .eq("active", true)
+          .in("id", uniqueMissing);
         missingRows = (mRes.data ?? []) as RawFoodRow[];
       }
       const rowById = new Map<string, RawFoodRow>();
@@ -233,8 +324,13 @@ export const searchFoods = createServerFn({ method: "POST" })
           const na = a.normalized_alias;
           let kind: FoodSearchHit["match_kind"] = "partial";
           let score = 90;
-          if (na === q) { kind = "exact"; score = 480; }
-          else if (na.startsWith(q)) { kind = "prefix"; score = 280; }
+          if (na === q) {
+            kind = "exact";
+            score = 480;
+          } else if (na.startsWith(q)) {
+            kind = "prefix";
+            score = 280;
+          }
           // Higher-priority (lower number) aliases score slightly better.
           score += Math.max(0, 100 - a.priority);
           hitsById.set(row.id, toHit(row, kind, score, a.alias));
@@ -252,7 +348,10 @@ export const searchFoods = createServerFn({ method: "POST" })
           const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
           const admin = supabaseAdmin as unknown as {
             from: (t: string) => {
-              upsert: (rows: unknown, opts: { onConflict: string }) => {
+              upsert: (
+                rows: unknown,
+                opts: { onConflict: string },
+              ) => {
                 select: (c: string) => Promise<{ data: unknown[] | null; error: unknown }>;
               };
             };
@@ -293,24 +392,24 @@ export const searchFoods = createServerFn({ method: "POST" })
  * an empty array means "no upstream hit"; throwing bubbles up as a search
  * failure.
  */
-export async function lookupExternalNutrition(
-  _query: string,
-): Promise<Array<{
-  canonical_name: string;
-  display_name: string;
-  category: string;
-  preparation_state: "raw" | "cooked" | "n_a";
-  source: "commercial_api";
-  calories_per_100g: number;
-  protein_per_100g: number;
-  carbs_per_100g: number;
-  fat_per_100g: number;
-  fiber_per_100g: number | null;
-  sodium_mg_per_100g: number | null;
-  default_serving_grams: number | null;
-  common_serving_label: string | null;
-  active: boolean;
-}>> {
+export async function lookupExternalNutrition(_query: string): Promise<
+  Array<{
+    canonical_name: string;
+    display_name: string;
+    category: string;
+    preparation_state: "raw" | "cooked" | "n_a";
+    source: "commercial_api";
+    calories_per_100g: number;
+    protein_per_100g: number;
+    carbs_per_100g: number;
+    fat_per_100g: number;
+    fiber_per_100g: number | null;
+    sodium_mg_per_100g: number | null;
+    default_serving_grams: number | null;
+    common_serving_label: string | null;
+    active: boolean;
+  }>
+> {
   // No provider wired yet. Add fetch(...) + normalization here later.
   return [];
 }
@@ -321,11 +420,16 @@ const importRowSchema = z.object({
   name: z.string().trim().min(1).max(120),
   alt_names: z.array(z.string().trim().min(1).max(80)).default([]),
   brand: z.string().trim().max(80).optional().nullable(),
-  barcode: z.string().trim().regex(/^\d{8,14}$/).optional().nullable(),
+  barcode: z
+    .string()
+    .trim()
+    .regex(/^\d{8,14}$/)
+    .optional()
+    .nullable(),
   category: z.string().trim().min(1).max(40),
-  source: z.enum([
-    "philfct", "manufacturer", "restaurant", "openfoodfacts", "commercial_api", "manual",
-  ]).default("manual"),
+  source: z
+    .enum(["philfct", "manufacturer", "restaurant", "openfoodfacts", "commercial_api", "manual"])
+    .default("manual"),
   per_100g_calories: z.coerce.number().min(0).max(1200),
   per_100g_protein_g: z.coerce.number().min(0).max(200).default(0),
   per_100g_carbs_g: z.coerce.number().min(0).max(200).default(0),
@@ -367,28 +471,20 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
       .object({
         rows: z.array(importRowSchema).min(1).max(1000),
         source_override: z
-          .enum(["philfct", "manufacturer", "restaurant", "openfoodfacts", "commercial_api", "manual"]) 
+          .enum([
+            "philfct",
+            "manufacturer",
+            "restaurant",
+            "openfoodfacts",
+            "commercial_api",
+            "manual",
+          ])
           .optional(),
       })
       .parse(input),
   )
   .handler(async ({ data, context }) => {
-    // Founder/admin only.
-    const supa = context.supabase as unknown as {
-      from: (t: string) => {
-        select: (c: string) => {
-          eq: (a: string, b: string) => {
-            in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }>;
-          };
-        };
-      };
-    };
-    const roleRes = await supa
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", context.userId)
-      .in("role", ["admin", "founder"]);
-    if (!roleRes.data || roleRes.data.length === 0) throw new Error("Forbidden");
+    await ensureAdmin(context);
 
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const { invalidateFoodRecordsCache } = await import("./food-records.server");
@@ -445,8 +541,13 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
 
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => {
-        upsert: (rows: unknown, opts: { onConflict: string }) => {
-          select: (c: string) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
+        upsert: (
+          rows: unknown,
+          opts: { onConflict: string },
+        ) => {
+          select: (
+            c: string,
+          ) => Promise<{ data: unknown[] | null; error: { message: string } | null }>;
         };
         insert: (rows: unknown) => Promise<{ error: { message: string } | null }>;
       };
@@ -460,7 +561,13 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
     const idByCanon = new Map(written.map((w) => [w.canonical_name, w.id]));
 
     // Aliases: display name + supplied alt_names. Ignore alias failures.
-    const aliasRows: Array<{ food_record_id: string; alias: string; normalized_alias: string; alias_type: string; priority: number }> = [];
+    const aliasRows: Array<{
+      food_record_id: string;
+      alias: string;
+      normalized_alias: string;
+      alias_type: string;
+      priority: number;
+    }> = [];
     for (const r of data.rows) {
       const cn = r.canonical_name ?? canonicalize(r.name, r.preparation_state);
       const id = idByCanon.get(cn);
@@ -470,7 +577,13 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
         const norm = alias.toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim();
         if (!norm || seen.has(norm)) return;
         seen.add(norm);
-        aliasRows.push({ food_record_id: id, alias, normalized_alias: norm, alias_type: type, priority });
+        aliasRows.push({
+          food_record_id: id,
+          alias,
+          normalized_alias: norm,
+          alias_type: type,
+          priority,
+        });
       };
       push(r.name, "canonical", 10);
       for (const alt of r.alt_names ?? []) push(alt, "nickname", 60);
@@ -478,12 +591,18 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
     if (aliasRows.length > 0) {
       const aliasAdmin = supabaseAdmin as unknown as {
         from: (t: string) => {
-          upsert: (rows: unknown, opts: { onConflict: string; ignoreDuplicates: boolean }) => Promise<{ error: unknown }>;
+          upsert: (
+            rows: unknown,
+            opts: { onConflict: string; ignoreDuplicates: boolean },
+          ) => Promise<{ error: unknown }>;
         };
       };
       await aliasAdmin
         .from("food_aliases")
-        .upsert(aliasRows, { onConflict: "normalized_alias,food_record_id", ignoreDuplicates: true });
+        .upsert(aliasRows, {
+          onConflict: "normalized_alias,food_record_id",
+          ignoreDuplicates: true,
+        });
     }
 
     invalidateFoodRecordsCache();
@@ -507,26 +626,36 @@ export function parseCsv(text: string): Record<string, string>[] {
     const ch = src[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (src[i + 1] === '"') { field += '"'; i++; }
-        else inQuotes = false;
+        if (src[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else inQuotes = false;
       } else field += ch;
     } else {
       if (ch === '"') inQuotes = true;
-      else if (ch === ",") { row.push(field); field = ""; }
-      else if (ch === "\n" || ch === "\r") {
+      else if (ch === ",") {
+        row.push(field);
+        field = "";
+      } else if (ch === "\n" || ch === "\r") {
         if (ch === "\r" && src[i + 1] === "\n") i++;
-        row.push(field); field = "";
+        row.push(field);
+        field = "";
         if (row.length > 1 || row[0] !== "") rows.push(row);
         row = [];
       } else field += ch;
     }
   }
-  if (field.length > 0 || row.length > 0) { row.push(field); rows.push(row); }
+  if (field.length > 0 || row.length > 0) {
+    row.push(field);
+    rows.push(row);
+  }
   if (rows.length === 0) return [];
   const header = rows[0].map((h) => h.trim());
   return rows.slice(1).map((r) => {
     const rec: Record<string, string> = {};
-    header.forEach((h, i) => { rec[h] = (r[i] ?? "").trim(); });
+    header.forEach((h, i) => {
+      rec[h] = (r[i] ?? "").trim();
+    });
     return rec;
   });
 }
@@ -612,10 +741,16 @@ export function mapCsvRows(records: Record<string, string>[]): CsvMappingResult 
       per_100g_protein_g: (mapped.per_100g_protein_g ?? "0") as unknown as number,
       per_100g_carbs_g: (mapped.per_100g_carbs_g ?? "0") as unknown as number,
       per_100g_fat_g: (mapped.per_100g_fat_g ?? "0") as unknown as number,
-      per_100g_fiber_g: mapped.per_100g_fiber_g ? (mapped.per_100g_fiber_g as unknown as number) : null,
-      per_100g_sodium_mg: mapped.per_100g_sodium_mg ? (mapped.per_100g_sodium_mg as unknown as number) : null,
+      per_100g_fiber_g: mapped.per_100g_fiber_g
+        ? (mapped.per_100g_fiber_g as unknown as number)
+        : null,
+      per_100g_sodium_mg: mapped.per_100g_sodium_mg
+        ? (mapped.per_100g_sodium_mg as unknown as number)
+        : null,
       common_serving_label: mapped.common_serving_label || null,
-      common_serving_grams: mapped.common_serving_grams ? (mapped.common_serving_grams as unknown as number) : null,
+      common_serving_grams: mapped.common_serving_grams
+        ? (mapped.common_serving_grams as unknown as number)
+        : null,
       verified: mapped.verified,
       preparation_state: (mapped.preparation_state as "raw" | "cooked" | "n_a") || "n_a",
       canonical_name: mapped.canonical_name || undefined,

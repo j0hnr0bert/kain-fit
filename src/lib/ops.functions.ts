@@ -2,25 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
-// -------- Shared admin check --------
-
-async function ensureAdmin(ctx: { supabase: unknown; userId: string }): Promise<void> {
-  const supa = ctx.supabase as {
-    from: (t: string) => {
-      select: (c: string) => {
-        eq: (a: string, b: string) => {
-          in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }>;
-        };
-      };
-    };
-  };
-  const { data } = await supa
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", ctx.userId)
-    .in("role", ["admin", "founder"]);
-  if (!data || data.length === 0) throw new Error("Forbidden");
-}
+import { ensureAdmin } from "./admin-guard.server";
 
 // -------- Public: banner + flags safe for any visitor --------
 
@@ -49,7 +31,8 @@ async function computeActiveBanner(): Promise<{
   isAuto: boolean;
 }> {
   const { readOpsSettings } = await import("./ops-settings.server");
-  const { getBreakerStatus, getCapacityStats, getGlobalAiCounts } = await import("./ai-guard.server");
+  const { getBreakerStatus, getCapacityStats, getGlobalAiCounts } =
+    await import("./ai-guard.server");
   const s = await readOpsSettings();
 
   const manual = s.high_demand_banner?.trim() ?? "";
@@ -120,7 +103,9 @@ async function maybeLogAutoAlert(key: string, detail: Record<string, unknown>): 
   try {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
     const admin = supabaseAdmin as unknown as {
-      from: (t: string) => { insert: (row: Record<string, unknown>) => Promise<{ error: unknown }> };
+      from: (t: string) => {
+        insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
+      };
     };
     await admin.from("ops_audit_log").insert({
       actor_id: null,
@@ -179,7 +164,10 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
       from: (t: string) => {
         select: (c: string) => {
           gte: (a: string, b: string) => Promise<{ data: unknown[] | null; error: unknown }>;
-          order: (a: string, opts: { ascending: boolean }) => {
+          order: (
+            a: string,
+            opts: { ascending: boolean },
+          ) => {
             limit: (n: number) => Promise<{ data: unknown[] | null; error: unknown }>;
           };
         };
@@ -188,11 +176,18 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
 
     const since = new Date(Date.now() - 60_000).toISOString();
     const [recentEventsRes, auditRes] = await Promise.all([
-      admin.from("product_events").select("event_name,event_properties,created_at").gte("created_at", since),
+      admin
+        .from("product_events")
+        .select("event_name,event_properties,created_at")
+        .gte("created_at", since),
       admin.from("ops_audit_log").select("*").order("created_at", { ascending: false }).limit(20),
     ]);
 
-    type EvRow = { event_name: string; event_properties: Record<string, unknown> | null; created_at: string };
+    type EvRow = {
+      event_name: string;
+      event_properties: Record<string, unknown> | null;
+      created_at: string;
+    };
     const events = (recentEventsRes.data ?? []) as EvRow[];
 
     const parseSuccess = events.filter((e) => e.event_name === "food_parse_succeeded").length;
@@ -202,8 +197,12 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
     const failReasons = events
       .filter((e) => e.event_name === "food_parse_failed")
       .map((e) => String(e.event_properties?.reason ?? ""));
-    const rateLimited = failReasons.filter((r) => r.startsWith("AI_BUSY") || r.startsWith("Too many")).length;
-    const retries = failReasons.filter((r) => r.startsWith("AI_UNAVAILABLE") || r.startsWith("AI_BUSY")).length;
+    const rateLimited = failReasons.filter(
+      (r) => r.startsWith("AI_BUSY") || r.startsWith("Too many"),
+    ).length;
+    const retries = failReasons.filter(
+      (r) => r.startsWith("AI_UNAVAILABLE") || r.startsWith("AI_BUSY"),
+    ).length;
 
     const durations = events
       .filter((e) => e.event_name === "food_parse_succeeded")
@@ -211,7 +210,9 @@ export const getOpsSnapshot = createServerFn({ method: "GET" })
       .filter((n) => Number.isFinite(n))
       .sort((a, b) => a - b);
     const pct = (p: number) =>
-      durations.length ? durations[Math.min(durations.length - 1, Math.floor((p / 100) * durations.length))] : 0;
+      durations.length
+        ? durations[Math.min(durations.length - 1, Math.floor((p / 100) * durations.length))]
+        : 0;
     const cacheHits = events.filter(
       (e) => e.event_name === "food_parse_succeeded" && e.event_properties?.cache_hit === true,
     ).length;
@@ -347,20 +348,22 @@ export const updateOpsSetting = createServerFn({ method: "POST" })
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => {
         select: (c: string) => {
-          eq: (a: string, b: string) => {
+          eq: (
+            a: string,
+            b: string,
+          ) => {
             maybeSingle: () => Promise<{ data: { value: unknown } | null; error: unknown }>;
           };
         };
-        upsert: (row: Record<string, unknown>, opts: { onConflict: string }) => Promise<{ error: unknown }>;
+        upsert: (
+          row: Record<string, unknown>,
+          opts: { onConflict: string },
+        ) => Promise<{ error: unknown }>;
         insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
       };
     };
 
-    const prev = await admin
-      .from("app_settings")
-      .select("value")
-      .eq("key", data.key)
-      .maybeSingle();
+    const prev = await admin.from("app_settings").select("value").eq("key", data.key).maybeSingle();
 
     const upsertRes = await admin.from("app_settings").upsert(
       {
@@ -392,7 +395,10 @@ export const updateOpsSetting = createServerFn({ method: "POST" })
 // shared cache when it's missing. Any hit skips the AI call entirely.
 // Bounded (max ~40 entries) so an accidental click can't burn credits.
 
-const WARM_INPUTS: ReadonlyArray<{ input: string; mealHint: "breakfast" | "lunch" | "dinner" | "snacks" }> = [
+const WARM_INPUTS: ReadonlyArray<{
+  input: string;
+  mealHint: "breakfast" | "lunch" | "dinner" | "snacks";
+}> = [
   // Breakfast
   { input: "tapsilog", mealHint: "breakfast" },
   { input: "longsilog", mealHint: "breakfast" },

@@ -140,7 +140,11 @@ export type EventName =
   | "scale_guide_opened"
   | "scale_guide_completed"
   | "scale_example_started"
-  | "scale_example_logged";
+  | "scale_example_logged"
+  | "recent_item_reused"
+  | "favorite_used"
+  | "saved_meal_reused"
+  | "rage_tap";
 
 // These fire more than once per second (e.g. web_vital LCP+INP+CLS,
 // cache_hit per item) — client-side dedupe would silently drop them.
@@ -153,6 +157,7 @@ const NO_DEDUPE = new Set<EventName>([
   "food_log_saved",
   "performance_error",
   "auth_attempt_completed",
+  "rage_tap",
 ]);
 
 export function track(event: EventName, properties: Record<string, unknown> = {}): void {
@@ -184,6 +189,28 @@ export function track(event: EventName, properties: Record<string, unknown> = {}
   }).catch(() => {
     // swallow — analytics must never break the app
   });
+}
+
+// Lightweight, reusable rage-tap detector for any interactive element.
+// Fires once when the same elementKey is tapped RAGE_THRESHOLD times within
+// RAGE_WINDOW_MS, then resets so a long burst doesn't spam events. Same
+// sliding-window idea already used for AI rate limiting (ai-guard.server.ts)
+// — no new dependency, just call this from an existing onClick handler.
+const rageTapBuckets = new Map<string, number[]>();
+const RAGE_WINDOW_MS = 1500;
+const RAGE_THRESHOLD = 3;
+
+export function noteTapForRageDetection(elementKey: string): void {
+  if (!isBrowser()) return;
+  const now = Date.now();
+  const kept = (rageTapBuckets.get(elementKey) ?? []).filter((t) => now - t < RAGE_WINDOW_MS);
+  kept.push(now);
+  if (kept.length >= RAGE_THRESHOLD) {
+    rageTapBuckets.delete(elementKey);
+    track("rage_tap", { element: elementKey, taps: kept.length });
+    return;
+  }
+  rageTapBuckets.set(elementKey, kept);
 }
 
 export function markReturned() {

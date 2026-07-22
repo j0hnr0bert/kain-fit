@@ -2,6 +2,8 @@ import { createServerFn } from "@tanstack/react-start";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { ensureAdmin } from "./admin-guard.server";
+import { manilaDay } from "./retention";
 
 const ALLOWED_EVENTS = [
   "landing_viewed",
@@ -48,6 +50,10 @@ const ALLOWED_EVENTS = [
   "scale_guide_completed",
   "scale_example_started",
   "scale_example_logged",
+  "recent_item_reused",
+  "favorite_used",
+  "saved_meal_reused",
+  "rage_tap",
 ] as const;
 
 const eventSchema = z.object({
@@ -93,6 +99,10 @@ function sanitizeProps(props: Record<string, unknown>): Record<string, unknown> 
     "field_target",
     "correlation_id",
     "entry_point",
+    "explainer_shown",
+    "save_mode",
+    "element",
+    "taps",
   ]);
   const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(props)) {
@@ -137,19 +147,30 @@ export const trackEvent = createServerFn({ method: "POST" })
     const props = sanitizeProps(data.event_properties ?? {});
     // Server-side duplicate suppression
     if (data.anonymous_session_id) {
-      const { data: dup } = await (supabaseAdmin as unknown as {
-        from: (t: string) => {
-          select: (c: string) => {
-            eq: (a: string, b: string) => {
-              eq: (a: string, b: string) => {
-                gt: (a: string, b: string) => {
-                  limit: (n: number) => Promise<{ data: unknown[] | null }>;
+      const { data: dup } = await (
+        supabaseAdmin as unknown as {
+          from: (t: string) => {
+            select: (c: string) => {
+              eq: (
+                a: string,
+                b: string,
+              ) => {
+                eq: (
+                  a: string,
+                  b: string,
+                ) => {
+                  gt: (
+                    a: string,
+                    b: string,
+                  ) => {
+                    limit: (n: number) => Promise<{ data: unknown[] | null }>;
+                  };
                 };
               };
             };
           };
-        };
-      })
+        }
+      )
         .from("product_events")
         .select("id")
         .eq("anonymous_session_id", data.anonymous_session_id)
@@ -166,9 +187,13 @@ export const trackEvent = createServerFn({ method: "POST" })
       acquisition_source: data.acquisition_source ?? null,
       event_properties: props,
     };
-    const { error } = await (supabaseAdmin as unknown as {
-      from: (t: string) => { insert: (r: unknown) => Promise<{ error: { message: string } | null }> };
-    })
+    const { error } = await (
+      supabaseAdmin as unknown as {
+        from: (t: string) => {
+          insert: (r: unknown) => Promise<{ error: { message: string } | null }>;
+        };
+      }
+    )
       .from("product_events")
       .insert(row);
     if (error) console.error("[trackEvent]", error.message);
@@ -207,9 +232,13 @@ export const submitMacroReport = createServerFn({ method: "POST" })
       original_values: data.original_values ?? {},
       corrected_values: data.corrected_values ?? null,
     };
-    const { error } = await (context.supabase as unknown as {
-      from: (t: string) => { insert: (r: unknown) => Promise<{ error: { message: string } | null }> };
-    })
+    const { error } = await (
+      context.supabase as unknown as {
+        from: (t: string) => {
+          insert: (r: unknown) => Promise<{ error: { message: string } | null }>;
+        };
+      }
+    )
       .from("macro_reports")
       .insert(row);
     if (error) throw new Error(error.message);
@@ -249,9 +278,13 @@ export const submitFeedback = createServerFn({ method: "POST" })
       allow_contact: !!data.allow_contact,
       acquisition_source: data.acquisition_source ?? null,
     };
-    const { error } = await (supabaseAdmin as unknown as {
-      from: (t: string) => { insert: (r: unknown) => Promise<{ error: { message: string } | null }> };
-    })
+    const { error } = await (
+      supabaseAdmin as unknown as {
+        from: (t: string) => {
+          insert: (r: unknown) => Promise<{ error: { message: string } | null }>;
+        };
+      }
+    )
       .from("feedback_submissions")
       .insert(row);
     if (error) throw new Error(error.message);
@@ -291,7 +324,10 @@ export const logSignupFunnelEvent = createServerFn({ method: "POST" })
     try {
       const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
       const admin = supabaseAdmin as unknown as {
-        rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
+        rpc: (
+          fn: string,
+          args: Record<string, unknown>,
+        ) => Promise<{ error: { message: string } | null }>;
       };
       await admin.rpc("log_signup_funnel_event", {
         _step: data.step,
@@ -318,9 +354,14 @@ export const recordFirstTouch = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => firstTouchSchema.parse(d))
   .handler(async ({ data, context }) => {
     const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
-    const { error } = await (supabaseAdmin as unknown as {
-      rpc: (fn: string, args: Record<string, unknown>) => Promise<{ error: { message: string } | null }>;
-    }).rpc("record_first_touch", {
+    const { error } = await (
+      supabaseAdmin as unknown as {
+        rpc: (
+          fn: string,
+          args: Record<string, unknown>,
+        ) => Promise<{ error: { message: string } | null }>;
+      }
+    ).rpc("record_first_touch", {
       _user_id: context.userId,
       _source: data.source ?? null,
       _utm: data.utm ?? null,
@@ -368,7 +409,11 @@ export const getSignupFunnel = createServerFn({ method: "GET" })
 
     // Validation failure breakdown by reason.
     const validationReasons = new Map<string, number>();
-    const recentErrors: Array<{ created_at: string; reason: string | null; detail: string | null }> = [];
+    const recentErrors: Array<{
+      created_at: string;
+      reason: string | null;
+      detail: string | null;
+    }> = [];
     for (const r of rows) {
       if (r.step === "signup_validation_failed") {
         const key = r.reason ?? "unknown";
@@ -399,27 +444,6 @@ export const getSignupFunnel = createServerFn({ method: "GET" })
 // ============================================================
 // Admin metrics
 // ============================================================
-
-async function ensureAdmin(ctx: {
-  supabase: unknown;
-  userId: string;
-}): Promise<void> {
-  const supa = ctx.supabase as {
-    from: (t: string) => {
-      select: (c: string) => {
-        eq: (a: string, b: string) => {
-          in: (a: string, b: string[]) => Promise<{ data: unknown[] | null; error: unknown }>;
-        };
-      };
-    };
-  };
-  const { data } = await supa
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", ctx.userId)
-    .in("role", ["admin", "founder"]);
-  if (!data || data.length === 0) throw new Error("Forbidden");
-}
 
 type EventRow = {
   id: string;
@@ -478,9 +502,7 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
 
     // Unique visitors — sessions with any landing_viewed or demo_started
     const uniqueSessions = new Set(
-      events
-        .filter((e) => e.anonymous_session_id)
-        .map((e) => e.anonymous_session_id as string),
+      events.filter((e) => e.anonymous_session_id).map((e) => e.anonymous_session_id as string),
     );
 
     const count = (n: string) => events.filter((e) => e.event_name === n).length;
@@ -494,9 +516,7 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       .map((e) => Number((e.event_properties as Record<string, unknown>)?.processing_duration_ms))
       .filter((n) => Number.isFinite(n))
       .sort((a, b) => a - b);
-    const median = durations.length
-      ? durations[Math.floor(durations.length / 2)]
-      : 0;
+    const median = durations.length ? durations[Math.floor(durations.length / 2)] : 0;
 
     // Percentiles and threshold coverage
     const pct = (arr: number[], p: number) => {
@@ -515,7 +535,9 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       (e) =>
         e.event_name === "food_parse_failed" &&
         typeof (e.event_properties as Record<string, unknown>)?.reason === "string" &&
-        ((e.event_properties as Record<string, unknown>).reason as string).toLowerCase().includes("timeout"),
+        ((e.event_properties as Record<string, unknown>).reason as string)
+          .toLowerCase()
+          .includes("timeout"),
     ).length;
     const performance = {
       samples: durations.length,
@@ -538,7 +560,8 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
     let cacheHits = 0;
     for (const e of successEvents) {
       const p = e.event_properties as Record<string, unknown>;
-      const path = typeof p?.resolution_path === "string" ? (p.resolution_path as string) : "unknown";
+      const path =
+        typeof p?.resolution_path === "string" ? (p.resolution_path as string) : "unknown";
       resolutionCounts[path] = (resolutionCounts[path] ?? 0) + 1;
       if (p?.cache_hit === true) cacheHits += 1;
     }
@@ -552,9 +575,14 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       hits_last_24h: number;
     } = { total_entries: 0, live_entries: 0, total_hits: 0, hits_last_24h: 0 };
     try {
-      const statsRes = await (admin as unknown as {
-        rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: unknown }>;
-      }).rpc("get_food_parse_cache_stats", {});
+      const statsRes = await (
+        admin as unknown as {
+          rpc: (
+            fn: string,
+            args: Record<string, unknown>,
+          ) => Promise<{ data: unknown; error: unknown }>;
+        }
+      ).rpc("get_food_parse_cache_stats", {});
       if (Array.isArray(statsRes.data) && statsRes.data.length > 0) {
         const row = statsRes.data[0] as Record<string, unknown>;
         cacheStats = {
@@ -593,15 +621,45 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
     for (const [uid, signupAt] of signups) {
       const s = new Date(signupAt).getTime();
       const acts = userActivity.get(uid) ?? [];
-      if (acts.some((t) => {
-        const dt = new Date(t).getTime() - s;
-        return dt > 20 * 60 * 60 * 1000 && dt < 48 * 60 * 60 * 1000;
-      })) d1 += 1;
-      if (acts.some((t) => {
-        const dt = new Date(t).getTime() - s;
-        return dt > 6 * 24 * 60 * 60 * 1000 && dt < 8 * 24 * 60 * 60 * 1000;
-      })) d7 += 1;
+      if (
+        acts.some((t) => {
+          const dt = new Date(t).getTime() - s;
+          return dt > 20 * 60 * 60 * 1000 && dt < 48 * 60 * 60 * 1000;
+        })
+      )
+        d1 += 1;
+      if (
+        acts.some((t) => {
+          const dt = new Date(t).getTime() - s;
+          return dt > 6 * 24 * 60 * 60 * 1000 && dt < 8 * 24 * 60 * 60 * 1000;
+        })
+      )
+        d7 += 1;
     }
+
+    // Same-day activation funnel: of everyone who signed up, how many
+    // reached each step on their own signup day (Manila calendar day)?
+    // Reuses `signups` and `events` already fetched above — no new query.
+    // Mirrors the "Activation" definition on the retention cohort card
+    // (signed up AND logged >=1 food on signup day) so the two numbers
+    // stay consistent with each other.
+    function reachedOnSignupDay(eventName: string): number {
+      let n = 0;
+      for (const [uid, signupAt] of signups) {
+        const day = manilaDay(signupAt);
+        const hit = events.some(
+          (e) => e.user_id === uid && e.event_name === eventName && manilaDay(e.created_at) === day,
+        );
+        if (hit) n += 1;
+      }
+      return n;
+    }
+    const activationFunnel = {
+      signedUp: signups.size,
+      submittedFood: reachedOnSignupDay("food_submitted"),
+      calculationCompleted: reachedOnSignupDay("food_calculation_completed"),
+      confirmedFood: reachedOnSignupDay("food_confirmed"),
+    };
 
     // Confirmed entries per active user (users with any food_confirmed)
     const confirmedByUser = new Map<string, number>();
@@ -624,15 +682,14 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       bySource[src] = (bySource[src] ?? 0) + 1;
     }
 
-    const correctionRate = parseSuccess
-      ? count("incorrect_macros_reported") / parseSuccess
-      : 0;
+    const correctionRate = parseSuccess ? count("incorrect_macros_reported") / parseSuccess : 0;
 
     return {
       uniqueVisitors: uniqueSessions.size,
       demoStarts: count("demo_started"),
       signupsStarted: count("signup_started"),
       signupsCompleted: count("signup_completed"),
+      activationFunnel,
       firstConfirmedByUser,
       medianProcessingMs: Math.round(median),
       parseFailureRate: totalParses ? parseFail / totalParses : 0,
@@ -692,15 +749,31 @@ export const exportBetaCsv = createServerFn({ method: "POST" })
         };
       };
       const [ev, fb] = await Promise.all([
-        admin.from("product_events").select("event_name,acquisition_source,anonymous_session_id,user_id,created_at,event_properties"),
-        admin.from("feedback_submissions").select("ease_rating,accuracy_rating,would_use_tomorrow,confusing,missed_food,comment,allow_contact,acquisition_source,created_at"),
+        admin
+          .from("product_events")
+          .select(
+            "event_name,acquisition_source,anonymous_session_id,user_id,created_at,event_properties",
+          ),
+        admin
+          .from("feedback_submissions")
+          .select(
+            "ease_rating,accuracy_rating,would_use_tomorrow,confusing,missed_food,comment,allow_contact,acquisition_source,created_at",
+          ),
       ]);
       return { events: (ev.data ?? []) as EventRow[], feedback: (fb.data ?? []) as FeedbackRow[] };
     })();
 
     if (data.kind === "feedback") {
       const headers = [
-        "created_at","ease_rating","accuracy_rating","would_use_tomorrow","confusing","missed_food","comment","allow_contact","acquisition_source",
+        "created_at",
+        "ease_rating",
+        "accuracy_rating",
+        "would_use_tomorrow",
+        "confusing",
+        "missed_food",
+        "comment",
+        "allow_contact",
+        "acquisition_source",
       ];
       const rows = metrics.feedback.map((f) =>
         headers.map((h) => csvCell((f as Record<string, unknown>)[h])).join(","),
@@ -805,7 +878,10 @@ export const getAuthDiagnostics = createServerFn({ method: "GET" })
     const admin = supabaseAdmin as unknown as {
       from: (t: string) => {
         select: (c: string) => {
-          eq: (a: string, b: string) => {
+          eq: (
+            a: string,
+            b: string,
+          ) => {
             gte: (a: string, b: string) => Promise<{ data: unknown[] | null; error: unknown }>;
           };
         };

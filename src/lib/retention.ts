@@ -12,6 +12,22 @@ export function addDaysISO(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Current consecutive-day logging streak, in Manila calendar days.
+// A day counts if the user logged >=1 entry on it. The streak stays
+// intact through "today" even before anything is logged today — it only
+// breaks once a full day passes with nothing logged (checked from
+// yesterday backward when today has no entry yet).
+export function computeCurrentStreak(activeDays: readonly string[], todayManila: string): number {
+  const active = new Set(activeDays);
+  let streak = 0;
+  let cursor = active.has(todayManila) ? todayManila : addDaysISO(todayManila, -1);
+  while (active.has(cursor)) {
+    streak += 1;
+    cursor = addDaysISO(cursor, -1);
+  }
+  return streak;
+}
+
 export type Signup = { user_id: string; created_at: string };
 export type Entry = { user_id: string; logged_at: string };
 
@@ -50,11 +66,7 @@ function weekStart(day: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-export function computeRetention(
-  signups: Signup[],
-  entries: Entry[],
-  now: Date,
-): RetentionResult {
+export function computeRetention(signups: Signup[], entries: Entry[], now: Date): RetentionResult {
   const todayManila = manilaDay(now.toISOString());
 
   const activeDays = new Map<string, Set<string>>();

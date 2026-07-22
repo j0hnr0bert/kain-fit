@@ -11,9 +11,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Clock, Star, BookmarkPlus, Plus, Loader2, Pencil } from "lucide-react";
+import { Clock, Star, BookmarkPlus, Plus, Loader2, Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { track } from "@/lib/analytics";
+import { track, noteTapForRageDetection } from "@/lib/analytics";
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snacks";
 
@@ -90,7 +90,11 @@ export type QuickLogRailProps = {
 export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
   const [openTab, setOpenTab] = useState<"recent" | "favorites" | "meals" | null>(null);
   const [saveMealOpen, setSaveMealOpen] = useState(false);
-  const [editing, setEditing] = useState<{ item: SavedItem; source: "recent" | "favorite" | "meal" } | null>(null);
+  const [renaming, setRenaming] = useState<SavedMealRow | null>(null);
+  const [editing, setEditing] = useState<{
+    item: SavedItem;
+    source: "recent" | "favorite" | "meal";
+  } | null>(null);
   const [inserting, setInserting] = useState(false);
   const qc = useQueryClient();
 
@@ -112,7 +116,9 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
       const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
       const { data, error } = await supabase
         .from("food_entries")
-        .select("id,display_name,normalized_name,quantity,unit,preparation,calories,protein_g,carbs_g,fat_g,data_source,is_estimate,created_at")
+        .select(
+          "id,display_name,normalized_name,quantity,unit,preparation,calories,protein_g,carbs_g,fat_g,data_source,is_estimate,created_at",
+        )
         .eq("user_id", userId!)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
@@ -153,7 +159,9 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
     queryFn: async (): Promise<FavoriteRow[]> => {
       const { data, error } = await supabase
         .from("saved_foods")
-        .select("id,food_name,normalized_name,default_quantity,default_unit,calories,protein_g,carbs_g,fat_g,source,is_favorite,last_used_at")
+        .select(
+          "id,food_name,normalized_name,default_quantity,default_unit,calories,protein_g,carbs_g,fat_g,source,is_favorite,last_used_at",
+        )
         .eq("user_id", userId!)
         .eq("is_favorite", true)
         .order("last_used_at", { ascending: false, nullsFirst: false })
@@ -199,7 +207,10 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
     },
   });
 
-  async function insertEntries(items: SavedItem[], analyticsEvent: "recent_item_reused" | "favorite_used" | "saved_meal_reused") {
+  async function insertEntries(
+    items: SavedItem[],
+    analyticsEvent: "recent_item_reused" | "favorite_used" | "saved_meal_reused",
+  ) {
     if (!userId || items.length === 0) return;
     setInserting(true);
     const loggedAt = new Date().toISOString();
@@ -235,10 +246,7 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
       return [...(data ?? []), ...list];
     });
     await qc.invalidateQueries({ queryKey: ["entries", "today"] });
-    track(analyticsEvent === "favorite_used" ? "saved_meal_repeated" : analyticsEvent === "saved_meal_reused" ? "saved_meal_repeated" : "saved_meal_repeated", {
-      count: items.length,
-      via: analyticsEvent,
-    });
+    track(analyticsEvent, { count: items.length });
     toast.success("Added to Today");
     setOpenTab(null);
     setEditing(null);
@@ -283,6 +291,13 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
     qc.invalidateQueries({ queryKey: ["quicklog", "favorites"] });
   }
 
+  function nameFromItems(items: { display_name: string }[]): string {
+    if (items.length === 0) return "";
+    const names = items.map((i) => i.display_name);
+    if (names.length <= 2) return names.join(" + ");
+    return `${names.slice(0, 2).join(" + ")} +${names.length - 2} more`;
+  }
+
   async function saveTodaysLogAsMeal(name: string) {
     if (!userId || todaysEntries.length === 0) return;
     const items: SavedItem[] = todaysEntries.map((e) => ({
@@ -310,12 +325,57 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
     track("saved_meal_repeated", { action: "created", count: items.length });
   }
 
+  async function deleteSavedMeal(meal: SavedMealRow) {
+    const { error } = await supabase.from("saved_meals").delete().eq("id", meal.id);
+    if (error) return toast.error("Couldn't delete meal");
+    qc.invalidateQueries({ queryKey: ["quicklog", "meals"] });
+    toast("Meal removed", {
+      duration: 5000,
+      action: {
+        label: "Undo",
+        onClick: async () => {
+          if (!userId) return;
+          await supabase.from("saved_meals").insert({
+            user_id: userId,
+            name: meal.name,
+            items: meal.items,
+          });
+          qc.invalidateQueries({ queryKey: ["quicklog", "meals"] });
+        },
+      },
+    });
+  }
+
+  async function renameSavedMeal(meal: SavedMealRow, newName: string) {
+    const trimmed = newName.trim();
+    setRenaming(null);
+    if (!trimmed || trimmed === meal.name) return;
+    const { error } = await supabase
+      .from("saved_meals")
+      .update({ name: trimmed })
+      .eq("id", meal.id);
+    if (error) return toast.error("Couldn't rename meal");
+    qc.invalidateQueries({ queryKey: ["quicklog", "meals"] });
+  }
+
   return (
     <>
       <div className="mt-4 flex gap-2 overflow-x-auto no-scrollbar px-1 -mx-1">
-        <RailChip icon={<Clock className="h-3.5 w-3.5" />} label="Recent" onClick={() => setOpenTab("recent")} />
-        <RailChip icon={<Star className="h-3.5 w-3.5" />} label="Favorites" onClick={() => setOpenTab("favorites")} />
-        <RailChip icon={<BookmarkPlus className="h-3.5 w-3.5" />} label="My Meals" onClick={() => setOpenTab("meals")} />
+        <RailChip
+          icon={<Clock className="h-3.5 w-3.5" />}
+          label="Recent"
+          onClick={() => setOpenTab("recent")}
+        />
+        <RailChip
+          icon={<Star className="h-3.5 w-3.5" />}
+          label="Favorites"
+          onClick={() => setOpenTab("favorites")}
+        />
+        <RailChip
+          icon={<BookmarkPlus className="h-3.5 w-3.5" />}
+          label="My Meals"
+          onClick={() => setOpenTab("meals")}
+        />
         {todaysEntries.length > 0 && (
           <RailChip
             icon={<Plus className="h-3.5 w-3.5" />}
@@ -334,7 +394,9 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
               {openTab === "favorites" && "Favorites"}
               {openTab === "meals" && "My meals"}
             </SheetTitle>
-            <SheetDescription>Tap to add. Long-press the pencil to adjust grams.</SheetDescription>
+            <SheetDescription>
+              Tap to add, or tap the pencil to adjust grams first.
+            </SheetDescription>
           </SheetHeader>
 
           <div className="mt-4 overflow-y-auto pb-8" style={{ maxHeight: "60vh" }}>
@@ -347,8 +409,12 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
                   item: r,
                   extra: (
                     <button
-                      onClick={(e) => { e.stopPropagation(); toggleFavorite(r); }}
-                      className="text-muted-foreground hover:text-amber-500"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        noteTapForRageDetection("quicklog_favorite_star");
+                        toggleFavorite(r);
+                      }}
+                      className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-amber-500"
                       aria-label="Add to favorites"
                     >
                       <Star className="h-4 w-4" />
@@ -369,8 +435,12 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
                   item: r,
                   extra: (
                     <button
-                      onClick={(e) => { e.stopPropagation(); toggleFavorite(r); }}
-                      className="text-amber-500"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        noteTapForRageDetection("quicklog_favorite_star");
+                        toggleFavorite(r);
+                      }}
+                      className="h-10 w-10 flex items-center justify-center rounded-full text-amber-500 hover:bg-muted"
                       aria-label="Remove from favorites"
                     >
                       <Star className="h-4 w-4 fill-current" />
@@ -387,6 +457,8 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
                 loading={mealsQ.isLoading}
                 meals={mealsQ.data ?? []}
                 onAdd={(meal) => insertEntries(meal.items, "saved_meal_reused")}
+                onRename={(meal) => setRenaming(meal)}
+                onDelete={deleteSavedMeal}
                 inserting={inserting}
               />
             )}
@@ -402,7 +474,16 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
               item={editing.item}
               inserting={inserting}
               onCancel={() => setEditing(null)}
-              onConfirm={(scaled) => insertEntries([scaled], editing.source === "recent" ? "recent_item_reused" : editing.source === "favorite" ? "favorite_used" : "saved_meal_reused")}
+              onConfirm={(scaled) =>
+                insertEntries(
+                  [scaled],
+                  editing.source === "recent"
+                    ? "recent_item_reused"
+                    : editing.source === "favorite"
+                      ? "favorite_used"
+                      : "saved_meal_reused",
+                )
+              }
             />
           )}
         </SheetContent>
@@ -412,11 +493,24 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
       <Sheet open={saveMealOpen} onOpenChange={setSaveMealOpen}>
         <SheetContent side="bottom" className="rounded-t-3xl">
           <SaveMealPanel
-            defaultName={mealFromHour(new Date().getHours()) === "breakfast" ? "Usual breakfast" : ""}
+            defaultName={nameFromItems(todaysEntries)}
             count={todaysEntries.length}
             onCancel={() => setSaveMealOpen(false)}
             onConfirm={saveTodaysLogAsMeal}
           />
+        </SheetContent>
+      </Sheet>
+
+      {/* Rename saved meal */}
+      <Sheet open={renaming !== null} onOpenChange={(o) => !o && setRenaming(null)}>
+        <SheetContent side="bottom" className="rounded-t-3xl">
+          {renaming && (
+            <RenameMealPanel
+              meal={renaming}
+              onCancel={() => setRenaming(null)}
+              onConfirm={(name) => renameSavedMeal(renaming, name)}
+            />
+          )}
         </SheetContent>
       </Sheet>
     </>
@@ -424,8 +518,16 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
 }
 
 function RailChip({
-  icon, label, onClick, subtle,
-}: { icon: React.ReactNode; label: string; onClick: () => void; subtle?: boolean }) {
+  icon,
+  label,
+  onClick,
+  subtle,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  subtle?: boolean;
+}) {
   return (
     <button
       type="button"
@@ -444,7 +546,12 @@ function RailChip({
 }
 
 function ItemList({
-  loading, empty, rows, onAdd, onEdit, inserting,
+  loading,
+  empty,
+  rows,
+  onAdd,
+  onEdit,
+  inserting,
 }: {
   loading: boolean;
   empty: string;
@@ -453,22 +560,32 @@ function ItemList({
   onEdit: (item: SavedItem) => void;
   inserting: boolean;
 }) {
-  if (loading) return <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>;
-  if (rows.length === 0) return <div className="text-sm text-muted-foreground py-6 text-center">{empty}</div>;
+  if (loading)
+    return <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>;
+  if (rows.length === 0)
+    return <div className="text-sm text-muted-foreground py-6 text-center">{empty}</div>;
   return (
     <ul className="space-y-2">
       {rows.map(({ key, item, extra }) => (
-        <li key={key} className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
+        <li
+          key={key}
+          className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5"
+        >
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium truncate">{item.display_name}</div>
             <div className="text-[11px] text-muted-foreground">
-              {Math.round(item.quantity)}{item.unit} · {Math.round(item.calories)} kcal · P{Math.round(item.protein_g)} C{Math.round(item.carbs_g)} F{Math.round(item.fat_g)}
+              {Math.round(item.quantity)}
+              {item.unit} · {Math.round(item.calories)} kcal · P{Math.round(item.protein_g)} C
+              {Math.round(item.carbs_g)} F{Math.round(item.fat_g)}
             </div>
           </div>
           {extra}
           <button
-            onClick={() => onEdit(item)}
-            className="h-8 w-8 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+            onClick={() => {
+              noteTapForRageDetection("quicklog_edit_grams");
+              onEdit(item);
+            }}
+            className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
             aria-label="Adjust grams"
           >
             <Pencil className="h-3.5 w-3.5" />
@@ -479,7 +596,14 @@ function ItemList({
             disabled={inserting}
             onClick={() => onAdd(item)}
           >
-            {inserting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Plus className="h-3.5 w-3.5 mr-1" />Add</>}
+            {inserting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <>
+                <Plus className="h-3.5 w-3.5 mr-1" />
+                Add
+              </>
+            )}
           </Button>
         </li>
       ))}
@@ -488,18 +612,27 @@ function ItemList({
 }
 
 function MealList({
-  loading, meals, onAdd, inserting,
+  loading,
+  meals,
+  onAdd,
+  onRename,
+  onDelete,
+  inserting,
 }: {
   loading: boolean;
   meals: SavedMealRow[];
   onAdd: (meal: SavedMealRow) => void;
+  onRename: (meal: SavedMealRow) => void;
+  onDelete: (meal: SavedMealRow) => void;
   inserting: boolean;
 }) {
-  if (loading) return <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>;
+  if (loading)
+    return <div className="text-sm text-muted-foreground py-6 text-center">Loading…</div>;
   if (meals.length === 0) {
     return (
       <div className="text-sm text-muted-foreground py-6 text-center">
-        No saved meals yet. Log a few foods then tap "Save today as meal" to make repeat logging one tap.
+        No saved meals yet. Log a few foods then tap "Save today as meal" to make repeat logging one
+        tap.
       </div>
     );
   }
@@ -516,15 +649,45 @@ function MealList({
           { cal: 0, p: 0, c: 0, f: 0 },
         );
         return (
-          <li key={m.id} className="flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-2.5">
+          <li
+            key={m.id}
+            className="flex items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5"
+          >
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{m.name}</div>
               <div className="text-[11px] text-muted-foreground">
-                {m.items.length} items · {Math.round(totals.cal)} kcal · P{Math.round(totals.p)} C{Math.round(totals.c)} F{Math.round(totals.f)}
+                {m.items.length} items · {Math.round(totals.cal)} kcal · P{Math.round(totals.p)} C
+                {Math.round(totals.c)} F{Math.round(totals.f)}
               </div>
             </div>
-            <Button size="sm" className="h-8 rounded-full px-3" disabled={inserting} onClick={() => onAdd(m)}>
-              {inserting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Plus className="h-3.5 w-3.5 mr-1" />Add all</>}
+            <button
+              onClick={() => onRename(m)}
+              className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+              aria-label="Rename meal"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => onDelete(m)}
+              className="h-10 w-10 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-destructive"
+              aria-label="Delete meal"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+            <Button
+              size="sm"
+              className="h-8 rounded-full px-3"
+              disabled={inserting}
+              onClick={() => onAdd(m)}
+            >
+              {inserting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <>
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  Add all
+                </>
+              )}
             </Button>
           </li>
         );
@@ -534,7 +697,10 @@ function MealList({
 }
 
 function EditGramsPanel({
-  item, inserting, onCancel, onConfirm,
+  item,
+  inserting,
+  onCancel,
+  onConfirm,
 }: {
   item: SavedItem;
   inserting: boolean;
@@ -544,7 +710,9 @@ function EditGramsPanel({
   const [qty, setQty] = useState<string>(String(Math.round(item.quantity)));
   const scaled = useMemo(() => scaleMacros(item, Number(qty) || 0), [item, qty]);
   const inputRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { setTimeout(() => inputRef.current?.focus(), 40); }, []);
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 40);
+  }, []);
   return (
     <div className="py-2">
       <SheetHeader>
@@ -563,10 +731,13 @@ function EditGramsPanel({
         <span className="text-sm text-muted-foreground">{item.unit}</span>
       </div>
       <div className="mt-3 text-xs text-muted-foreground">
-        {Math.round(scaled.calories)} kcal · P{Math.round(scaled.protein_g)} C{Math.round(scaled.carbs_g)} F{Math.round(scaled.fat_g)}
+        {Math.round(scaled.calories)} kcal · P{Math.round(scaled.protein_g)} C
+        {Math.round(scaled.carbs_g)} F{Math.round(scaled.fat_g)}
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel} disabled={inserting}>Cancel</Button>
+        <Button variant="ghost" onClick={onCancel} disabled={inserting}>
+          Cancel
+        </Button>
         <Button onClick={() => onConfirm(scaled)} disabled={inserting || Number(qty) <= 0}>
           {inserting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Add to Today"}
         </Button>
@@ -576,7 +747,10 @@ function EditGramsPanel({
 }
 
 function SaveMealPanel({
-  defaultName, count, onCancel, onConfirm,
+  defaultName,
+  count,
+  onCancel,
+  onConfirm,
 }: {
   defaultName: string;
   count: number;
@@ -588,7 +762,9 @@ function SaveMealPanel({
     <div className="py-2">
       <SheetHeader>
         <SheetTitle>Save today's log as a meal</SheetTitle>
-        <SheetDescription>{count} item{count === 1 ? "" : "s"} will be saved with their current amounts.</SheetDescription>
+        <SheetDescription>
+          {count} item{count === 1 ? "" : "s"} will be saved with their current amounts.
+        </SheetDescription>
       </SheetHeader>
       <div className="mt-4">
         <Input
@@ -600,8 +776,42 @@ function SaveMealPanel({
         />
       </div>
       <div className="mt-5 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onCancel}>Cancel</Button>
-        <Button onClick={() => onConfirm(name)} disabled={!name.trim()}>Save meal</Button>
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={() => onConfirm(name)} disabled={!name.trim()}>
+          Save meal
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function RenameMealPanel({
+  meal,
+  onCancel,
+  onConfirm,
+}: {
+  meal: SavedMealRow;
+  onCancel: () => void;
+  onConfirm: (name: string) => void;
+}) {
+  const [name, setName] = useState(meal.name);
+  return (
+    <div className="py-2">
+      <SheetHeader>
+        <SheetTitle>Rename meal</SheetTitle>
+      </SheetHeader>
+      <div className="mt-4">
+        <Input value={name} onChange={(e) => setName(e.target.value)} className="h-12" autoFocus />
+      </div>
+      <div className="mt-5 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button onClick={() => onConfirm(name)} disabled={!name.trim()}>
+          Save
+        </Button>
       </div>
     </div>
   );
