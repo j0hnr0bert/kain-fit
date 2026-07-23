@@ -157,7 +157,11 @@ function isPrepClarificationQ(q: string | null | undefined): boolean {
   );
 }
 
-function fragmentForItem(fragments: string[], displayName: string, normalizedName: string): string | null {
+function fragmentForItem(
+  fragments: string[],
+  displayName: string,
+  normalizedName: string,
+): string | null {
   const nameTokens = `${displayName} ${normalizedName}`
     .toLowerCase()
     .split(/[^a-z]+/)
@@ -396,7 +400,9 @@ export const parseFood = createServerFn({ method: "POST" })
     }
     // Enforce founder-tunable per-submission length cap.
     if (settings.beta_max_input_length > 0 && data.input.length > settings.beta_max_input_length) {
-      throw new Error(`Description is too long (max ${settings.beta_max_input_length} characters).`);
+      throw new Error(
+        `Description is too long (max ${settings.beta_max_input_length} characters).`,
+      );
     }
     // Global monthly cap: hard stop above configured ceiling.
     if (settings.monthly_ai_call_cap > 0) {
@@ -450,9 +456,7 @@ async function mapGuardErrors<T>(fn: () => Promise<T>): Promise<T> {
       );
     }
     if (err instanceof AiBusyError) {
-      throw new Error(
-        "AI_BUSY: Demand is unusually high. Please wait a moment and try again.",
-      );
+      throw new Error("AI_BUSY: Demand is unusually high. Please wait a moment and try again.");
     }
     throw err;
   }
@@ -463,15 +467,12 @@ async function mapGuardErrors<T>(fn: () => Promise<T>): Promise<T> {
 // ============================================================
 
 function normalizeForKey(input: string): string {
-  return input
-    .toLowerCase()
-    .normalize("NFKC")
-    .replace(/\s+/g, " ")
-    .trim();
+  return input.toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim();
 }
 
 function buildCacheKey(input: string, mealHint: string): string {
-  return nodeCrypto.createHash("sha256")
+  return nodeCrypto
+    .createHash("sha256")
     .update(`${normalizeForKey(input)}|${mealHint}`)
     .digest("hex");
 }
@@ -496,9 +497,9 @@ export async function resolveWithCache(input: string, mealHint: string): Promise
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = supabaseAdmin as unknown as CacheAdmin;
 
-  const mh = (mealHint === "breakfast" || mealHint === "lunch" || mealHint === "dinner"
-    ? mealHint
-    : "snacks") as "breakfast" | "lunch" | "dinner" | "snacks";
+  const mh = (
+    mealHint === "breakfast" || mealHint === "lunch" || mealHint === "dinner" ? mealHint : "snacks"
+  ) as "breakfast" | "lunch" | "dinner" | "snacks";
 
   // Tier 0a: normalized food_records catalog (aliases → generic + Filipino dishes).
   try {
@@ -566,8 +567,7 @@ export async function resolveWithCache(input: string, mealHint: string): Promise
   // Write to cache — but only when the result looks reusable:
   // no clarification requested (otherwise the answer depends on the user)
   // and at least one item.
-  const cacheable =
-    result.items.length > 0 && !result.items.some((i) => i.clarification_needed);
+  const cacheable = result.items.length > 0 && !result.items.some((i) => i.clarification_needed);
   if (cacheable) {
     try {
       await admin.rpc("put_food_parse_cache", {
@@ -614,7 +614,10 @@ function readOrIssueDemoSid(): { sid: string; issued: boolean } {
 }
 
 type DemoAdmin = {
-  rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: unknown; error: { message: string } | null }>;
+  rpc: (
+    fn: string,
+    args: Record<string, unknown>,
+  ) => Promise<{ data: unknown; error: { message: string } | null }>;
   from: (t: string) => {
     select: (c: string) => {
       eq: (a: string, b: string) => Promise<{ data: unknown[] | null; error: unknown }>;
@@ -622,12 +625,17 @@ type DemoAdmin = {
   };
 };
 
-async function getUsageRow(admin: DemoAdmin, sid: string): Promise<{ count: number; last_success_at: string | null } | null> {
+async function getUsageRow(
+  admin: DemoAdmin,
+  sid: string,
+): Promise<{ count: number; last_success_at: string | null } | null> {
   const { data } = await admin
     .from("demo_usage")
     .select("count,last_success_at")
     .eq("session_id", sid);
-  const row = Array.isArray(data) ? (data[0] as { count?: number; last_success_at?: string | null } | undefined) : undefined;
+  const row = Array.isArray(data)
+    ? (data[0] as { count?: number; last_success_at?: string | null } | undefined)
+    : undefined;
   if (!row) return null;
   return { count: Number(row.count ?? 0), last_success_at: row.last_success_at ?? null };
 }

@@ -115,7 +115,8 @@ function parseRetryAfter(headerValue: string | null | undefined): number | null 
   const seconds = Number(headerValue);
   if (Number.isFinite(seconds)) return Math.max(0, Math.min(RETRY_MAX_DELAY_MS, seconds * 1000));
   const asDate = Date.parse(headerValue);
-  if (Number.isFinite(asDate)) return Math.max(0, Math.min(RETRY_MAX_DELAY_MS, asDate - Date.now()));
+  if (Number.isFinite(asDate))
+    return Math.max(0, Math.min(RETRY_MAX_DELAY_MS, asDate - Date.now()));
   return null;
 }
 
@@ -163,8 +164,7 @@ export async function guardedAiCall<T>(fn: () => Promise<T>): Promise<T> {
       } catch (err) {
         if (err instanceof AiRateLimitError && attempt < RETRY_MAX_ATTEMPTS) {
           const delay =
-            err.retryAfterMs ??
-            jitter(Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_MS * 2 ** attempt));
+            err.retryAfterMs ?? jitter(Math.min(RETRY_MAX_DELAY_MS, RETRY_BASE_MS * 2 ** attempt));
           attempt++;
           await new Promise((r) => setTimeout(r, delay));
           continue;
@@ -255,7 +255,10 @@ export async function getGlobalAiCounts(): Promise<{ today: number; month: numbe
         c: string,
         opts?: { count?: "exact"; head?: boolean },
       ) => {
-        eq: (a: string, b: string) => {
+        eq: (
+          a: string,
+          b: string,
+        ) => {
           gte: (a: string, b: string) => Promise<{ count: number | null; error: unknown }>;
         };
       };
@@ -290,8 +293,14 @@ export async function getUserDailyAiCount(userId: string): Promise<number> {
         c: string,
         opts?: { count?: "exact"; head?: boolean },
       ) => {
-        eq: (a: string, b: string) => {
-          eq: (a: string, b: string) => {
+        eq: (
+          a: string,
+          b: string,
+        ) => {
+          eq: (
+            a: string,
+            b: string,
+          ) => {
             gte: (a: string, b: string) => Promise<{ count: number | null; error: unknown }>;
           };
         };
@@ -337,8 +346,14 @@ export async function getUserDailySubmissionCount(userId: string): Promise<numbe
         c: string,
         opts?: { count?: "exact"; head?: boolean },
       ) => {
-        eq: (a: string, b: string) => {
-          eq: (a: string, b: string) => {
+        eq: (
+          a: string,
+          b: string,
+        ) => {
+          eq: (
+            a: string,
+            b: string,
+          ) => {
             gte: (a: string, b: string) => Promise<{ count: number | null; error: unknown }>;
           };
         };

@@ -21,8 +21,12 @@ describe("foodStatus", () => {
     expect(s.label.toLowerCase()).toContain("preparation estimated");
   });
   it("returns plain Verified when preparation is raw or cooked", () => {
-    expect(foodStatus({ data_source: "verified_database", preparation: "raw" }).label).toBe("Verified");
-    expect(foodStatus({ data_source: "verified_database", preparation: "cooked" }).label).toBe("Verified");
+    expect(foodStatus({ data_source: "verified_database", preparation: "raw" }).label).toBe(
+      "Verified",
+    );
+    expect(foodStatus({ data_source: "verified_database", preparation: "cooked" }).label).toBe(
+      "Verified",
+    );
   });
 });
 
@@ -56,30 +60,46 @@ type Item = {
 };
 
 function makeRecalcClient(
-  table: Record<string, Partial<Pick<Item, "calories" | "protein_g" | "carbs_g" | "fat_g" | "data_source" | "is_estimate" | "confidence">>>,
+  table: Record<
+    string,
+    Partial<
+      Pick<
+        Item,
+        | "calories"
+        | "protein_g"
+        | "carbs_g"
+        | "fat_g"
+        | "data_source"
+        | "is_estimate"
+        | "confidence"
+      >
+    >
+  >,
   demoSpy: { consumed: number },
 ) {
   return {
     // recalcItem/recalcItemDemo must NEVER consume a demo slot.
-    recalc: vi.fn(async (input: {
-      display_name: string;
-      quantity: number;
-      unit: string;
-      preparation: "raw" | "cooked" | "estimated";
-    }) => {
-      const key = `${input.display_name}|${input.preparation}|${input.quantity}${input.unit}`;
-      const row = table[key];
-      if (!row) throw new Error(`no fixture for ${key}`);
-      return {
-        calories: row.calories ?? 0,
-        protein_g: row.protein_g ?? 0,
-        carbs_g: row.carbs_g ?? 0,
-        fat_g: row.fat_g ?? 0,
-        data_source: row.data_source ?? "verified_database",
-        is_estimate: row.is_estimate ?? false,
-        confidence: row.confidence ?? 0.9,
-      };
-    }),
+    recalc: vi.fn(
+      async (input: {
+        display_name: string;
+        quantity: number;
+        unit: string;
+        preparation: "raw" | "cooked" | "estimated";
+      }) => {
+        const key = `${input.display_name}|${input.preparation}|${input.quantity}${input.unit}`;
+        const row = table[key];
+        if (!row) throw new Error(`no fixture for ${key}`);
+        return {
+          calories: row.calories ?? 0,
+          protein_g: row.protein_g ?? 0,
+          carbs_g: row.carbs_g ?? 0,
+          fat_g: row.fat_g ?? 0,
+          data_source: row.data_source ?? "verified_database",
+          is_estimate: row.is_estimate ?? false,
+          confidence: row.confidence ?? 0.9,
+        };
+      },
+    ),
     parseDemo: vi.fn(async () => {
       demoSpy.consumed += 1;
       return { items: [], input_language: "english", remaining: 3 - demoSpy.consumed };
@@ -92,8 +112,14 @@ function makeRecalcClient(
 async function applyPreparationChange(
   item: Item,
   nextPrep: "raw" | "cooked" | "estimated",
-  recalc: (i: Pick<Item, "display_name" | "normalized_name" | "quantity" | "unit" | "preparation">) =>
-    Promise<Pick<Item, "calories" | "protein_g" | "carbs_g" | "fat_g" | "data_source" | "is_estimate" | "confidence">>,
+  recalc: (
+    i: Pick<Item, "display_name" | "normalized_name" | "quantity" | "unit" | "preparation">,
+  ) => Promise<
+    Pick<
+      Item,
+      "calories" | "protein_g" | "carbs_g" | "fat_g" | "data_source" | "is_estimate" | "confidence"
+    >
+  >,
 ): Promise<Item> {
   const staged: Item = {
     ...item,
@@ -166,21 +192,28 @@ beforeEach(() => {
   client = makeRecalcClient(
     {
       // chicken breast: raw is denser per gram than cooked (cooked loses water)
-      "chicken breast|raw|200g":   { calories: 220, protein_g: 46, carbs_g: 0, fat_g: 5 },
-      "chicken breast|cooked|200g":{ calories: 330, protein_g: 62, carbs_g: 0, fat_g: 7 },
-      "chicken breast|estimated|200g": { calories: 275, protein_g: 54, carbs_g: 0, fat_g: 6, is_estimate: true, data_source: "estimated" },
-      "chicken breast|raw|300g":   { calories: 330, protein_g: 69, carbs_g: 0, fat_g: 7 },
+      "chicken breast|raw|200g": { calories: 220, protein_g: 46, carbs_g: 0, fat_g: 5 },
+      "chicken breast|cooked|200g": { calories: 330, protein_g: 62, carbs_g: 0, fat_g: 7 },
+      "chicken breast|estimated|200g": {
+        calories: 275,
+        protein_g: 54,
+        carbs_g: 0,
+        fat_g: 6,
+        is_estimate: true,
+        data_source: "estimated",
+      },
+      "chicken breast|raw|300g": { calories: 330, protein_g: 69, carbs_g: 0, fat_g: 7 },
 
       // rice: uncooked has ~3x calories per gram vs cooked
-      "rice|raw|150g":    { calories: 540, protein_g: 10, carbs_g: 120, fat_g: 1 },
-      "rice|cooked|150g": { calories: 195, protein_g: 4,  carbs_g: 42,  fat_g: 0 },
+      "rice|raw|150g": { calories: 540, protein_g: 10, carbs_g: 120, fat_g: 1 },
+      "rice|cooked|150g": { calories: 195, protein_g: 4, carbs_g: 42, fat_g: 0 },
 
       // ground beef: raw vs cooked differ
-      "ground beef|raw|200g":    { calories: 500, protein_g: 52, carbs_g: 0, fat_g: 30 },
+      "ground beef|raw|200g": { calories: 500, protein_g: 52, carbs_g: 0, fat_g: 30 },
       "ground beef|cooked|200g": { calories: 580, protein_g: 60, carbs_g: 0, fat_g: 36 },
 
       // fish
-      "bangus|raw|200g":    { calories: 320, protein_g: 44, carbs_g: 0, fat_g: 14 },
+      "bangus|raw|200g": { calories: 320, protein_g: 44, carbs_g: 0, fat_g: 14 },
       "bangus|cooked|200g": { calories: 380, protein_g: 52, carbs_g: 0, fat_g: 17 },
     },
     demo,

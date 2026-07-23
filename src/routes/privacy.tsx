@@ -28,8 +28,8 @@ function PrivacyPage() {
           <section>
             <h2 className="text-lg font-semibold">What we collect</h2>
             <p className="mt-2 text-muted-foreground">
-              To power your account we store the email or phone you sign up with, the food
-              entries you log, and basic profile details you provide during onboarding.
+              To power your account we store the email or phone you sign up with, the food entries
+              you log, and basic profile details you provide during onboarding.
             </p>
           </section>
           <section>
@@ -49,8 +49,8 @@ function PrivacyPage() {
           <section>
             <h2 className="text-lg font-semibold">Security</h2>
             <p className="mt-2 text-muted-foreground">
-              Data is protected by row-level security so one account can never read another's
-              logs. Access tokens are stored in secure, browser-managed storage.
+              Data is protected by row-level security so one account can never read another's logs.
+              Access tokens are stored in secure, browser-managed storage.
             </p>
           </section>
           <section>

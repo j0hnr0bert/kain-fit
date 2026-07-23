@@ -28,7 +28,11 @@ const EXAMPLE_TEXT = "150g chicken adobo and 200g cooked rice";
 
 const STEPS: { n: number; title: string; body: string }[] = [
   { n: 1, title: "Place your empty plate on the scale.", body: "Any flat plate or bowl works." },
-  { n: 2, title: "Press TARE so the display returns to 0 g.", body: "This ignores the plate's weight." },
+  {
+    n: 2,
+    title: "Press TARE so the display returns to 0 g.",
+    body: "This ignores the plate's weight.",
+  },
   { n: 3, title: "Add the food and read its weight.", body: "Weigh the portion you actually eat." },
   { n: 4, title: 'Type or say: "150 grams chicken adobo."', body: "KainFit handles the rest." },
 ];

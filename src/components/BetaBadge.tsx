@@ -31,8 +31,8 @@ export function BetaBadge({ className }: { className?: string }) {
           <DialogHeader>
             <DialogTitle>KainFit is in beta</DialogTitle>
             <DialogDescription>
-              Nutrition values may require review. If anything looks incorrect, please tap
-              "Report incorrect macros" on the entry — your feedback helps us improve.
+              Nutrition values may require review. If anything looks incorrect, please tap "Report
+              incorrect macros" on the entry — your feedback helps us improve.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

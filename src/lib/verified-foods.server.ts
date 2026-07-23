@@ -242,8 +242,7 @@ export async function lookupVerifiedFood(
     normalized_name: row.canonical_name,
     quantity: parsed.quantity,
     unit: parsed.unit ?? "serving",
-    preparation:
-      row.preparation_state === "n_a" ? null : row.preparation_state,
+    preparation: row.preparation_state === "n_a" ? null : row.preparation_state,
     meal_type: mealHint,
     calories: Math.round(row.kcal_per_100g * factor),
     protein_g: Math.round(row.protein_per_100g * factor),

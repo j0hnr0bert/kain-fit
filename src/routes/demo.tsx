@@ -20,8 +20,16 @@ import {
 } from "@/components/ui/sheet";
 import { toast } from "sonner";
 import {
-  ArrowLeft, ArrowUp, Sparkles, Trash2, Loader2, MessageSquare, AlertCircle,
-  Flag, Pencil, RefreshCw,
+  ArrowLeft,
+  ArrowUp,
+  Sparkles,
+  Trash2,
+  Loader2,
+  MessageSquare,
+  AlertCircle,
+  Flag,
+  Pencil,
+  RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { track, getAcquisitionSource } from "@/lib/analytics";
@@ -31,18 +39,16 @@ import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { parseFoodDemo, getDemoStatus, recalcItemDemo } from "@/lib/food.functions";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/demo")({
   head: () => ({
     meta: [
       { title: "Try the demo — KainFit" },
-      { name: "description", content: "Explore a sample KainFit Today screen without creating an account." },
+      {
+        name: "description",
+        content: "Explore a sample KainFit Today screen without creating an account.",
+      },
       { name: "robots", content: "noindex" },
     ],
   }),
@@ -202,7 +208,11 @@ function DemoPage() {
         if (result.remaining <= 0) setLimitReached(true);
       }
       if (!result.items || result.items.length === 0) {
-        track("food_parse_failed", { processing_duration_ms: dur, reason: "empty_result", demo_or_registered: "demo" });
+        track("food_parse_failed", {
+          processing_duration_ms: dur,
+          reason: "empty_result",
+          demo_or_registered: "demo",
+        });
         setParseError("We couldn't find any food in that. Please rephrase and try again.");
         return;
       }
@@ -227,7 +237,11 @@ function DemoPage() {
         setSignupPrompt(true);
         setParseError(null);
       } else {
-        track("food_parse_failed", { processing_duration_ms: dur, reason: msg.slice(0, 80), demo_or_registered: "demo" });
+        track("food_parse_failed", {
+          processing_duration_ms: dur,
+          reason: msg.slice(0, 80),
+          demo_or_registered: "demo",
+        });
         if (msg.startsWith("AI_UNAVAILABLE:")) {
           setParseError(
             "KainFit's calculator is temporarily unavailable. Please try again in a minute.",
@@ -346,10 +360,7 @@ function DemoPage() {
       try {
         // Use localStorage so the pending import survives an OAuth redirect
         // (mobile Safari drops sessionStorage across the provider round-trip).
-        localStorage.setItem(
-          PENDING_STORAGE_KEY,
-          JSON.stringify({ savedAt: Date.now(), entries }),
-        );
+        localStorage.setItem(PENDING_STORAGE_KEY, JSON.stringify({ savedAt: Date.now(), entries }));
       } catch {
         // ignore storage failure — we'll just skip import
       }
@@ -397,7 +408,9 @@ function DemoPage() {
                   Checking demo availability…
                 </span>
               ) : (
-                <>You have {remaining} free {remaining === 1 ? "calculation" : "calculations"} left.</>
+                <>
+                  You have {remaining} free {remaining === 1 ? "calculation" : "calculations"} left.
+                </>
               )}
             </p>
           </div>
@@ -435,7 +448,11 @@ function DemoPage() {
               className="absolute right-2 top-1/2 -translate-y-1/2 h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
               aria-label="Calculate nutrition"
             >
-              {parsing ? <Loader2 className="h-5 w-5 animate-spin" /> : <ArrowUp className="h-5 w-5" />}
+              {parsing ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <ArrowUp className="h-5 w-5" />
+              )}
             </button>
           </div>
           <p className="mt-2 px-1 text-xs text-muted-foreground">
@@ -487,10 +504,15 @@ function DemoPage() {
             if (items.length === 0) return null;
             return (
               <div key={m}>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">{m}</div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
+                  {m}
+                </div>
                 <div className="space-y-2">
                   {items.map((e) => (
-                    <div key={e.id} className="rounded-2xl bg-card border border-border p-4 flex items-start gap-3">
+                    <div
+                      key={e.id}
+                      className="rounded-2xl bg-card border border-border p-4 flex items-start gap-3"
+                    >
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-medium truncate">{e.name}</span>
@@ -500,7 +522,8 @@ function DemoPage() {
                           />
                         </div>
                         <div className="text-xs text-muted-foreground mt-0.5">
-                          {formatQuantity(e.quantity, e.unit)} · {e.calories} kcal · P {e.protein} · C {e.carbs} · F {e.fat}
+                          {formatQuantity(e.quantity, e.unit)} · {e.calories} kcal · P {e.protein} ·
+                          C {e.carbs} · F {e.fat}
                         </div>
                         <button
                           type="button"
@@ -564,7 +587,9 @@ function DemoPage() {
       <FeedbackDialog
         open={feedbackOpen}
         onOpenChange={setFeedbackOpen}
-        anonymousSessionId={typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""}
+        anonymousSessionId={
+          typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""
+        }
       />
 
       {/* Review sheet — same shape as production */}
@@ -587,8 +612,8 @@ function DemoPage() {
               <Sparkles className="h-4 w-4 text-primary" /> Review before adding
             </SheetTitle>
             <SheetDescription id="demo-review-desc">
-              Check each item's amount and nutrition. Answer any preparation
-              questions, edit values if needed, then add them to your demo day.
+              Check each item's amount and nutrition. Answer any preparation questions, edit values
+              if needed, then add them to your demo day.
             </SheetDescription>
           </SheetHeader>
           {pendingOriginalInput && (
@@ -603,9 +628,7 @@ function DemoPage() {
                 item={item}
                 recalcing={recalcingRows.has(idx)}
                 onRecalc={(next) => void recalcRow(idx, next)}
-                onChange={(next) =>
-                  setPending((p) => p!.map((it, i) => (i === idx ? next : it)))
-                }
+                onChange={(next) => setPending((p) => p!.map((it, i) => (i === idx ? next : it)))}
                 onRemove={() =>
                   setPending((p) => (p!.length > 1 ? p!.filter((_, i) => i !== idx) : null))
                 }
@@ -640,7 +663,11 @@ function DemoPage() {
                 "Add to demo day"
               )}
             </Button>
-            <Button onClick={() => setPending(null)} variant="ghost" className="w-full h-12 rounded-2xl">
+            <Button
+              onClick={() => setPending(null)}
+              variant="ghost"
+              className="w-full h-12 rounded-2xl"
+            >
               Cancel
             </Button>
           </div>
@@ -649,10 +676,14 @@ function DemoPage() {
 
       <ReportMacrosDialog
         open={reportTarget !== null}
-        onOpenChange={(v) => { if (!v) setReportTarget(null); }}
+        onOpenChange={(v) => {
+          if (!v) setReportTarget(null);
+        }}
         foodEntryId={null}
         originalValues={reportTarget?.values ?? {}}
-        anonymousSessionId={typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""}
+        anonymousSessionId={
+          typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""
+        }
       />
 
       <Dialog open={signupPrompt} onOpenChange={setSignupPrompt}>
@@ -710,7 +741,12 @@ function MacroPill({ label, value }: { label: string; value: number }) {
 }
 
 function PendingRow({
-  item, onChange, onRemove, onReport, onRecalc, recalcing,
+  item,
+  onChange,
+  onRemove,
+  onReport,
+  onRecalc,
+  recalcing,
 }: {
   item: PendingItem;
   onChange: (next: PendingItem) => void;
@@ -737,10 +773,10 @@ function PendingRow({
     prep === "raw"
       ? "Calculated using raw weight."
       : prep === "cooked"
-      ? "Calculated using cooked weight."
-      : prep === "estimated"
-      ? "Preparation estimated — using a middle-ground estimate. You can change this any time."
-      : null;
+        ? "Calculated using cooked weight."
+        : prep === "estimated"
+          ? "Preparation estimated — using a middle-ground estimate. You can change this any time."
+          : null;
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
       {item.clarification_needed && item.clarification_question && !prepClarification && (
@@ -792,9 +828,7 @@ function PendingRow({
           <div className="font-medium">{item.display_name}</div>
           <div className="text-xs text-muted-foreground mt-0.5">
             {formatQuantity(item.quantity, item.unit)}
-            {item.preparation && item.preparation !== "estimated"
-              ? ` · ${item.preparation}`
-              : ""}
+            {item.preparation && item.preparation !== "estimated" ? ` · ${item.preparation}` : ""}
             {recalcing && (
               <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" /> Recalculating…
@@ -803,19 +837,47 @@ function PendingRow({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={() => setEditing((v) => !v)} className="p-2 text-muted-foreground hover:text-foreground" aria-label="Edit">
+          <button
+            onClick={() => setEditing((v) => !v)}
+            className="p-2 text-muted-foreground hover:text-foreground"
+            aria-label="Edit"
+          >
             <Pencil className="h-4 w-4" />
           </button>
-          <button onClick={onRemove} className="p-2 text-muted-foreground hover:text-destructive" aria-label="Remove">
+          <button
+            onClick={onRemove}
+            className="p-2 text-muted-foreground hover:text-destructive"
+            aria-label="Remove"
+          >
             <Trash2 className="h-4 w-4" />
           </button>
         </div>
       </div>
       <div className="mt-3 grid grid-cols-4 gap-2 text-center">
-        <NumCell label="kcal" value={item.calories} onChange={(v) => onChange({ ...item, calories: v })} editing={editing} />
-        <NumCell label="P" value={item.protein_g} onChange={(v) => onChange({ ...item, protein_g: v })} editing={editing} />
-        <NumCell label="C" value={item.carbs_g} onChange={(v) => onChange({ ...item, carbs_g: v })} editing={editing} />
-        <NumCell label="F" value={item.fat_g} onChange={(v) => onChange({ ...item, fat_g: v })} editing={editing} />
+        <NumCell
+          label="kcal"
+          value={item.calories}
+          onChange={(v) => onChange({ ...item, calories: v })}
+          editing={editing}
+        />
+        <NumCell
+          label="P"
+          value={item.protein_g}
+          onChange={(v) => onChange({ ...item, protein_g: v })}
+          editing={editing}
+        />
+        <NumCell
+          label="C"
+          value={item.carbs_g}
+          onChange={(v) => onChange({ ...item, carbs_g: v })}
+          editing={editing}
+        />
+        <NumCell
+          label="F"
+          value={item.fat_g}
+          onChange={(v) => onChange({ ...item, fat_g: v })}
+          editing={editing}
+        />
       </div>
       {editing && (
         <div className="mt-3 space-y-2">
@@ -863,9 +925,7 @@ function PendingRow({
           is_estimate={item.is_estimate}
           preparation={item.preparation}
         />
-        {item.confidence < 0.6 && (
-          <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>
-        )}
+        {item.confidence < 0.6 && <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>}
         <button
           type="button"
           onClick={onReport}
@@ -913,17 +973,23 @@ function DemoStatusBadge({
             {info.label}
           </span>
         </TooltipTrigger>
-        <TooltipContent className="max-w-xs text-xs leading-relaxed">
-          {info.tooltip}
-        </TooltipContent>
+        <TooltipContent className="max-w-xs text-xs leading-relaxed">{info.tooltip}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );
 }
 
 function NumCell({
-  label, value, onChange, editing,
-}: { label: string; value: number; onChange: (v: number) => void; editing: boolean }) {
+  label,
+  value,
+  onChange,
+  editing,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  editing: boolean;
+}) {
   return (
     <div className="rounded-xl bg-muted/60 p-2">
       <div className="text-[10px] uppercase text-muted-foreground">{label}</div>

@@ -56,7 +56,13 @@ function readCode(err: unknown): string | null {
   if (!err || typeof err !== "object") return null;
   const anyErr = err as { code?: unknown; name?: unknown };
   if (typeof anyErr.code === "string" && anyErr.code) return anyErr.code;
-  if (typeof anyErr.name === "string" && anyErr.name && anyErr.name !== "Error" && anyErr.name !== "AuthError") return anyErr.name;
+  if (
+    typeof anyErr.name === "string" &&
+    anyErr.name &&
+    anyErr.name !== "Error" &&
+    anyErr.name !== "AuthError"
+  )
+    return anyErr.name;
   return null;
 }
 
@@ -192,7 +198,11 @@ export function normalizeAuthError(err: unknown): NormalizedAuthError {
       suggestion: null,
     };
   }
-  if (lower.includes("token has expired") || lower.includes("otp expired") || lower.includes("invalid otp")) {
+  if (
+    lower.includes("token has expired") ||
+    lower.includes("otp expired") ||
+    lower.includes("invalid otp")
+  ) {
     return {
       userMessage: "That code is invalid or expired. Send a new one and try again.",
       code: "otp_invalid",
@@ -214,7 +224,11 @@ export function normalizeAuthError(err: unknown): NormalizedAuthError {
       suggestion: "allow_popup",
     };
   }
-  if (lower.includes("cancelled") || lower.includes("canceled") || lower.includes("user cancelled")) {
+  if (
+    lower.includes("cancelled") ||
+    lower.includes("canceled") ||
+    lower.includes("user cancelled")
+  ) {
     return {
       userMessage: "Sign-in was cancelled. Try again when you're ready.",
       code: "user_cancelled",
@@ -246,7 +260,8 @@ export function normalizeAuthError(err: unknown): NormalizedAuthError {
   }
   if (lower.includes("still_waiting_after") || lower.includes("no completion within")) {
     return {
-      userMessage: "Finish sign-in in the window that opened. If nothing opened, allow pop-ups and try again.",
+      userMessage:
+        "Finish sign-in in the window that opened. If nothing opened, allow pop-ups and try again.",
       code: "oauth_slow",
       status,
       rawMessage,
@@ -254,7 +269,11 @@ export function normalizeAuthError(err: unknown): NormalizedAuthError {
       suggestion: "allow_popup",
     };
   }
-  if (lower.includes("unsupported provider") || lower.includes("provider is not enabled") || providerCode === "provider_disabled") {
+  if (
+    lower.includes("unsupported provider") ||
+    lower.includes("provider is not enabled") ||
+    providerCode === "provider_disabled"
+  ) {
     return {
       userMessage: "This sign-in option is temporarily unavailable — please use email.",
       code: "provider_disabled",
@@ -264,7 +283,11 @@ export function normalizeAuthError(err: unknown): NormalizedAuthError {
       suggestion: "use_email",
     };
   }
-  if (lower.includes("network") || lower.includes("failed to fetch") || lower.includes("networkerror")) {
+  if (
+    lower.includes("network") ||
+    lower.includes("failed to fetch") ||
+    lower.includes("networkerror")
+  ) {
     return {
       userMessage: "Network problem — check your connection and try again.",
       code: "network_error",

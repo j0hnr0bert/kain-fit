@@ -15,10 +15,7 @@ function OnboardingRedirect() {
     (async () => {
       const { data: u } = await supabase.auth.getUser();
       if (u.user) {
-        await supabase
-          .from("profiles")
-          .update({ onboarded: true })
-          .eq("user_id", u.user.id);
+        await supabase.from("profiles").update({ onboarded: true }).eq("user_id", u.user.id);
       }
       navigate({ to: "/today", replace: true });
     })();

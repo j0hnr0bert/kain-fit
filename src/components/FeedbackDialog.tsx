@@ -160,9 +160,7 @@ export function FeedbackDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="fb-missed">
-              What food could KainFit not understand?
-            </Label>
+            <Label htmlFor="fb-missed">What food could KainFit not understand?</Label>
             <Textarea
               id="fb-missed"
               value={missed}
@@ -224,8 +222,8 @@ export function FeedbackDialog({
                 className="h-11 rounded-xl"
               />
               <p className="text-[11px] text-muted-foreground leading-relaxed">
-                Optional. We'll only use this to follow up on this feedback and won't add
-                you to any list. Leave blank to stay anonymous.
+                Optional. We'll only use this to follow up on this feedback and won't add you to any
+                list. Leave blank to stay anonymous.
               </p>
             </div>
           )}

@@ -597,12 +597,10 @@ export const bulkImportFoods = createServerFn({ method: "POST" })
           ) => Promise<{ error: unknown }>;
         };
       };
-      await aliasAdmin
-        .from("food_aliases")
-        .upsert(aliasRows, {
-          onConflict: "normalized_alias,food_record_id",
-          ignoreDuplicates: true,
-        });
+      await aliasAdmin.from("food_aliases").upsert(aliasRows, {
+        onConflict: "normalized_alias,food_record_id",
+        ignoreDuplicates: true,
+      });
     }
 
     invalidateFoodRecordsCache();

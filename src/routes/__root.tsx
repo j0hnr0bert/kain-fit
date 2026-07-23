@@ -82,19 +82,39 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
       { title: "KainFit — The fastest way to track what you eat" },
-      { name: "description", content: "Fast, accurate macro tracking built for the way Filipinos eat. Log meals in English, Filipino, or Taglish." },
+      {
+        name: "description",
+        content:
+          "Fast, accurate macro tracking built for the way Filipinos eat. Log meals in English, Filipino, or Taglish.",
+      },
       { name: "theme-color", content: "#0F766E" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-title", content: "KainFit" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },
       { property: "og:title", content: "KainFit — The fastest way to track what you eat" },
-      { property: "og:description", content: "Fast, accurate macro tracking built for the way Filipinos eat. Log meals in English, Filipino, or Taglish." },
+      {
+        property: "og:description",
+        content:
+          "Fast, accurate macro tracking built for the way Filipinos eat. Log meals in English, Filipino, or Taglish.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
       { name: "twitter:title", content: "KainFit — The fastest way to track what you eat" },
-      { name: "twitter:description", content: "Fast, accurate macro tracking built for the way Filipinos eat. Log meals in English, Filipino, or Taglish." },
-      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5705deea-2862-41c5-878c-418570f45632/id-preview-48185eb4--a3562033-69db-44b1-944e-ae2901ace288.lovable.app-1784188930228.png" },
-      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5705deea-2862-41c5-878c-418570f45632/id-preview-48185eb4--a3562033-69db-44b1-944e-ae2901ace288.lovable.app-1784188930228.png" },
+      {
+        name: "twitter:description",
+        content:
+          "Fast, accurate macro tracking built for the way Filipinos eat. Log meals in English, Filipino, or Taglish.",
+      },
+      {
+        property: "og:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5705deea-2862-41c5-878c-418570f45632/id-preview-48185eb4--a3562033-69db-44b1-944e-ae2901ace288.lovable.app-1784188930228.png",
+      },
+      {
+        name: "twitter:image",
+        content:
+          "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/5705deea-2862-41c5-878c-418570f45632/id-preview-48185eb4--a3562033-69db-44b1-944e-ae2901ace288.lovable.app-1784188930228.png",
+      },
     ],
     links: [
       {
@@ -147,7 +167,9 @@ function RootShell({ children }: { children: ReactNode }) {
       </head>
       <body>
         <div id="kf-boot" role="status" aria-live="polite" aria-label="Loading KainFit">
-          <div className="kf-boot-logo" aria-hidden="true">K</div>
+          <div className="kf-boot-logo" aria-hidden="true">
+            K
+          </div>
           <div className="kf-boot-spinner" aria-hidden="true" />
           <div className="kf-boot-label">Preparing KainFit…</div>
         </div>
@@ -175,7 +197,9 @@ function RootComponent() {
     // Time from navigation start to React mount.
     let ttiMs: number | undefined;
     try {
-      const nav = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+      const nav = performance.getEntriesByType("navigation")[0] as
+        | PerformanceNavigationTiming
+        | undefined;
       if (nav) ttiMs = Math.round(performance.now());
     } catch {
       // ignore
@@ -213,7 +237,11 @@ function RootComponent() {
         })();
       }
       if (event === "SIGNED_OUT") {
-        try { localStorage.removeItem("kf.firstTouchSent"); } catch { /* ignore */ }
+        try {
+          localStorage.removeItem("kf.firstTouchSent");
+        } catch {
+          /* ignore */
+        }
       }
     });
     return () => sub.subscription.unsubscribe();

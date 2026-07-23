@@ -13,18 +13,20 @@ export function startWebVitals() {
   // Dynamic import so web-vitals is not part of the initial critical bundle.
   import("web-vitals")
     .then(({ onLCP, onINP, onCLS }) => {
-      const report = (name: "LCP" | "INP" | "CLS") => (metric: { value: number; rating?: string; id: string }) => {
-        try {
-          track("web_vital", {
-            metric: name,
-            value: Math.round(metric.value * 1000) / 1000,
-            rating: metric.rating ?? null,
-            metric_id: metric.id,
-          });
-        } catch {
-          // swallow — telemetry must never break the app
-        }
-      };
+      const report =
+        (name: "LCP" | "INP" | "CLS") =>
+        (metric: { value: number; rating?: string; id: string }) => {
+          try {
+            track("web_vital", {
+              metric: name,
+              value: Math.round(metric.value * 1000) / 1000,
+              rating: metric.rating ?? null,
+              metric_id: metric.id,
+            });
+          } catch {
+            // swallow — telemetry must never break the app
+          }
+        };
       onLCP(report("LCP"));
       onINP(report("INP"));
       onCLS(report("CLS"));

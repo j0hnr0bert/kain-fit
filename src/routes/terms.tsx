@@ -28,17 +28,17 @@ function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold">1. Using KainFit</h2>
             <p className="mt-2 text-muted-foreground">
-              KainFit helps you track the food you eat. By creating an account you agree to use
-              the app for personal, non-commercial tracking, and not to attempt to disrupt the
-              service or misuse other users' data.
+              KainFit helps you track the food you eat. By creating an account you agree to use the
+              app for personal, non-commercial tracking, and not to attempt to disrupt the service
+              or misuse other users' data.
             </p>
           </section>
           <section>
             <h2 className="text-lg font-semibold">2. Nutrition estimates</h2>
             <p className="mt-2 text-muted-foreground">
-              Calorie and macronutrient values in KainFit are estimates generated from public
-              food data and AI-assisted parsing. They are not medical advice. Values may vary
-              based on ingredients, portion size, and preparation.
+              Calorie and macronutrient values in KainFit are estimates generated from public food
+              data and AI-assisted parsing. They are not medical advice. Values may vary based on
+              ingredients, portion size, and preparation.
             </p>
           </section>
           <section>
@@ -51,8 +51,8 @@ function TermsPage() {
           <section>
             <h2 className="text-lg font-semibold">4. Changes</h2>
             <p className="mt-2 text-muted-foreground">
-              We may update these terms as KainFit evolves. Material changes will be surfaced
-              in-app before they take effect.
+              We may update these terms as KainFit evolves. Material changes will be surfaced in-app
+              before they take effect.
             </p>
           </section>
           <section>

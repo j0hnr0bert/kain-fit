@@ -58,7 +58,9 @@ export async function readOpsSettings(): Promise<SettingsSnapshot> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const admin = supabaseAdmin as unknown as {
     from: (t: string) => {
-      select: (c: string) => Promise<{ data: Array<{ key: string; value: unknown }> | null; error: unknown }>;
+      select: (
+        c: string,
+      ) => Promise<{ data: Array<{ key: string; value: unknown }> | null; error: unknown }>;
     };
   };
   const { data } = await admin.from("app_settings").select("key,value");
@@ -70,14 +72,26 @@ export async function readOpsSettings(): Promise<SettingsSnapshot> {
     db_only_mode: coerceBool(map.get("db_only_mode"), DEFAULTS.db_only_mode),
     demo_allowance: coerceNum(map.get("demo_allowance"), DEFAULTS.demo_allowance),
     high_demand_banner: coerceStr(map.get("high_demand_banner"), DEFAULTS.high_demand_banner),
-    session_burst_per_min: coerceNum(map.get("session_burst_per_min"), DEFAULTS.session_burst_per_min),
+    session_burst_per_min: coerceNum(
+      map.get("session_burst_per_min"),
+      DEFAULTS.session_burst_per_min,
+    ),
     user_daily_ai_cap: coerceNum(map.get("user_daily_ai_cap"), DEFAULTS.user_daily_ai_cap),
     monthly_ai_call_cap: coerceNum(map.get("monthly_ai_call_cap"), DEFAULTS.monthly_ai_call_cap),
     daily_ai_call_alert: coerceNum(map.get("daily_ai_call_alert"), DEFAULTS.daily_ai_call_alert),
     beta_limits_enabled: coerceBool(map.get("beta_limits_enabled"), DEFAULTS.beta_limits_enabled),
-    beta_daily_submission_cap: coerceNum(map.get("beta_daily_submission_cap"), DEFAULTS.beta_daily_submission_cap),
-    beta_max_input_length: coerceNum(map.get("beta_max_input_length"), DEFAULTS.beta_max_input_length),
-    beta_max_foods_per_submission: coerceNum(map.get("beta_max_foods_per_submission"), DEFAULTS.beta_max_foods_per_submission),
+    beta_daily_submission_cap: coerceNum(
+      map.get("beta_daily_submission_cap"),
+      DEFAULTS.beta_daily_submission_cap,
+    ),
+    beta_max_input_length: coerceNum(
+      map.get("beta_max_input_length"),
+      DEFAULTS.beta_max_input_length,
+    ),
+    beta_max_foods_per_submission: coerceNum(
+      map.get("beta_max_foods_per_submission"),
+      DEFAULTS.beta_max_foods_per_submission,
+    ),
   };
   cache = { at: now, value };
   return value;
