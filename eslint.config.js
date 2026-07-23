@@ -6,7 +6,14 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", ".output", ".vinxi"] },
+  {
+    // src/integrations/supabase/** is machine-generated (Supabase/Lovable
+    // codegen — see the file headers and git blame, all commits authored by
+    // gpt-engineer-app[bot]). ESLint's own style rules don't apply to it;
+    // TypeScript still checks it via tsconfig.json's unchanged src/**
+    // include, and it still ships in the production build unchanged.
+    ignores: ["dist", ".output", ".vinxi", "src/integrations/supabase/**"],
+  },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],
