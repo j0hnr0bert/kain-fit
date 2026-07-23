@@ -7,6 +7,7 @@ import {
   markSaveCompletedCelebrate,
   consumeCelebrateIfShown,
   saveCausedCelebration,
+  saveCausedCalorieCompletion,
   type CoachingInput,
 } from "../coaching";
 
@@ -157,6 +158,61 @@ describe("evaluateCoaching — calories-near Guide branch", () => {
       }),
     );
     expect(r.kind).not.toBe("guide");
+  });
+});
+
+describe("saveCausedCalorieCompletion — drives the one-shot gold ring glow", () => {
+  it("is true only for a genuine not-met -> met transition", () => {
+    expect(
+      saveCausedCalorieCompletion({
+        targetsActive: true,
+        preCaloriesRemaining: 300,
+        postCaloriesRemaining: 0,
+      }),
+    ).toBe(true);
+  });
+
+  it("is false when targets are not active, even if the numbers look like a transition", () => {
+    expect(
+      saveCausedCalorieCompletion({
+        targetsActive: false,
+        preCaloriesRemaining: 300,
+        postCaloriesRemaining: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("is false for a failed save (pre === post, no real transition)", () => {
+    expect(
+      saveCausedCalorieCompletion({
+        targetsActive: true,
+        preCaloriesRemaining: 300,
+        postCaloriesRemaining: 300,
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when calories were already complete before this save — no replay on an already-gold ring", () => {
+    expect(
+      saveCausedCalorieCompletion({
+        targetsActive: true,
+        preCaloriesRemaining: 0,
+        postCaloriesRemaining: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("is independent of protein — a save that only closes out calories still counts", () => {
+    // saveCausedCalorieCompletion deliberately takes no protein input at
+    // all, so a save that finishes calories while protein is still short
+    // (a scenario saveCausedCelebration would reject) still triggers gold.
+    expect(
+      saveCausedCalorieCompletion({
+        targetsActive: true,
+        preCaloriesRemaining: 50,
+        postCaloriesRemaining: 0,
+      }),
+    ).toBe(true);
   });
 });
 

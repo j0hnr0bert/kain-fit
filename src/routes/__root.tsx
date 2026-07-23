@@ -81,6 +81,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1, viewport-fit=cover" },
+      // KainFit is light-mode-only (locked decision) — tells the browser
+      // not to apply its own dark-adapted UA styling (form controls,
+      // scrollbars) even when the OS prefers dark.
+      { name: "color-scheme", content: "light" },
       { title: "KainFit — The fastest way to track what you eat" },
       {
         name: "description",
@@ -139,10 +143,14 @@ function RootShell({ children }: { children: ReactNode }) {
         <HeadContent />
         <style>{`
           @keyframes kf-spin { to { transform: rotate(360deg); } }
+          /* Light-mode-only, deliberately: no prefers-color-scheme branch
+             here. This is the pre-hydration splash — it must always match
+             the app's one deterministic theme, or a dark-OS user would see
+             a dark-to-light flash the instant React mounts. */
           #kf-boot {
             position: fixed; inset: 0; z-index: 2147483000;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            gap: 14px; background: #ffffff; color: #0F766E;
+            gap: 14px; background: #f9f7f5; color: #0F766E;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           }
           #kf-boot .kf-boot-logo {
@@ -158,11 +166,6 @@ function RootShell({ children }: { children: ReactNode }) {
           }
           #kf-boot .kf-boot-label { font-size: 14px; color: #0F766E; font-weight: 500; }
           @media (prefers-reduced-motion: reduce) { #kf-boot .kf-boot-spinner { animation: none; } }
-          @media (prefers-color-scheme: dark) {
-            #kf-boot { background: #0b0f0e; color: #99f6e4; }
-            #kf-boot .kf-boot-label { color: #99f6e4; }
-            #kf-boot .kf-boot-spinner { border-color: #99f6e4; border-top-color: transparent; }
-          }
         `}</style>
       </head>
       <body>
@@ -250,7 +253,7 @@ function RootComponent() {
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />
-      <Toaster position="top-center" />
+      <Toaster position="top-center" theme="light" />
     </QueryClientProvider>
   );
 }

@@ -4,7 +4,7 @@
   "description": "The fastest way to track what you eat.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#FAFAF7",
+  "background_color": "#F9F7F5",
   "theme_color": "#0F766E",
   "orientation": "portrait",
   "icons": [

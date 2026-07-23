@@ -4,6 +4,9 @@ import {
   foodStatus,
   isPreparationClarification,
   macroTargetStatus,
+  ringPercent,
+  ringAriaLabel,
+  isCalorieRingComplete,
 } from "../food-display";
 
 // -------- Pure helper tests --------
@@ -65,6 +68,91 @@ describe("macroTargetStatus", () => {
 
   it("is over-target when the value exceeds it — protein at 273/220g reads as achieved, not dangerous", () => {
     expect(macroTargetStatus(273, 220)).toBe("over-target");
+  });
+});
+
+describe("ringPercent", () => {
+  it("is 0 for a missing or non-positive target — never divides by zero", () => {
+    expect(ringPercent(150, null)).toBe(0);
+    expect(ringPercent(150, undefined)).toBe(0);
+    expect(ringPercent(150, 0)).toBe(0);
+    expect(Number.isFinite(ringPercent(150, 0))).toBe(true);
+  });
+
+  it("is proportional below target", () => {
+    expect(ringPercent(50, 100)).toBe(50);
+    expect(ringPercent(80, 100)).toBe(80);
+  });
+
+  it("is exactly 100 at the exact target", () => {
+    expect(ringPercent(220, 220)).toBe(100);
+  });
+
+  it("clamps at 100 over target — never a second revolution", () => {
+    expect(ringPercent(273, 220)).toBe(100);
+    expect(ringPercent(999, 220)).toBe(100);
+    expect(ringPercent(100000, 1)).toBe(100);
+  });
+
+  it("never goes negative for a negative or invalid value", () => {
+    expect(ringPercent(-10, 100)).toBe(0);
+    expect(ringPercent(NaN, 100)).toBe(0);
+  });
+
+  it("handles large values without overflow or precision blowups", () => {
+    expect(ringPercent(9999, 2200)).toBe(100);
+    expect(ringPercent(1840, 2400)).toBeCloseTo((1840 / 2400) * 100, 5);
+  });
+});
+
+describe("ringAriaLabel", () => {
+  it("communicates no target without inventing one", () => {
+    expect(ringAriaLabel("Protein", 173, null, "g")).toBe("Protein: 173g logged, no target set");
+  });
+
+  it("communicates below-target progress with a percentage", () => {
+    expect(ringAriaLabel("Fat", 68, 100, "g")).toBe("Fat: 68 of 100g, 68% of target");
+  });
+
+  it("communicates exact achievement without a percentage", () => {
+    expect(ringAriaLabel("Protein", 220, 220, "g")).toBe("Protein: 220 of 220g, target reached");
+  });
+
+  it("communicates over-target as exceeded, not as a warning or failure", () => {
+    const label = ringAriaLabel("Protein", 273, 220, "g");
+    expect(label).toBe("Protein: 273 of 220g, target exceeded");
+    expect(label.toLowerCase()).not.toMatch(/warn|fail|danger|error/);
+  });
+});
+
+describe("isCalorieRingComplete — the calorie ring's gold-eligibility predicate", () => {
+  it("no target never turns gold", () => {
+    expect(isCalorieRingComplete(2400, null)).toBe(false);
+    expect(isCalorieRingComplete(2400, undefined)).toBe(false);
+    expect(isCalorieRingComplete(2400, 0)).toBe(false);
+  });
+
+  it("below target stays in the normal progress color", () => {
+    expect(isCalorieRingComplete(1840, 2400)).toBe(false);
+    expect(isCalorieRingComplete(0, 2400)).toBe(false);
+  });
+
+  it("exactly at target is complete", () => {
+    expect(isCalorieRingComplete(2400, 2400)).toBe(true);
+  });
+
+  it("over target is still complete — the approved predicate is reach-or-exceed, matching the existing MacroRing checkmark rule and coaching.ts's caloriesRemaining<=0", () => {
+    expect(isCalorieRingComplete(2401, 2400)).toBe(true);
+    expect(isCalorieRingComplete(4000, 2400)).toBe(true);
+  });
+
+  it("does not distinguish degree of overshoot — a 300%-over day is exactly as complete as a 101%-over day, never more so", () => {
+    const modest = isCalorieRingComplete(2450, 2400);
+    const extreme = isCalorieRingComplete(9600, 2400);
+    expect(modest).toBe(true);
+    expect(extreme).toBe(true);
+    // Confirms there is no separate tolerance-band or "too far over" mode.
+    expect(modest).toBe(extreme);
   });
 });
 

@@ -13,6 +13,7 @@ import {
   markSaveCompletedCelebrate,
   consumeCelebrateIfShown,
   saveCausedCelebration,
+  saveCausedCalorieCompletion,
   type CelebrationState,
 } from "@/lib/coaching";
 import { parseFood, recalcItem } from "@/lib/food.functions";
@@ -54,12 +55,9 @@ import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
 import { CoachingCard } from "@/components/CoachingCard";
-import {
-  formatQuantity,
-  foodStatus,
-  isPreparationClarification,
-  macroTargetStatus,
-} from "@/lib/food-display";
+import { saveReactionMessage, type ReactionContent } from "@/components/coaching-card-content";
+import { TargetRings, type JustAdded } from "@/components/TargetRings";
+import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -113,6 +111,9 @@ const CALORIE_NEAR_MARGIN_KCAL = 150;
 // compatibility placeholder, never shown in any UI. Do not derive it from
 // the clock again.
 const LEGACY_MEAL_TYPE: Entry["meal_type"] = "snacks";
+// How long the post-save reaction ("Strong protein hit.", etc.) stays up
+// before the standing Coaching Card message takes back over on its own.
+const REACTION_DURATION_MS = 2200;
 
 function createUuid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -206,6 +207,20 @@ function TodayPage() {
   // also persists to localStorage per Manila day so the steady-state
   // Celebrate leaf shows at most once a day, including across reloads.
   const [celebration, setCelebration] = useState<CelebrationState>(createInitialCelebrationState);
+  // The post-save "doggy-biscuit moment" — see the comment at its call site
+  // in saveFoodItems. All three are set together on every successful save
+  // and cleared together after REACTION_DURATION_MS by the effect below;
+  // nothing here reads from or writes to persistence, coaching eligibility,
+  // or analytics.
+  const [saveReaction, setSaveReaction] = useState<ReactionContent | null>(null);
+  const [justAdded, setJustAdded] = useState<JustAdded | undefined>(undefined);
+  const [pulseSeq, setPulseSeq] = useState(0);
+  // True only for the render immediately following the save that closed
+  // out the calorie target for the first time — gates the one-shot gold
+  // glow (see coaching.ts's saveCausedCalorieCompletion, TargetRings.tsx's
+  // justCompletedGold). The ring's gold color itself is not gated by this
+  // state; it is derived fresh from calories/calorieTarget every render.
+  const [justCompletedGold, setJustCompletedGold] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
     id: string | null;
     values: Record<string, unknown>;
@@ -490,21 +505,60 @@ function TodayPage() {
       // cannot arm the override.
       const addedProtein = savedRows.reduce((s, r) => s + Number(r.protein_g), 0);
       const addedCalories = savedRows.reduce((s, r) => s + Number(r.calories), 0);
+      const addedCarbs = savedRows.reduce((s, r) => s + Number(r.carbs_g), 0);
+      const addedFat = savedRows.reduce((s, r) => s + Number(r.fat_g), 0);
+      const postProteinRemaining = targetsActive
+        ? Math.max(0, (profile!.target_protein_g ?? 0) - (totals.protein + addedProtein))
+        : 0;
+      const postCaloriesRemaining = targetsActive
+        ? Math.max(0, (profile!.target_calories ?? 0) - (totals.calories + addedCalories))
+        : 0;
       if (
         saveCausedCelebration({
           targetsActive,
           preProteinRemaining: proteinRemaining,
           preCaloriesRemaining: caloriesRemaining,
-          postProteinRemaining: targetsActive
-            ? Math.max(0, (profile!.target_protein_g ?? 0) - (totals.protein + addedProtein))
-            : 0,
-          postCaloriesRemaining: targetsActive
-            ? Math.max(0, (profile!.target_calories ?? 0) - (totals.calories + addedCalories))
-            : 0,
+          postProteinRemaining,
+          postCaloriesRemaining,
         })
       ) {
         setCelebration(markSaveCompletedCelebrate);
       }
+      const calorieCompletedByThisSave = saveCausedCalorieCompletion({
+        targetsActive,
+        preCaloriesRemaining: caloriesRemaining,
+        postCaloriesRemaining,
+      });
+      setJustCompletedGold(calorieCompletedByThisSave);
+
+      // The "doggy-biscuit moment": every successful save gets an
+      // immediate, brief acknowledgment (honest logging is the behavior
+      // being reinforced, not "good" eating — see coaching-card-content.ts)
+      // plus a one-shot pulse on whichever rings actually moved. Purely a
+      // display-layer effect: no new network request, no dependency on
+      // analytics, nothing in the save's own critical path above this
+      // point changed. Cleared automatically by the effect below.
+      setSaveReaction(
+        saveReactionMessage(
+          {
+            protein: addedProtein,
+            calories: addedCalories,
+            carbs: addedCarbs,
+            fat: addedFat,
+          },
+          {
+            proteinRemainingAfter: targetsActive ? postProteinRemaining : undefined,
+            wasRecovering: gapDays !== null && gapDays >= 3,
+          },
+        ),
+      );
+      setJustAdded({
+        calories: addedCalories > 0,
+        protein: addedProtein > 0,
+        carbs: addedCarbs > 0,
+        fat: addedFat > 0,
+      });
+      setPulseSeq((n) => n + 1);
 
       qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
         const known = new Set(current.map((entry) => entry.id));
@@ -615,6 +669,15 @@ function TodayPage() {
     profile.target_carbs_g !== null &&
     profile.target_fat_g !== null,
   );
+  // See coaching-card-content.ts's isPromiseEligible — "Promise kept"
+  // language is only ever safe when the user explicitly entered these
+  // targets themselves (manual_targets_enabled), never for an
+  // auto-generated default. targetsActive already implies this today (there
+  // is no auto-calculated-target code path yet), but this stays a separate,
+  // explicit check rather than reusing targetsActive so a future
+  // auto-calculated-targets feature can't silently start claiming promises
+  // the user never made.
+  const promiseEligible = Boolean(profile?.manual_targets_enabled);
 
   // Server-authoritative beta submission usage.
   const fetchBetaUsage = useServerFn(getBetaUsage);
@@ -697,6 +760,21 @@ function TodayPage() {
       return next;
     });
   }, [coachingResult.kind, todayManila]);
+
+  // Clears the post-save reaction after its window — a plain timer, no
+  // network involved. If a second save happens while one reaction is still
+  // showing, this effect re-runs (saveReaction is a new object each time)
+  // and the old timer's cleanup cancels the old countdown, so only the
+  // latest save's reaction ever determines when it clears.
+  useEffect(() => {
+    if (!saveReaction) return;
+    const t = window.setTimeout(() => {
+      setSaveReaction(null);
+      setJustAdded(undefined);
+      setJustCompletedGold(false);
+    }, REACTION_DURATION_MS);
+    return () => window.clearTimeout(t);
+  }, [saveReaction]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -998,38 +1076,30 @@ function TodayPage() {
 
         {/* Totals */}
         <div className="rounded-3xl bg-card border border-border p-5 shadow-sm">
-          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+          <div className="mb-3 text-xs uppercase tracking-wide text-muted-foreground">
             {targetsActive ? "Today's targets" : "Today"}
           </div>
-          <div className="mt-1 flex items-baseline gap-2">
-            <div className="text-5xl font-bold tracking-tight">{Math.round(totals.calories)}</div>
-            <div className="text-sm text-muted-foreground">
-              {targetsActive ? `/ ${profile!.target_calories} kcal` : "kcal"}
-            </div>
-          </div>
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <MacroPill
-              label="Protein"
-              value={totals.protein}
-              target={targetsActive ? profile!.target_protein_g : null}
-            />
-            <MacroPill
-              label="Carbs"
-              value={totals.carbs}
-              target={targetsActive ? profile!.target_carbs_g : null}
-            />
-            <MacroPill
-              label="Fat"
-              value={totals.fat}
-              target={targetsActive ? profile!.target_fat_g : null}
-            />
-          </div>
+          <TargetRings
+            calories={totals.calories}
+            calorieTarget={targetsActive ? profile!.target_calories : null}
+            protein={totals.protein}
+            proteinTarget={targetsActive ? profile!.target_protein_g : null}
+            carbs={totals.carbs}
+            carbsTarget={targetsActive ? profile!.target_carbs_g : null}
+            fat={totals.fat}
+            fatTarget={targetsActive ? profile!.target_fat_g : null}
+            justAdded={justAdded}
+            pulseSeq={pulseSeq}
+            justCompletedGold={justCompletedGold}
+          />
         </div>
         <CoachingCard
           result={coachingResult}
           proteinRemaining={proteinRemaining}
           weekly={weekly}
+          promiseEligible={promiseEligible}
           justCompletedCelebrate={celebration.transientCelebrate}
+          reaction={saveReaction}
         />
         {betaUsage?.enabled &&
           betaUsage.cap > 0 &&
@@ -1316,40 +1386,6 @@ function TodayPage() {
       </Dialog>
 
       <BottomNav />
-    </div>
-  );
-}
-
-// Color communicates achievement, never which macro this is or that it's
-// under target — being below a target is neutral, not a warning; this app
-// makes no judgment about "too much" of a macro, so over-target reads the
-// same as achieved. See macroTargetStatus() for the full rule.
-function MacroPill({
-  label,
-  value,
-  target,
-}: {
-  label: string;
-  value: number;
-  target?: number | null;
-}) {
-  const status = macroTargetStatus(value, target);
-  const achieved = status === "achieved" || status === "over-target";
-  return (
-    <div className="rounded-2xl bg-muted/60 p-3">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      {/* Stacked, not inline: guarantees the value and its "/target g" are
-          each their own short line, so neither can wrap mid-token on
-          narrow screens regardless of digit count. */}
-      <div
-        className={cn(
-          "mt-0.5 text-xl font-semibold leading-tight",
-          achieved ? "text-primary" : "text-foreground",
-        )}
-      >
-        {Math.round(value)}
-      </div>
-      <div className="text-xs text-muted-foreground">{target != null ? `/ ${target}g` : "g"}</div>
     </div>
   );
 }

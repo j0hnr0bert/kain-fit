@@ -145,3 +145,61 @@ export function macroTargetStatus(
   if (rounded === target) return "achieved";
   return "over-target";
 }
+
+/**
+ * Visual fill percentage for a target-progress ring. A missing or
+ * non-positive target has no valid ratio to show — callers must check
+ * macroTargetStatus() first and render a neutral, non-progress presentation
+ * for "no-target" instead of calling this (this returns 0 defensively for
+ * that case, but 0% is not itself a meaningful signal — never render a ring
+ * from this alone without checking the status). Clamped to [0, 100] so a
+ * value past its target never draws a second revolution or a negative arc.
+ */
+export function ringPercent(value: number, target: number | null | undefined): number {
+  if (target == null || target <= 0) return 0;
+  const pct = (value / target) * 100;
+  if (!Number.isFinite(pct) || pct < 0) return 0;
+  return Math.min(100, pct);
+}
+
+/**
+ * Whether a calorie ring should render in its completed (gold) treatment.
+ * Reuses macroTargetStatus — "reached or exceeded" is complete, matching the
+ * exact predicate MacroRing already uses for its achieved checkmark, and the
+ * same predicate coaching.ts's caloriesRemaining<=0 uses to decide "met".
+ * There is no separate tolerance band or exact-match-only mode; overshoot
+ * never earns anything beyond this same complete state (ringPercent's clamp
+ * to 100 already prevents a bigger overshoot from visually filling more of
+ * the ring). No target, or a non-positive target, is never complete.
+ */
+export function isCalorieRingComplete(value: number, target: number | null | undefined): boolean {
+  const status = macroTargetStatus(value, target);
+  return status === "achieved" || status === "over-target";
+}
+
+/**
+ * Accessible label for a target-progress ring, independent of color —
+ * screen readers get the nutrient name, current value, target, and
+ * completion status even though the ring itself is decorative SVG.
+ */
+export function ringAriaLabel(
+  nutrient: string,
+  value: number,
+  target: number | null | undefined,
+  unit: string,
+): string {
+  const status = macroTargetStatus(value, target);
+  const roundedValue = Math.round(value);
+  if (status === "no-target") {
+    return `${nutrient}: ${roundedValue}${unit} logged, no target set`;
+  }
+  const roundedTarget = Math.round(target as number);
+  if (status === "achieved") {
+    return `${nutrient}: ${roundedValue} of ${roundedTarget}${unit}, target reached`;
+  }
+  if (status === "over-target") {
+    return `${nutrient}: ${roundedValue} of ${roundedTarget}${unit}, target exceeded`;
+  }
+  const pct = Math.round(ringPercent(value, target));
+  return `${nutrient}: ${roundedValue} of ${roundedTarget}${unit}, ${pct}% of target`;
+}

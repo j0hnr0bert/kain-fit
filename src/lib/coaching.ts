@@ -158,6 +158,23 @@ export function saveCausedCelebration(input: {
   return !preMet && postMet;
 }
 
+// Same pre/post-transition shape as saveCausedCelebration, scoped to the
+// calorie target alone — drives the one-shot "ring just turned gold"
+// emphasis (see TargetRings.tsx's justCompletedGold and styles.css's
+// .ring-gold-glow) independent of whether protein is also met. A failed
+// save never reaches the call site with real deltas, so pre === post is
+// the correct "no transition" model here too.
+export function saveCausedCalorieCompletion(input: {
+  targetsActive: boolean;
+  preCaloriesRemaining: number;
+  postCaloriesRemaining: number;
+}): boolean {
+  if (!input.targetsActive) return false;
+  const preMet = input.preCaloriesRemaining <= 0;
+  const postMet = input.postCaloriesRemaining <= 0;
+  return !preMet && postMet;
+}
+
 // ---- Data-shaping helpers, reusing the same 60-day activeDays set the
 // streak feature already fetches — no new query for gap/weekly math. ----
 

@@ -2,19 +2,23 @@
 @source "../src";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
 /*
  * Design system definition.
+ *
+ * KainFit is light-mode-only for this product phase (locked decision,
+ * 2026-07-23) — there is deliberately no dark theme, no `dark` variant, and
+ * no `.dark` class block. Do not reintroduce one without a new product
+ * decision to do so; see .lovable/launch-checklist.md for the removal
+ * rationale.
  *
  * The @theme inline block maps CSS custom properties to Tailwind utility
  * classes (e.g. --color-primary -> bg-primary, text-primary).
  *
- * The :root and .dark blocks define the actual color values using oklch.
- * All colors MUST use oklch format.
+ * The :root block defines the actual color values using oklch. All colors
+ * MUST use oklch format.
  *
  * To add a new semantic color:
- * 1. Add the variable to :root (light value) and .dark (dark value)
+ * 1. Add the variable to :root
  * 2. Register it in @theme inline as --color-<name>: var(--<name>)
  */
 
@@ -50,6 +54,11 @@
   --color-reinforce-foreground: var(--reinforce-foreground);
   --color-celebrate: var(--celebrate);
   --color-celebrate-foreground: var(--celebrate-foreground);
+  --color-ring-protein: var(--ring-protein);
+  --color-ring-calories: var(--ring-calories);
+  --color-ring-calories-complete: var(--ring-calories-complete);
+  --color-ring-carbs: var(--ring-carbs);
+  --color-ring-fat: var(--ring-fat);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -72,7 +81,7 @@
 :root {
   --radius: 0.875rem;
   /* KainFit palette */
-  --background: oklch(0.985 0.003 90);        /* #FAFAF7 warm white */
+  --background: oklch(0.978 0.004 70);        /* #F9F7F5 warm ivory — warmer than the old sterile #FAFAF7 white, measured to stay clean, not beige */
   --foreground: oklch(0.22 0.008 200);        /* #172121 charcoal */
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.22 0.008 200);
@@ -83,28 +92,53 @@
   --secondary: oklch(0.955 0.01 190);
   --secondary-foreground: oklch(0.22 0.008 200);
   --muted: oklch(0.955 0.008 90);
-  --muted-foreground: oklch(0.56 0.03 250);   /* #64748B slate */
+  /* Darkened from the original #64748B slate (measured 4.46:1 against the
+     old sterile background, already under WCAG AA's 4.5:1 for normal text
+     even before this palette pass) — now >=5.5:1 against the new warm
+     background, verified, deliberately with margin so it stays legible
+     outdoors, not just technically passing. */
+  --muted-foreground: oklch(0.5 0.03 250);
   --accent: oklch(0.72 0.19 145);             /* #22C55E fresh green */
   --accent-foreground: oklch(0.99 0.005 90);
-  --coral: oklch(0.68 0.17 25);               /* #F26B5E coral */
+  --coral: oklch(0.68 0.17 25);               /* #F26B5E coral — general warmth accent (mic-recording state etc.), unrelated to ring identities below */
   --coral-foreground: oklch(0.99 0.005 90);
-  --amber: oklch(0.76 0.16 75);               /* #F59E0B amber */
+  --amber: oklch(0.62 0.16 75);               /* mango-gold — general warm accent */
   --amber-foreground: oklch(0.22 0.008 200);
   --reinforce: oklch(0.5 0.1 215);            /* pale blue-teal — Coaching Card "Reinforce" state, distinct hue from primary's 190 */
   --reinforce-foreground: oklch(0.99 0.005 90);
   /* Coaching Card "Celebrate" state. Deliberately its own token rather than
-     reusing --accent, for two separate contrast failures measured directly
-     (not assumed): --accent's :root value used as a foreground/icon color
-     measured ~2.2:1 against the light page background (it was tuned for a
-     filled badge paired with --accent-foreground, not standalone use), and
-     --accent's .dark value is a dark, low-chroma *surface* color (a shadcn
-     hover/tint convention) that measured ~1.4:1 against the dark
-     background. This token is a darker, more saturated green in light mode
-     (>=5:1) and a lighter one in dark mode (see .dark below, both
-     verified), without touching --accent's other existing uses elsewhere
-     in the app. */
+     reusing --accent: --accent's value is tuned as a filled-badge
+     background (paired with --accent-foreground), not for standalone
+     foreground/icon use, where it measured ~2.2:1 against the page
+     background — well under WCAG AA. This token is a darker, more
+     saturated green (>=5:1, verified) purely for that purpose. */
   --celebrate: oklch(0.5 0.15 145);
   --celebrate-foreground: oklch(0.99 0.005 90);
+  /* Target-ring macro identity colors. Revised 2026-07-24: the first pass
+     reused --primary for Calories and a near-primary teal for Protein,
+     which read as "too similar" sitting side by side. These four are
+     spread ~80-190 degrees apart around the hue wheel (165/50/240/320 —
+     teal-green, orange, blue, plum), deliberately avoiding any pure
+     red-green pair so the four rings stay distinguishable under the most
+     common forms of color-vision deficiency, not just for typical vision.
+     Each verified >=3:1 against a white card (3.86-5.82:1). Identity
+     colors only — never success/failure/medical judgment. */
+  --ring-protein: oklch(0.55 0.14 165);   /* #008A5D — the hero metric, distinctive teal-green */
+  --ring-calories: oklch(0.62 0.16 50);   /* #CF630D — warm mango-gold/coral, in-progress state only */
+  --ring-carbs: oklch(0.6 0.13 240);      /* #1A89C5 — soft blue */
+  --ring-fat: oklch(0.52 0.11 320);       /* #855290 — muted plum */
+  /* Calorie-target-completed state only (2026-07-24). A distinct athletic
+     gold, not a brighter version of --ring-calories or --amber — hue 85 sits
+     well clear of the orange (50) it replaces and the teal (165) protein
+     uses, so "completed calories" never reads as "more protein" at a
+     glance. The first pick (L0.72/C0.15/H92) measured only 2.49:1 against
+     the white card and 2.33:1 against the ivory page background — both
+     under WCAG 1.4.11's 3:1 for a non-text ring stroke. Darkened and
+     re-verified via the QA harness's canvas-based contrast panel:
+     3.67:1 against the card, 3.43:1 against the page background. Never
+     applied to the whole card — reserved for the calorie ring only, and
+     only once macroTargetStatus() reports "achieved" or "over-target". */
+  --ring-calories-complete: oklch(0.62 0.17 85);   /* #B47A00 refined gold */
   --destructive: oklch(0.6 0.22 25);
   --destructive-foreground: oklch(0.99 0.005 90);
   --border: oklch(0.92 0.005 190);
@@ -125,48 +159,6 @@
   --sidebar-ring: oklch(0.704 0.04 256.788);
 }
 
-.dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  /* Lighter than their :root values (mirrors how --primary flips light in
-     dark mode) — tuned so the Coaching Card icon stays readable against
-     the dark page background, verified >=4.5:1. */
-  --reinforce: oklch(0.75 0.1 215);
-  --reinforce-foreground: oklch(0.208 0.042 265.755);
-  --celebrate: oklch(0.75 0.16 150);
-  --celebrate-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
-}
-
 @layer base {
   * {
     border-color: var(--color-border);
@@ -176,4 +168,78 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+}
+
+/* Target-ring progress arc. A plain stylesheet transition (not an inline
+   style, not a Tailwind motion-safe variant) so prefers-reduced-motion can
+   cleanly override it without fighting inline-style specificity. Only the
+   stroke-dashoffset value itself is set inline per-ring; this class only
+   ever changes when that value actually changes (a save, an edit, a
+   delete) — it cannot replay from an unrelated rerender or refetch. */
+.ring-progress-arc {
+  transition:
+    stroke-dashoffset 350ms ease-out,
+    stroke 350ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ring-progress-arc {
+    transition: none;
+  }
+}
+
+/* One-shot emphasis for the exact save that closes out the calorie target
+   (see TargetRings.tsx's justCompletedGold / coaching.ts's
+   saveCausedCalorieCompletion). The ring's stroke color already transitions
+   into gold on its own via .ring-progress-arc above — this only adds a
+   restrained, static glow for that one render, the same treatment
+   .celebrate-glow uses, so "the calorie ring just turned gold" and "today
+   is fully handled" read as the same family of earned moment. Paired with
+   the existing .ring-just-added remount key, so it never replays on
+   refresh or an unrelated rerender. */
+.ring-gold-glow {
+  box-shadow:
+    0 0 0 1px oklch(from var(--ring-calories-complete) l c h / 18%),
+    0 4px 14px -3px oklch(from var(--ring-calories-complete) l c h / 45%);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ring-gold-glow {
+    box-shadow: 0 0 0 1px oklch(from var(--ring-calories-complete) l c h / 18%);
+  }
+}
+
+/* One-shot "just added" ring pulse — the doggy-biscuit moment for a
+   specific macro. Applied via a remounting key (see TargetRings.tsx), so
+   it always plays fresh on a new save and never loops or replays from an
+   unrelated rerender: animation-iteration-count is implicitly 1, and a
+   remounted element gets a fresh animation run, not a restarted one on an
+   already-mounted node. */
+@keyframes ring-pulse {
+  0% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+  35% {
+    filter: brightness(1.28);
+    transform: scale(1.08);
+  }
+  100% {
+    filter: brightness(1);
+    transform: scale(1);
+  }
+}
+.ring-just-added {
+  animation: ring-pulse 700ms ease-out;
+  transform-origin: center;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ring-just-added {
+    animation: none;
+  }
+}
+
+/* Celebrate gets a quiet glow, not a blinking one — a static shadow, not
+   an animation, so it doesn't run afoul of "no continuous animation" while
+   still making the earned state visibly different from the others. */
+.celebrate-glow {
+  box-shadow: 0 0 0 1px oklch(from var(--celebrate) l c h / 12%), 0 4px 16px -4px oklch(from var(--celebrate) l c h / 35%);
 }
