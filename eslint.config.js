@@ -7,12 +7,19 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    // src/integrations/supabase/** is machine-generated (Supabase/Lovable
-    // codegen — see the file headers and git blame, all commits authored by
-    // gpt-engineer-app[bot]). ESLint's own style rules don't apply to it;
-    // TypeScript still checks it via tsconfig.json's unchanged src/**
-    // include, and it still ships in the production build unchanged.
-    ignores: ["dist", ".output", ".vinxi", "src/integrations/supabase/**"],
+    // src/integrations/supabase/** and src/integrations/lovable/index.ts are
+    // machine-generated (Supabase/Lovable codegen — see the file headers and
+    // git blame, all commits authored by gpt-engineer-app[bot]). ESLint's
+    // own style rules don't apply to them; TypeScript still checks them via
+    // tsconfig.json's unchanged src/** include, and they still ship in the
+    // production build unchanged.
+    ignores: [
+      "dist",
+      ".output",
+      ".vinxi",
+      "src/integrations/supabase/**",
+      "src/integrations/lovable/index.ts",
+    ],
   },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
