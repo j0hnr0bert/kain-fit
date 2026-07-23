@@ -5,9 +5,12 @@
 //
 // Locked hierarchy (2026-07-23): Recovery > Guide > Celebrate > Reinforce
 // > Milestones > Silence, with a short-lived transient override that lets
-// a just-completed Celebrate jump ahead of Guide for one render only.
-// Milestones and Monthly Reinforce are out of scope for Sprint 01 — see
-// the spec's scope note for why.
+// a just-completed Celebrate jump ahead of Guide. The override is consumed
+// deterministically (see the state machine below), not after a fixed
+// number of renders or a timer — see the 2026-07-23 audit note in the
+// Sprint 01 summary for why the original setTimeout-based version was
+// replaced. Milestones and Monthly Reinforce are out of scope for Sprint
+// 01 — see the spec's scope note for why.
 
 import { addDaysISO, weekStart } from "./retention";
 
@@ -88,6 +91,71 @@ export function evaluateCoaching(input: CoachingInput): CoachingResult {
   // Milestones: not implemented in Sprint 01.
 
   return { kind: "silence" };
+}
+
+// ---- Transient-override state machine ----
+//
+// The override in evaluateCoaching (STEP 0) is armed by `transientCelebrate`
+// and must be consumed exactly once, deterministically — not after some
+// number of renders or some amount of wall-clock time. These three
+// functions are the entire mechanism; the caller (today.tsx) only needs to
+// invoke them at the right two moments (a confirmed save, and an observed
+// "celebrate" result) and hold the result in one piece of state. Framework-
+// agnostic on purpose, so the transition logic is unit-testable without a
+// component-rendering harness.
+
+export type CelebrationState = {
+  /** Armed for exactly one save's worth of evaluations — cleared the first
+   * time a "celebrate" result is actually observed, however many renders
+   * that takes, however many unrelated renders happen first. */
+  transientCelebrate: boolean;
+  /** Persists (via localStorage in the caller) for the rest of the Manila
+   * day once any Celebrate — override or steady-state — has been shown. */
+  celebratedToday: boolean;
+};
+
+export function createInitialCelebrationState(): CelebrationState {
+  return { transientCelebrate: false, celebratedToday: false };
+}
+
+// Call once, synchronously, right after a save is confirmed to have caused
+// a fresh transition into "both macros met" (see saveCausedCelebration).
+export function markSaveCompletedCelebrate(state: CelebrationState): CelebrationState {
+  return { ...state, transientCelebrate: true };
+}
+
+// Call from an effect keyed on the evaluated CoachingResult's kind. Only
+// mutates state the first time it observes "celebrate" for a given arming —
+// every call after that (whether from an unrelated rerender that still
+// computes "celebrate", or a genuine second call after consumption) is a
+// no-op that returns the same object reference, so callers can safely call
+// this on every render without introducing extra state updates.
+export function consumeCelebrateIfShown(
+  state: CelebrationState,
+  resultKind: CoachingResult["kind"],
+): CelebrationState {
+  if (resultKind !== "celebrate") return state;
+  if (!state.transientCelebrate && state.celebratedToday) return state;
+  return { transientCelebrate: false, celebratedToday: true };
+}
+
+// Pure transition check for "did this specific save close out both macro
+// targets for the first time today?" — kept separate from the React save
+// handler so the actual arming condition is unit-testable. A save that
+// fails never reaches the call site that feeds this function real deltas,
+// so pre === post (no macro change) is the correct model for "failed save"
+// here, not a special case.
+export function saveCausedCelebration(input: {
+  targetsActive: boolean;
+  preProteinRemaining: number;
+  preCaloriesRemaining: number;
+  postProteinRemaining: number;
+  postCaloriesRemaining: number;
+}): boolean {
+  if (!input.targetsActive) return false;
+  const preMet = input.preProteinRemaining <= 0 && input.preCaloriesRemaining <= 0;
+  const postMet = input.postProteinRemaining <= 0 && input.postCaloriesRemaining <= 0;
+  return !preMet && postMet;
 }
 
 // ---- Data-shaping helpers, reusing the same 60-day activeDays set the

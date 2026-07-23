@@ -5,7 +5,16 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { sumNutrients } from "@/lib/nutrient-totals";
 import { manilaDay, computeCurrentStreak } from "@/lib/retention";
-import { evaluateCoaching, daysSinceLastActive, weeklyLoggedDayCounts } from "@/lib/coaching";
+import {
+  evaluateCoaching,
+  daysSinceLastActive,
+  weeklyLoggedDayCounts,
+  createInitialCelebrationState,
+  markSaveCompletedCelebrate,
+  consumeCelebrateIfShown,
+  saveCausedCelebration,
+  type CelebrationState,
+} from "@/lib/coaching";
 import { parseFood, recalcItem } from "@/lib/food.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -181,13 +190,11 @@ function TodayPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const [listening, setListening] = useState(false);
-  // Coaching Card state — see .lovable/evidence-engine.md. `transientCelebrate`
-  // is true only in the render immediately after a save closes out both
-  // macro targets, then resets itself so the override never outlives one
-  // evaluation. `celebratedToday` persists in localStorage per Manila day so
-  // the steady-state Celebrate leaf shows at most once a day.
-  const [transientCelebrate, setTransientCelebrate] = useState(false);
-  const [celebratedToday, setCelebratedToday] = useState(false);
+  // Coaching Card state — see .lovable/evidence-engine.md and the
+  // deterministic state machine in src/lib/coaching.ts. `celebratedToday`
+  // also persists to localStorage per Manila day so the steady-state
+  // Celebrate leaf shows at most once a day, including across reloads.
+  const [celebration, setCelebration] = useState<CelebrationState>(createInitialCelebrationState);
   const [reportTarget, setReportTarget] = useState<{
     id: string | null;
     values: Record<string, unknown>;
@@ -466,22 +473,26 @@ function TodayPage() {
 
       // Detect a genuine transition into "both macros met" caused by this
       // exact save, so the Coaching Card can briefly celebrate it before
-      // Guide resumes — see evidence-engine.md's transient-override rule.
-      if (targetsActive) {
-        const preMet = proteinRemaining <= 0 && caloriesRemaining <= 0;
-        const addedProtein = savedRows.reduce((s, r) => s + Number(r.protein_g), 0);
-        const addedCalories = savedRows.reduce((s, r) => s + Number(r.calories), 0);
-        const postProteinRemaining = Math.max(
-          0,
-          (profile!.target_protein_g ?? 0) - (totals.protein + addedProtein),
-        );
-        const postCaloriesRemaining = Math.max(
-          0,
-          (profile!.target_calories ?? 0) - (totals.calories + addedCalories),
-        );
-        if (!preMet && postProteinRemaining <= 0 && postCaloriesRemaining <= 0) {
-          setTransientCelebrate(true);
-        }
+      // Guide resumes — see evidence-engine.md's transient-override rule
+      // and the state machine in src/lib/coaching.ts. Only ever reached on
+      // this success path, never on an error return above — a failed save
+      // cannot arm the override.
+      const addedProtein = savedRows.reduce((s, r) => s + Number(r.protein_g), 0);
+      const addedCalories = savedRows.reduce((s, r) => s + Number(r.calories), 0);
+      if (
+        saveCausedCelebration({
+          targetsActive,
+          preProteinRemaining: proteinRemaining,
+          preCaloriesRemaining: caloriesRemaining,
+          postProteinRemaining: targetsActive
+            ? Math.max(0, (profile!.target_protein_g ?? 0) - (totals.protein + addedProtein))
+            : 0,
+          postCaloriesRemaining: targetsActive
+            ? Math.max(0, (profile!.target_calories ?? 0) - (totals.calories + addedCalories))
+            : 0,
+        })
+      ) {
+        setCelebration(markSaveCompletedCelebrate);
       }
 
       qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
@@ -616,17 +627,16 @@ function TodayPage() {
     : 0;
 
   const todayManila = useMemo(() => manilaDay(new Date()), []);
+  // Rehydrate "already celebrated today" from localStorage on mount — a
+  // reload or a fresh page visit must never replay the transient override
+  // (which always starts false on a fresh component instance regardless)
+  // or the steady-state Celebrate leaf for a day already shown.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    if (localStorage.getItem(`kf.coachCelebrated.${todayManila}`)) setCelebratedToday(true);
+    if (localStorage.getItem(`kf.coachCelebrated.${todayManila}`)) {
+      setCelebration((s) => (s.celebratedToday ? s : { ...s, celebratedToday: true }));
+    }
   }, [todayManila]);
-  // The transient override is only valid for the single render it was set
-  // for — clear it right after so a later re-render evaluates normally.
-  useEffect(() => {
-    if (!transientCelebrate) return;
-    const t = setTimeout(() => setTransientCelebrate(false), 0);
-    return () => clearTimeout(t);
-  }, [transientCelebrate]);
 
   const gapDays = useMemo(
     () => daysSinceLastActive(streakDays, todayManila),
@@ -645,9 +655,9 @@ function TodayPage() {
         proteinRemaining,
         caloriesRemaining,
         calorieNearMarginKcal: CALORIE_NEAR_MARGIN_KCAL,
-        celebratedTodayAlready: celebratedToday,
+        celebratedTodayAlready: celebration.celebratedToday,
         weekly,
-        justCompletedCelebrate: transientCelebrate,
+        justCompletedCelebrate: celebration.transientCelebrate,
       }),
     [
       gapDays,
@@ -655,15 +665,26 @@ function TodayPage() {
       targetsActive,
       proteinRemaining,
       caloriesRemaining,
-      celebratedToday,
+      celebration.celebratedToday,
       weekly,
-      transientCelebrate,
+      celebration.transientCelebrate,
     ],
   );
+  // Deterministic consumption: the override is cleared and the day is
+  // marked celebrated the first time (and only the first time) a render
+  // actually evaluates to "celebrate" — not after a fixed number of
+  // renders or a timer. Any number of unrelated rerenders before this
+  // fires still see "celebrate"; any rerender after it fires is a no-op
+  // (consumeCelebrateIfShown returns the same object reference once
+  // already consumed), so this is safe to run on every render.
   useEffect(() => {
-    if (coachingResult.kind !== "celebrate" || typeof window === "undefined") return;
-    localStorage.setItem(`kf.coachCelebrated.${todayManila}`, "1");
-    setCelebratedToday(true);
+    setCelebration((s) => {
+      const next = consumeCelebrateIfShown(s, coachingResult.kind);
+      if (next !== s && typeof window !== "undefined") {
+        localStorage.setItem(`kf.coachCelebrated.${todayManila}`, "1");
+      }
+      return next;
+    });
   }, [coachingResult.kind, todayManila]);
 
   async function handleSubmit(e: React.FormEvent) {

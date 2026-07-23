@@ -3,6 +3,10 @@ import {
   evaluateCoaching,
   daysSinceLastActive,
   weeklyLoggedDayCounts,
+  createInitialCelebrationState,
+  markSaveCompletedCelebrate,
+  consumeCelebrateIfShown,
+  saveCausedCelebration,
   type CoachingInput,
 } from "../coaching";
 
@@ -189,5 +193,151 @@ describe("weeklyLoggedDayCounts", () => {
   it("de-duplicates repeated day strings", () => {
     const result = weeklyLoggedDayCounts(["2026-07-20", "2026-07-20"], "2026-07-23");
     expect(result.thisWeekDays).toBe(1);
+  });
+});
+
+// Deterministic-override audit (2026-07-23): the earlier useState +
+// setTimeout(0) implementation cleared the flag on a wall-clock timer
+// rather than on an observed state transition, which meant its
+// correctness depended on how many renders happened to occur, and in
+// what order, before the timeout fired. These tests pin the replacement
+// state machine's actual contract instead. See the five labeled
+// requirements from the audit request.
+describe("celebration state machine", () => {
+  it("(a) a save that completes both targets shows Celebrate via the transient override", () => {
+    const armed = markSaveCompletedCelebrate(createInitialCelebrationState());
+    const result = evaluateCoaching(
+      base({
+        proteinRemaining: 0,
+        caloriesRemaining: 0,
+        justCompletedCelebrate: armed.transientCelebrate,
+        celebratedTodayAlready: armed.celebratedToday,
+      }),
+    );
+    expect(result).toEqual({ kind: "celebrate", reason: "same-day-complete" });
+  });
+
+  it("(b) an unrelated rerender (re-evaluating with unchanged state) does not consume the override", () => {
+    const armed = markSaveCompletedCelebrate(createInitialCelebrationState());
+    const input = base({
+      proteinRemaining: 0,
+      caloriesRemaining: 0,
+      justCompletedCelebrate: armed.transientCelebrate,
+      celebratedTodayAlready: armed.celebratedToday,
+    });
+    const first = evaluateCoaching(input);
+    const second = evaluateCoaching(input); // simulates a second render before consumeCelebrateIfShown runs
+    expect(first).toEqual({ kind: "celebrate", reason: "same-day-complete" });
+    expect(second).toEqual(first);
+    // Evaluating never mutates the state itself — only consumeCelebrateIfShown does.
+    expect(armed.transientCelebrate).toBe(true);
+  });
+
+  it("(c) after being consumed, the next evaluation resumes the standing hierarchy instead of re-celebrating", () => {
+    const armed = markSaveCompletedCelebrate(createInitialCelebrationState());
+    const shown = evaluateCoaching(
+      base({
+        proteinRemaining: 0,
+        caloriesRemaining: 0,
+        justCompletedCelebrate: armed.transientCelebrate,
+        celebratedTodayAlready: armed.celebratedToday,
+      }),
+    );
+    expect(shown.kind).toBe("celebrate");
+
+    const consumed = consumeCelebrateIfShown(armed, shown.kind);
+    expect(consumed).toEqual({ transientCelebrate: false, celebratedToday: true });
+
+    const next = evaluateCoaching(
+      base({
+        proteinRemaining: 0,
+        caloriesRemaining: 0,
+        weekly: { thisWeekDays: 5, lastWeekDays: 1 },
+        justCompletedCelebrate: consumed.transientCelebrate,
+        celebratedTodayAlready: consumed.celebratedToday,
+      }),
+    );
+    expect(next).toEqual({ kind: "reinforce", reason: "weekly-improved" });
+
+    // Consuming again (e.g. another render still evaluating "reinforce", not
+    // "celebrate") is a no-op and returns the same reference.
+    expect(consumeCelebrateIfShown(consumed, next.kind)).toBe(consumed);
+  });
+
+  it("(d) a failed save never arms the override — saveCausedCelebration requires an actual pre→post transition", () => {
+    // A failed save changes nothing, so post equals pre by construction —
+    // this is the correct model for "failed", not a special-cased branch.
+    expect(
+      saveCausedCelebration({
+        targetsActive: true,
+        preProteinRemaining: 0,
+        preCaloriesRemaining: 0,
+        postProteinRemaining: 0,
+        postCaloriesRemaining: 0,
+      }),
+    ).toBe(false);
+    // Also false when targets were already met before this (failed or not)
+    // save — there is no new transition to celebrate.
+    expect(
+      saveCausedCelebration({
+        targetsActive: true,
+        preProteinRemaining: 0,
+        preCaloriesRemaining: 0,
+        postProteinRemaining: 0,
+        postCaloriesRemaining: 5,
+      }),
+    ).toBe(false);
+    const state = createInitialCelebrationState();
+    expect(state.transientCelebrate).toBe(false);
+  });
+
+  it("saveCausedCelebration is true only for a genuine not-met -> met transition", () => {
+    expect(
+      saveCausedCelebration({
+        targetsActive: true,
+        preProteinRemaining: 5,
+        preCaloriesRemaining: 0,
+        postProteinRemaining: 0,
+        postCaloriesRemaining: 0,
+      }),
+    ).toBe(true);
+    expect(
+      saveCausedCelebration({
+        targetsActive: false,
+        preProteinRemaining: 5,
+        preCaloriesRemaining: 5,
+        postProteinRemaining: 0,
+        postCaloriesRemaining: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("(e) a reload the same day rehydrates celebratedToday and does not replay Celebrate", () => {
+    // Simulates: fresh component mount (transientCelebrate always starts
+    // false — it is never persisted), with celebratedToday restored from
+    // localStorage because Celebrate already fired earlier today.
+    const rehydrated = { transientCelebrate: false, celebratedToday: true };
+    const result = evaluateCoaching(
+      base({
+        proteinRemaining: 0,
+        caloriesRemaining: 0,
+        justCompletedCelebrate: rehydrated.transientCelebrate,
+        celebratedTodayAlready: rehydrated.celebratedToday,
+      }),
+    );
+    expect(result.kind).not.toBe("celebrate");
+  });
+
+  it("(e) a fresh mount with no persisted flag (new day, or first-ever visit) can still celebrate normally", () => {
+    const fresh = createInitialCelebrationState();
+    const result = evaluateCoaching(
+      base({
+        proteinRemaining: 0,
+        caloriesRemaining: 0,
+        justCompletedCelebrate: fresh.transientCelebrate,
+        celebratedTodayAlready: fresh.celebratedToday,
+      }),
+    );
+    expect(result).toEqual({ kind: "celebrate", reason: "same-day-complete" });
   });
 });
