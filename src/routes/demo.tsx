@@ -165,12 +165,6 @@ function DemoPage() {
     [entries],
   );
 
-  const grouped = useMemo(() => {
-    const g: Record<Meal, DemoEntry[]> = { breakfast: [], lunch: [], dinner: [], snacks: [] };
-    entries.forEach((e) => g[e.meal].push(e));
-    return g;
-  }, [entries]);
-
   async function runParse(text: string) {
     setParsing(true);
     setParseError(null);
@@ -499,66 +493,52 @@ function DemoPage() {
               Nothing added yet. Type what you ate above to see real nutrition.
             </div>
           )}
-          {(["breakfast", "lunch", "dinner", "snacks"] as const).map((m) => {
-            const items = grouped[m];
-            if (items.length === 0) return null;
-            return (
-              <div key={m}>
-                <div className="text-xs uppercase tracking-wide text-muted-foreground mb-2 px-1">
-                  {m}
+          <div className="space-y-2">
+            {entries.map((e) => (
+              <div
+                key={e.id}
+                className="rounded-2xl bg-card border border-border p-4 flex items-start gap-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium truncate">{e.name}</span>
+                    <DemoStatusBadge data_source={e.data_source} is_estimate={e.is_estimate} />
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    {formatQuantity(e.quantity, e.unit)} · {e.calories} kcal · P {e.protein} · C{" "}
+                    {e.carbs} · F {e.fat}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setReportTarget({
+                        id: null,
+                        values: {
+                          display_name: e.name,
+                          quantity: e.quantity,
+                          unit: e.unit,
+                          calories: e.calories,
+                          protein_g: e.protein,
+                          carbs_g: e.carbs,
+                          fat_g: e.fat,
+                        },
+                      })
+                    }
+                    className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+                  >
+                    <Flag className="h-3 w-3" /> Report incorrect result
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  {items.map((e) => (
-                    <div
-                      key={e.id}
-                      className="rounded-2xl bg-card border border-border p-4 flex items-start gap-3"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-medium truncate">{e.name}</span>
-                          <DemoStatusBadge
-                            data_source={e.data_source}
-                            is_estimate={e.is_estimate}
-                          />
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {formatQuantity(e.quantity, e.unit)} · {e.calories} kcal · P {e.protein} ·
-                          C {e.carbs} · F {e.fat}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReportTarget({
-                              id: null,
-                              values: {
-                                display_name: e.name,
-                                quantity: e.quantity,
-                                unit: e.unit,
-                                calories: e.calories,
-                                protein_g: e.protein,
-                                carbs_g: e.carbs,
-                                fat_g: e.fat,
-                              },
-                            })
-                          }
-                          className="mt-1 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-                        >
-                          <Flag className="h-3 w-3" /> Report incorrect result
-                        </button>
-                      </div>
-                      <button
-                        onClick={() => remove(e.id)}
-                        className="p-2 min-h-11 min-w-11 text-muted-foreground hover:text-destructive"
-                        aria-label={`Remove ${e.name}`}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                <button
+                  onClick={() => remove(e.id)}
+                  className="p-2 min-h-11 min-w-11 text-muted-foreground hover:text-destructive"
+                  aria-label={`Remove ${e.name}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
 
         {/* Save CTA */}

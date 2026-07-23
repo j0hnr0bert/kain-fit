@@ -46,6 +46,10 @@
   --color-coral-foreground: var(--coral-foreground);
   --color-amber-brand: var(--amber);
   --color-amber-brand-foreground: var(--amber-foreground);
+  --color-reinforce: var(--reinforce);
+  --color-reinforce-foreground: var(--reinforce-foreground);
+  --color-celebrate: var(--celebrate);
+  --color-celebrate-foreground: var(--celebrate-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
@@ -86,6 +90,21 @@
   --coral-foreground: oklch(0.99 0.005 90);
   --amber: oklch(0.76 0.16 75);               /* #F59E0B amber */
   --amber-foreground: oklch(0.22 0.008 200);
+  --reinforce: oklch(0.5 0.1 215);            /* pale blue-teal — Coaching Card "Reinforce" state, distinct hue from primary's 190 */
+  --reinforce-foreground: oklch(0.99 0.005 90);
+  /* Coaching Card "Celebrate" state. Deliberately its own token rather than
+     reusing --accent, for two separate contrast failures measured directly
+     (not assumed): --accent's :root value used as a foreground/icon color
+     measured ~2.2:1 against the light page background (it was tuned for a
+     filled badge paired with --accent-foreground, not standalone use), and
+     --accent's .dark value is a dark, low-chroma *surface* color (a shadcn
+     hover/tint convention) that measured ~1.4:1 against the dark
+     background. This token is a darker, more saturated green in light mode
+     (>=5:1) and a lighter one in dark mode (see .dark below, both
+     verified), without touching --accent's other existing uses elsewhere
+     in the app. */
+  --celebrate: oklch(0.5 0.15 145);
+  --celebrate-foreground: oklch(0.99 0.005 90);
   --destructive: oklch(0.6 0.22 25);
   --destructive-foreground: oklch(0.99 0.005 90);
   --border: oklch(0.92 0.005 190);
@@ -121,6 +140,13 @@
   --muted-foreground: oklch(0.704 0.04 256.788);
   --accent: oklch(0.279 0.041 260.031);
   --accent-foreground: oklch(0.984 0.003 247.858);
+  /* Lighter than their :root values (mirrors how --primary flips light in
+     dark mode) — tuned so the Coaching Card icon stays readable against
+     the dark page background, verified >=4.5:1. */
+  --reinforce: oklch(0.75 0.1 215);
+  --reinforce-foreground: oklch(0.208 0.042 265.755);
+  --celebrate: oklch(0.75 0.16 150);
+  --celebrate-foreground: oklch(0.208 0.042 265.755);
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.984 0.003 247.858);
   --border: oklch(1 0 0 / 10%);

@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { formatQuantity, foodStatus, isPreparationClarification } from "../food-display";
+import {
+  formatQuantity,
+  foodStatus,
+  isPreparationClarification,
+  macroTargetStatus,
+} from "../food-display";
 
 // -------- Pure helper tests --------
 
@@ -34,6 +39,32 @@ describe("foodStatus", () => {
   it("falls back to standard preparation for an unrecognized preparation value", () => {
     const s = foodStatus({ data_source: "verified_database", preparation: "sous-vide" });
     expect(s.label).toBe("Verified food · standard preparation");
+  });
+});
+
+describe("macroTargetStatus", () => {
+  it("is no-target when there's nothing to compare against", () => {
+    expect(macroTargetStatus(150, null)).toBe("no-target");
+    expect(macroTargetStatus(150, undefined)).toBe("no-target");
+    expect(macroTargetStatus(150, 0)).toBe("no-target");
+  });
+
+  it("is below-target when the value hasn't reached the target — never a warning", () => {
+    // Fat at 68/100g specifically: this is the exact case the design
+    // audit flagged as reading like an error purely from raw's identity
+    // color. Below target must be neutral, not flagged.
+    expect(macroTargetStatus(68, 100)).toBe("below-target");
+  });
+
+  it("is achieved when the rounded value exactly meets the target", () => {
+    expect(macroTargetStatus(220, 220)).toBe("achieved");
+    // 219.6 rounds to 220 for display — the color must agree with what's
+    // actually shown, not the unrounded internal value.
+    expect(macroTargetStatus(219.6, 220)).toBe("achieved");
+  });
+
+  it("is over-target when the value exceeds it — protein at 273/220g reads as achieved, not dangerous", () => {
+    expect(macroTargetStatus(273, 220)).toBe("over-target");
   });
 });
 

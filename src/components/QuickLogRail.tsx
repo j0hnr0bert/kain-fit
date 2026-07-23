@@ -15,7 +15,11 @@ import { Clock, Star, BookmarkPlus, Plus, Loader2, Pencil, Trash2 } from "lucide
 import { cn } from "@/lib/utils";
 import { track, noteTapForRageDetection } from "@/lib/analytics";
 
-type MealType = "breakfast" | "lunch" | "dinner" | "snacks";
+// KainFit no longer categorizes meals by time of day. `meal_type` remains a
+// required, non-null column with a fixed enum CHECK constraint in the
+// database, so every insert still needs a value — this is a fixed
+// compatibility placeholder, never shown in any UI.
+const LEGACY_MEAL_TYPE = "snacks";
 
 type SavedItem = {
   display_name: string;
@@ -44,13 +48,6 @@ type SavedMealRow = {
 function createUuid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `x-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
-function mealFromHour(h: number): MealType {
-  if (h < 10) return "breakfast";
-  if (h < 14) return "lunch";
-  if (h < 20) return "dinner";
-  return "snacks";
 }
 
 function scaleMacros(item: SavedItem, newQty: number): SavedItem {
@@ -214,11 +211,10 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
     if (!userId || items.length === 0) return;
     setInserting(true);
     const loggedAt = new Date().toISOString();
-    const mealType = mealFromHour(new Date().getHours());
     const rows = items.map((i) => ({
       user_id: userId,
       logged_at: loggedAt,
-      meal_type: mealType,
+      meal_type: LEGACY_MEAL_TYPE,
       original_input: `[repeat] ${i.display_name}`,
       display_name: i.display_name,
       normalized_name: i.normalized_name,
@@ -770,7 +766,7 @@ function SaveMealPanel({
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Usual breakfast, Post-workout"
+          placeholder="e.g. My go-to plate, Post-workout"
           className="h-12"
           autoFocus
         />

@@ -123,3 +123,25 @@ export function isPreparationClarification(question: string | null | undefined):
     q.includes("prep")
   );
 }
+
+export type MacroTargetStatus = "no-target" | "below-target" | "achieved" | "over-target";
+
+/**
+ * Single source of truth for macro-value color semantics. Deliberately only
+ * two visual outcomes (neutral vs. achieved) map onto these four states —
+ * being under a target is never a warning, and going over one is never
+ * flagged either, since this app makes no medical/dietary judgment about
+ * "too much" of a macro. Compares the *rounded* value against the target so
+ * the color always agrees with what's actually displayed (e.g. 219.6g
+ * rounding to "220g" next to a 220g target reads as achieved, not below).
+ */
+export function macroTargetStatus(
+  value: number,
+  target: number | null | undefined,
+): MacroTargetStatus {
+  if (target == null || target <= 0) return "no-target";
+  const rounded = Math.round(value);
+  if (rounded < target) return "below-target";
+  if (rounded === target) return "achieved";
+  return "over-target";
+}

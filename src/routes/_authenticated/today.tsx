@@ -54,7 +54,12 @@ import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
 import { CoachingCard } from "@/components/CoachingCard";
-import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
+import {
+  formatQuantity,
+  foodStatus,
+  isPreparationClarification,
+  macroTargetStatus,
+} from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -102,6 +107,12 @@ const MANILA_TIME_ZONE = "Asia/Manila";
 // "Near" the calorie target — a positive remainder at or below this reads
 // as a close-out nudge (Guide) rather than an open-ended remaining amount.
 const CALORIE_NEAR_MARGIN_KCAL = 150;
+// KainFit no longer categorizes meals by time of day. `meal_type` remains a
+// required, non-null column with a fixed enum CHECK constraint in the
+// database, so every new row still needs a value — this is a fixed
+// compatibility placeholder, never shown in any UI. Do not derive it from
+// the clock again.
+const LEGACY_MEAL_TYPE: Entry["meal_type"] = "snacks";
 
 function createUuid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -265,7 +276,7 @@ function TodayPage() {
     const rows = demoImport.entries.map((i, idx) => ({
       user_id: u.user!.id,
       logged_at: loggedAt,
-      meal_type: i.meal,
+      meal_type: LEGACY_MEAL_TYPE,
       original_input: "(imported from demo)",
       display_name: i.name,
       normalized_name: i.name.toLowerCase(),
@@ -404,7 +415,7 @@ function TodayPage() {
       const rows = stampedItems.map((i) => ({
         user_id: u.user!.id,
         logged_at: loggedAt,
-        meal_type: i.meal_type,
+        meal_type: LEGACY_MEAL_TYPE,
         original_input: sourceInput,
         display_name: i.display_name,
         normalized_name: i.normalized_name,
@@ -987,15 +998,8 @@ function TodayPage() {
 
         {/* Totals */}
         <div className="rounded-3xl bg-card border border-border p-5 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="text-xs uppercase tracking-wide text-muted-foreground">
-              {targetsActive ? "Your manual targets" : "Today"}
-            </div>
-            {targetsActive && (
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground/80">
-                You entered these
-              </div>
-            )}
+          <div className="text-xs uppercase tracking-wide text-muted-foreground">
+            {targetsActive ? "Today's targets" : "Today"}
           </div>
           <div className="mt-1 flex items-baseline gap-2">
             <div className="text-5xl font-bold tracking-tight">{Math.round(totals.calories)}</div>
@@ -1008,23 +1012,25 @@ function TodayPage() {
               label="Protein"
               value={totals.protein}
               target={targetsActive ? profile!.target_protein_g : null}
-              color="text-primary"
             />
             <MacroPill
               label="Carbs"
               value={totals.carbs}
               target={targetsActive ? profile!.target_carbs_g : null}
-              color="text-[oklch(0.72_0.19_145)]"
             />
             <MacroPill
               label="Fat"
               value={totals.fat}
               target={targetsActive ? profile!.target_fat_g : null}
-              color="text-[oklch(0.68_0.17_25)]"
             />
           </div>
         </div>
-        <CoachingCard result={coachingResult} proteinRemaining={proteinRemaining} weekly={weekly} />
+        <CoachingCard
+          result={coachingResult}
+          proteinRemaining={proteinRemaining}
+          weekly={weekly}
+          justCompletedCelebrate={celebration.transientCelebrate}
+        />
         {betaUsage?.enabled &&
           betaUsage.cap > 0 &&
           (betaUsage.reachedLimit ? (
@@ -1314,28 +1320,36 @@ function TodayPage() {
   );
 }
 
+// Color communicates achievement, never which macro this is or that it's
+// under target — being below a target is neutral, not a warning; this app
+// makes no judgment about "too much" of a macro, so over-target reads the
+// same as achieved. See macroTargetStatus() for the full rule.
 function MacroPill({
   label,
   value,
   target,
-  color,
 }: {
   label: string;
   value: number;
   target?: number | null;
-  color: string;
 }) {
+  const status = macroTargetStatus(value, target);
+  const achieved = status === "achieved" || status === "over-target";
   return (
     <div className="rounded-2xl bg-muted/60 p-3">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className={cn("mt-0.5 text-xl font-semibold", color)}>
-        {Math.round(value)}
-        {target != null ? (
-          <span className="text-xs font-normal text-muted-foreground ml-0.5">/ {target}g</span>
-        ) : (
-          <span className="text-xs font-normal text-muted-foreground ml-0.5">g</span>
+      {/* Stacked, not inline: guarantees the value and its "/target g" are
+          each their own short line, so neither can wrap mid-token on
+          narrow screens regardless of digit count. */}
+      <div
+        className={cn(
+          "mt-0.5 text-xl font-semibold leading-tight",
+          achieved ? "text-primary" : "text-foreground",
         )}
+      >
+        {Math.round(value)}
       </div>
+      <div className="text-xs text-muted-foreground">{target != null ? `/ ${target}g` : "g"}</div>
     </div>
   );
 }
