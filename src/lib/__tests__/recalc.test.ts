@@ -20,13 +20,20 @@ describe("foodStatus", () => {
     const s = foodStatus({ data_source: "verified_database", preparation: "estimated" });
     expect(s.label.toLowerCase()).toContain("preparation estimated");
   });
-  it("returns plain Verified when preparation is raw or cooked", () => {
+  it("returns a preparation-specific Verified label when preparation is raw or cooked", () => {
+    // Not "plain Verified" — raw vs. cooked materially changes macros (see
+    // the raw/cooked density fixtures below), so which one was used is real
+    // signal worth keeping visible, not formatting to collapse.
     expect(foodStatus({ data_source: "verified_database", preparation: "raw" }).label).toBe(
-      "Verified",
+      "Verified food · raw weight",
     );
     expect(foodStatus({ data_source: "verified_database", preparation: "cooked" }).label).toBe(
-      "Verified",
+      "Verified food · cooked weight",
     );
+  });
+  it("falls back to standard preparation for an unrecognized preparation value", () => {
+    const s = foodStatus({ data_source: "verified_database", preparation: "sous-vide" });
+    expect(s.label).toBe("Verified food · standard preparation");
   });
 });
 

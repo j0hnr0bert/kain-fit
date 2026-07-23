@@ -66,6 +66,14 @@ export function foodStatus({ data_source, is_estimate, preparation }: StatusInpu
   };
   switch (data_source) {
     case "verified_database": {
+      if (prep === "estimated") {
+        return {
+          label: "Verified food · preparation estimated",
+          tooltip:
+            "We recognized this food, but raw vs. cooked wasn't specified, so we used a middle-ground estimate. You can edit the preparation any time.",
+          tone: "verified",
+        };
+      }
       if (knownPreps[prep]) {
         return {
           label: `Verified food · ${knownPreps[prep]}`,
@@ -73,7 +81,7 @@ export function foodStatus({ data_source, is_estimate, preparation }: StatusInpu
           tone: "verified",
         };
       }
-      // Unknown / estimated / missing preparation → standard preparation
+      // Unknown / missing preparation → standard preparation
       return {
         label: "Verified food · standard preparation",
         tooltip:
