@@ -4,7 +4,7 @@ Living document. Update after every meaningful PR. This exists so decisions
 made once don't get re-litigated from scratch later — if something looks
 missing or wrong, check "Rejected / Deferred" before re-opening it.
 
-Last updated: 2026-07-22.
+Last updated: 2026-07-23.
 
 ## Must Ship Before Beta
 
@@ -49,11 +49,20 @@ Last updated: 2026-07-22.
       today, same row-action pattern as Favorites' toggle.
 - [ ] Rename a saved meal after creation (Workstream 1, PR 1c) — naming
       before first save already works; there's no way to rename later.
-- [ ] Protein-remaining nudge shipped ("Xg protein to go — kaya mo yan!")
-      — reuses existing totals/target data, zero new queries.
 - [ ] Generic rage-tap detector (`noteTapForRageDetection`) shipped and
       wired into the two touch-target fixes above, as a baseline. Not
       expanding coverage further until this produces real signal.
+- [x] **Coaching Card (Behavior Engine / Evidence Engine, Sprint 01)** —
+      single persistent coaching surface on Today, replacing the old
+      standalone protein-remaining line. Pure decision logic in
+      `src/lib/coaching.ts` (25 unit tests), rendered by
+      `src/components/CoachingCard.tsx`. Implements the locked hierarchy
+      Recovery > Guide > Celebrate > Reinforce > Silence, plus a
+      short-lived transient override so a same-day target completion is
+      acknowledged immediately instead of waiting for the next Guide
+      message. Milestones and Monthly Reinforce are explicitly out of
+      scope — see `.lovable/evidence-engine.md`. Meal-type label also
+      removed from History as part of this same slice (§ below).
 
 ## Nice to Have
 
@@ -132,6 +141,13 @@ Last updated: 2026-07-22.
   confirm rate for first parses that needed clarification vs. didn't).
 - Rage-tap data on the two just-fixed touch targets — will tell us
   whether the sizing fix actually mattered, once there's enough volume.
+- **Coaching Card impact** — no instrumentation shipped yet distinguishing
+  which leaf fired or whether it changed behavior. Needs its own small PR
+  before this is answerable: at minimum, log which `CoachingResult.kind`
+  (and `reason`/`tier`) rendered on each Today load, and whether a
+  same-day-return or a log-streak-continuation followed. See the beta
+  measurement recommendations in the Sprint 01 implementation summary
+  (session of 2026-07-23) for the specific metrics to add.
 
 ## Rejected / Deferred
 

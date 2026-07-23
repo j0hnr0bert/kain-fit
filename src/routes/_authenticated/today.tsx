@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { sumNutrients } from "@/lib/nutrient-totals";
 import { manilaDay, computeCurrentStreak } from "@/lib/retention";
+import { evaluateCoaching, daysSinceLastActive, weeklyLoggedDayCounts } from "@/lib/coaching";
 import { parseFood, recalcItem } from "@/lib/food.functions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,6 +44,7 @@ import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
+import { CoachingCard } from "@/components/CoachingCard";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -88,6 +90,9 @@ type PendingItem = {
 };
 
 const MANILA_TIME_ZONE = "Asia/Manila";
+// "Near" the calorie target — a positive remainder at or below this reads
+// as a close-out nudge (Guide) rather than an open-ended remaining amount.
+const CALORIE_NEAR_MARGIN_KCAL = 150;
 
 function createUuid() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -176,6 +181,13 @@ function TodayPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const [listening, setListening] = useState(false);
+  // Coaching Card state — see .lovable/evidence-engine.md. `transientCelebrate`
+  // is true only in the render immediately after a save closes out both
+  // macro targets, then resets itself so the override never outlives one
+  // evaluation. `celebratedToday` persists in localStorage per Manila day so
+  // the steady-state Celebrate leaf shows at most once a day.
+  const [transientCelebrate, setTransientCelebrate] = useState(false);
+  const [celebratedToday, setCelebratedToday] = useState(false);
   const [reportTarget, setReportTarget] = useState<{
     id: string | null;
     values: Record<string, unknown>;
@@ -452,6 +464,26 @@ function TodayPage() {
         return false;
       }
 
+      // Detect a genuine transition into "both macros met" caused by this
+      // exact save, so the Coaching Card can briefly celebrate it before
+      // Guide resumes — see evidence-engine.md's transient-override rule.
+      if (targetsActive) {
+        const preMet = proteinRemaining <= 0 && caloriesRemaining <= 0;
+        const addedProtein = savedRows.reduce((s, r) => s + Number(r.protein_g), 0);
+        const addedCalories = savedRows.reduce((s, r) => s + Number(r.calories), 0);
+        const postProteinRemaining = Math.max(
+          0,
+          (profile!.target_protein_g ?? 0) - (totals.protein + addedProtein),
+        );
+        const postCaloriesRemaining = Math.max(
+          0,
+          (profile!.target_calories ?? 0) - (totals.calories + addedCalories),
+        );
+        if (!preMet && postProteinRemaining <= 0 && postCaloriesRemaining <= 0) {
+          setTransientCelebrate(true);
+        }
+      }
+
       qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
         const known = new Set(current.map((entry) => entry.id));
         return [...savedRows.filter((entry) => !known.has(entry.id)), ...current].sort(
@@ -579,6 +611,60 @@ function TodayPage() {
   const proteinRemaining = targetsActive
     ? Math.max(0, (profile!.target_protein_g ?? 0) - totals.protein)
     : 0;
+  const caloriesRemaining = targetsActive
+    ? Math.max(0, (profile!.target_calories ?? 0) - totals.calories)
+    : 0;
+
+  const todayManila = useMemo(() => manilaDay(new Date()), []);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (localStorage.getItem(`kf.coachCelebrated.${todayManila}`)) setCelebratedToday(true);
+  }, [todayManila]);
+  // The transient override is only valid for the single render it was set
+  // for — clear it right after so a later re-render evaluates normally.
+  useEffect(() => {
+    if (!transientCelebrate) return;
+    const t = setTimeout(() => setTransientCelebrate(false), 0);
+    return () => clearTimeout(t);
+  }, [transientCelebrate]);
+
+  const gapDays = useMemo(
+    () => daysSinceLastActive(streakDays, todayManila),
+    [streakDays, todayManila],
+  );
+  const weekly = useMemo(
+    () => weeklyLoggedDayCounts(streakDays, todayManila),
+    [streakDays, todayManila],
+  );
+  const coachingResult = useMemo(
+    () =>
+      evaluateCoaching({
+        gapDays,
+        hasLoggedToday: entries.length > 0,
+        targetsActive,
+        proteinRemaining,
+        caloriesRemaining,
+        calorieNearMarginKcal: CALORIE_NEAR_MARGIN_KCAL,
+        celebratedTodayAlready: celebratedToday,
+        weekly,
+        justCompletedCelebrate: transientCelebrate,
+      }),
+    [
+      gapDays,
+      entries.length,
+      targetsActive,
+      proteinRemaining,
+      caloriesRemaining,
+      celebratedToday,
+      weekly,
+      transientCelebrate,
+    ],
+  );
+  useEffect(() => {
+    if (coachingResult.kind !== "celebrate" || typeof window === "undefined") return;
+    localStorage.setItem(`kf.coachCelebrated.${todayManila}`, "1");
+    setCelebratedToday(true);
+  }, [coachingResult.kind, todayManila]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -916,13 +1002,8 @@ function TodayPage() {
               color="text-[oklch(0.68_0.17_25)]"
             />
           </div>
-          {targetsActive && proteinRemaining > 0 && (
-            <div className="mt-3 text-xs text-muted-foreground">
-              {Math.round(proteinRemaining)}g protein to go —{" "}
-              <span className="text-foreground font-medium">kaya mo yan!</span>
-            </div>
-          )}
         </div>
+        <CoachingCard result={coachingResult} proteinRemaining={proteinRemaining} weekly={weekly} />
         {betaUsage?.enabled &&
           betaUsage.cap > 0 &&
           (betaUsage.reachedLimit ? (

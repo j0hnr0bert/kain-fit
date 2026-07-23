@@ -140,7 +140,7 @@ function HistoryPage() {
                 <div className="font-medium truncate">{e.display_name}</div>
                 <div className="text-xs text-muted-foreground">
                   {Number(e.quantity)}
-                  {e.unit} · {Math.round(Number(e.calories))} kcal · {e.meal_type}
+                  {e.unit} · {Math.round(Number(e.calories))} kcal
                 </div>
               </div>
               <button

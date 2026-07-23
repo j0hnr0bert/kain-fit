@@ -59,7 +59,7 @@ export type RetentionResult = {
   cohorts: CohortRow[];
 };
 
-function weekStart(day: string): string {
+export function weekStart(day: string): string {
   const d = new Date(day + "T00:00:00Z");
   const dow = (d.getUTCDay() + 6) % 7; // Mon=0..Sun=6
   d.setUTCDate(d.getUTCDate() - dow);
