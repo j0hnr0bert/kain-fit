@@ -152,15 +152,6 @@ function Welcome() {
         </div>
       </section>
 
-      {/* ---- E. INSTALLATION SECTION ---- */}
-      <section className="max-w-md mx-auto px-6 mt-14">
-        <h2 className="text-2xl font-bold tracking-tight">Install KainFit</h2>
-        <p className="mt-1.5 text-sm text-muted-foreground leading-relaxed">
-          Add KainFit to your Home Screen for faster access — no App Store required during beta.
-        </p>
-        <InstallKainFitCTA variant="landing" className="mt-4" />
-      </section>
-
       {/* ---- F. TRUST AND BETA DISCLOSURE ---- */}
       <section className="max-w-md mx-auto px-6 mt-14">
         <h2 className="text-2xl font-bold tracking-tight">Why trust KainFit</h2>
