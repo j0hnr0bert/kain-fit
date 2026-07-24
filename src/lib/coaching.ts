@@ -33,6 +33,13 @@ export type CoachingInput = {
   proteinRemaining: number;
   /** kcal still needed to reach the calorie target; <=0 means met. */
   caloriesRemaining: number;
+  /** Grams still needed to reach the carbohydrate target; <=0 means met.
+   * Added 2026-07-25 — "all targets complete" previously only checked
+   * protein and calories, which let it fire while carbs or fat were still
+   * far from their own explicit targets. See allTargetsMet below. */
+  carbsRemaining: number;
+  /** Grams still needed to reach the fat target; <=0 means met. */
+  fatRemaining: number;
   /** "Nearly full" margin in kcal — a positive remaining amount at or
    * below this counts as "near", not "remaining". */
   calorieNearMarginKcal: number;
@@ -45,14 +52,28 @@ export type CoachingInput = {
   justCompletedCelebrate: boolean;
 };
 
-function bothMacrosMet(input: CoachingInput): boolean {
-  return input.targetsActive && input.proteinRemaining <= 0 && input.caloriesRemaining <= 0;
+// "All eligible targets complete" — every one of the four explicit
+// manual targets, not just protein and calories. A mismatched manual
+// target (see target-consistency.ts) makes it entirely possible to close
+// out protein and calories while carbs or fat are still well short (or
+// well over) their own target; this must not read as "all targets
+// completed" in that case. The Guide branches above this in the hierarchy
+// only ever look at protein/calories (see evaluateCoaching), so they are
+// unaffected by this — this function only gates Celebrate's eligibility.
+function allTargetsMet(input: CoachingInput): boolean {
+  return (
+    input.targetsActive &&
+    input.proteinRemaining <= 0 &&
+    input.caloriesRemaining <= 0 &&
+    input.carbsRemaining <= 0 &&
+    input.fatRemaining <= 0
+  );
 }
 
 export function evaluateCoaching(input: CoachingInput): CoachingResult {
   // Transient override — scoped exception, not a reordering of the
   // standing hierarchy below. See evidence-engine.md.
-  if (input.justCompletedCelebrate && bothMacrosMet(input)) {
+  if (input.justCompletedCelebrate && allTargetsMet(input)) {
     return { kind: "celebrate", reason: "same-day-complete" };
   }
 
@@ -79,7 +100,7 @@ export function evaluateCoaching(input: CoachingInput): CoachingResult {
   }
 
   // 4. Celebrate (steady-state, once per day)
-  if (bothMacrosMet(input) && !input.celebratedTodayAlready) {
+  if (allTargetsMet(input) && !input.celebratedTodayAlready) {
     return { kind: "celebrate", reason: "same-day-complete" };
   }
 
@@ -149,12 +170,24 @@ export function saveCausedCelebration(input: {
   targetsActive: boolean;
   preProteinRemaining: number;
   preCaloriesRemaining: number;
+  preCarbsRemaining: number;
+  preFatRemaining: number;
   postProteinRemaining: number;
   postCaloriesRemaining: number;
+  postCarbsRemaining: number;
+  postFatRemaining: number;
 }): boolean {
   if (!input.targetsActive) return false;
-  const preMet = input.preProteinRemaining <= 0 && input.preCaloriesRemaining <= 0;
-  const postMet = input.postProteinRemaining <= 0 && input.postCaloriesRemaining <= 0;
+  const preMet =
+    input.preProteinRemaining <= 0 &&
+    input.preCaloriesRemaining <= 0 &&
+    input.preCarbsRemaining <= 0 &&
+    input.preFatRemaining <= 0;
+  const postMet =
+    input.postProteinRemaining <= 0 &&
+    input.postCaloriesRemaining <= 0 &&
+    input.postCarbsRemaining <= 0 &&
+    input.postFatRemaining <= 0;
   return !preMet && postMet;
 }
 

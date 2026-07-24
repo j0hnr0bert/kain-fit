@@ -513,13 +513,23 @@ function TodayPage() {
       const postCaloriesRemaining = targetsActive
         ? Math.max(0, (profile!.target_calories ?? 0) - (totals.calories + addedCalories))
         : 0;
+      const postCarbsRemaining = targetsActive
+        ? Math.max(0, (profile!.target_carbs_g ?? 0) - (totals.carbs + addedCarbs))
+        : 0;
+      const postFatRemaining = targetsActive
+        ? Math.max(0, (profile!.target_fat_g ?? 0) - (totals.fat + addedFat))
+        : 0;
       if (
         saveCausedCelebration({
           targetsActive,
           preProteinRemaining: proteinRemaining,
           preCaloriesRemaining: caloriesRemaining,
+          preCarbsRemaining: carbsRemaining,
+          preFatRemaining: fatRemaining,
           postProteinRemaining,
           postCaloriesRemaining,
+          postCarbsRemaining,
+          postFatRemaining,
         })
       ) {
         setCelebration(markSaveCompletedCelebrate);
@@ -699,6 +709,12 @@ function TodayPage() {
   const caloriesRemaining = targetsActive
     ? Math.max(0, (profile!.target_calories ?? 0) - totals.calories)
     : 0;
+  // "All targets complete" must mean all four explicit targets, not just
+  // protein and calories — see coaching.ts's allTargetsMet.
+  const carbsRemaining = targetsActive
+    ? Math.max(0, (profile!.target_carbs_g ?? 0) - totals.carbs)
+    : 0;
+  const fatRemaining = targetsActive ? Math.max(0, (profile!.target_fat_g ?? 0) - totals.fat) : 0;
 
   const todayManila = useMemo(() => manilaDay(new Date()), []);
   // Rehydrate "already celebrated today" from localStorage on mount — a
@@ -728,6 +744,8 @@ function TodayPage() {
         targetsActive,
         proteinRemaining,
         caloriesRemaining,
+        carbsRemaining,
+        fatRemaining,
         calorieNearMarginKcal: CALORIE_NEAR_MARGIN_KCAL,
         celebratedTodayAlready: celebration.celebratedToday,
         weekly,
@@ -739,6 +757,8 @@ function TodayPage() {
       targetsActive,
       proteinRemaining,
       caloriesRemaining,
+      carbsRemaining,
+      fatRemaining,
       celebration.celebratedToday,
       weekly,
       celebration.transientCelebrate,
@@ -1004,23 +1024,35 @@ function TodayPage() {
 
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
   const [placeholderIdx, setPlaceholderIdx] = useState(0);
+  // Curated rotation, not a recommendation engine — every entry here is
+  // either already proven against the parser in production (the first two
+  // were already live) or a close structural match to a proven pattern
+  // (gram-first single item, or simple "count + count" compound), so this
+  // stays illustrative rather than a personalized suggestion. Dropped the
+  // two prior volumetric/vague entries ("1 cup oatmeal with banana", "...
+  // salmon and salad") — a bare "salad" with no quantity and a "cup" with
+  // no gram fallback were the likeliest of the five to parse ambiguously.
   const placeholderExamples = useMemo(
     () => [
       "150g chicken adobo and 200g cooked rice",
-      "3 eggs and 2 slices of bread",
       "250g raw chicken breast",
-      "1 cup oatmeal with banana",
-      "200g grilled salmon and salad",
+      "200g grilled bangus",
+      "3 eggs and 2 slices of bread",
+      "2 eggs and 1 cup rice",
     ],
     [],
   );
+  // Never swaps the example while the user has started typing — this is
+  // a passive illustration, not something that should visibly change out
+  // from under an active input session.
   useEffect(() => {
+    if (input.trim().length > 0) return;
     const t = window.setInterval(
       () => setPlaceholderIdx((i) => (i + 1) % placeholderExamples.length),
       4000,
     );
     return () => window.clearInterval(t);
-  }, [placeholderExamples.length]);
+  }, [placeholderExamples.length, input]);
 
   function formatEntryTime(iso: string | undefined) {
     if (!iso) return "";

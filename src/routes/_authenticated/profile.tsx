@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { supabase } from "@/integrations/supabase/client";
@@ -29,6 +29,11 @@ import {
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { BetaBadge } from "@/components/BetaBadge";
 import { deleteOwnAccount } from "@/lib/account.functions";
+import {
+  checkTargetConsistency,
+  targetMismatchMessage,
+  targetComboKey,
+} from "@/lib/target-consistency";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
@@ -88,6 +93,20 @@ function ProfilePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const deleteAccountFn = useServerFn(deleteOwnAccount);
+
+  // Manual-target consistency warning (2026-07-24) — see saveTargets below.
+  const [mismatchOpen, setMismatchOpen] = useState(false);
+  const [mismatchCopy, setMismatchCopy] = useState<{ headline: string; body: string } | null>(null);
+  const [pendingTargets, setPendingTargets] = useState<{
+    cal: number;
+    prot: number;
+    carb: number;
+    fat: number;
+  } | null>(null);
+  // The exact combination of values the user has already explicitly kept
+  // via "Keep targets" — re-saving the identical numbers skips the warning;
+  // changing any of them invalidates this and requires confirmation again.
+  const confirmedMismatchKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -223,27 +242,15 @@ function ProfilePage() {
     }
   }
 
-  async function saveTargets() {
+  // The actual write — never called directly from the UI. Reached either
+  // when the entered targets are internally consistent, or after the user
+  // explicitly confirms "Keep targets" on a mismatch they were shown.
+  // Never modifies any of the four values itself.
+  async function performSaveTargets(cal: number, prot: number, carb: number, fat: number) {
     setSavingTargets(true);
     try {
       const { data: u } = await supabase.auth.getUser();
       if (!u.user) return;
-      const cal = Number(tCalories);
-      const prot = Number(tProtein);
-      const carb = Number(tCarbs);
-      const fat = Number(tFat);
-      if (!Number.isFinite(cal) || cal < 500 || cal > 10000) {
-        throw new Error("Daily calories must be between 500 and 10,000.");
-      }
-      for (const [name, v] of [
-        ["Protein", prot],
-        ["Carbohydrates", carb],
-        ["Fat", fat],
-      ] as const) {
-        if (!Number.isFinite(v) || v < 0 || v > 1000) {
-          throw new Error(`${name} must be between 0 and 1,000 g.`);
-        }
-      }
       const { error } = await supabase
         .from("profiles")
         .update({
@@ -263,6 +270,69 @@ function ProfilePage() {
     } finally {
       setSavingTargets(false);
     }
+  }
+
+  async function saveTargets() {
+    const cal = Number(tCalories);
+    const prot = Number(tProtein);
+    const carb = Number(tCarbs);
+    const fat = Number(tFat);
+    if (!Number.isFinite(cal) || cal < 500 || cal > 10000) {
+      toast.error("Daily calories must be between 500 and 10,000.");
+      return;
+    }
+    for (const [name, v] of [
+      ["Protein", prot],
+      ["Carbohydrates", carb],
+      ["Fat", fat],
+    ] as const) {
+      if (!Number.isFinite(v) || v < 0 || v > 1000) {
+        toast.error(`${name} must be between 0 and 1,000 g.`);
+        return;
+      }
+    }
+
+    // Consistency check — display-only, never blocks saving and never
+    // touches the four values. See target-consistency.ts for the formula
+    // and threshold. Skipped for a combination already explicitly kept.
+    const consistency = checkTargetConsistency({
+      calorieTarget: cal,
+      proteinG: prot,
+      carbsG: carb,
+      fatG: fat,
+    });
+    const key = targetComboKey({ calorieTarget: cal, proteinG: prot, carbsG: carb, fatG: fat });
+    if (consistency.mismatched && confirmedMismatchKeyRef.current !== key) {
+      setMismatchCopy(targetMismatchMessage(consistency, cal));
+      setPendingTargets({ cal, prot, carb, fat });
+      setMismatchOpen(true);
+      return;
+    }
+
+    await performSaveTargets(cal, prot, carb, fat);
+  }
+
+  async function confirmKeepMismatchedTargets() {
+    if (!pendingTargets) return;
+    confirmedMismatchKeyRef.current = targetComboKey({
+      calorieTarget: pendingTargets.cal,
+      proteinG: pendingTargets.prot,
+      carbsG: pendingTargets.carb,
+      fatG: pendingTargets.fat,
+    });
+    setMismatchOpen(false);
+    await performSaveTargets(
+      pendingTargets.cal,
+      pendingTargets.prot,
+      pendingTargets.carb,
+      pendingTargets.fat,
+    );
+    setPendingTargets(null);
+  }
+
+  function reviewMismatchedValues() {
+    setMismatchOpen(false);
+    setPendingTargets(null);
   }
 
   async function toggleTargets(next: boolean) {
@@ -611,6 +681,42 @@ function ProfilePage() {
           typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""
         }
       />
+      <Dialog
+        open={mismatchOpen}
+        onOpenChange={(o) => {
+          if (!o) reviewMismatchedValues();
+        }}
+      >
+        <DialogContent className="max-w-sm rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>{mismatchCopy?.headline}</DialogTitle>
+            <DialogDescription>{mismatchCopy?.body}</DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col gap-2 sm:flex-col">
+            <Button
+              onClick={confirmKeepMismatchedTargets}
+              disabled={savingTargets}
+              className="w-full h-12 rounded-2xl"
+            >
+              {savingTargets ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+                </span>
+              ) : (
+                "Keep targets"
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={reviewMismatchedValues}
+              disabled={savingTargets}
+              className="w-full h-12 rounded-2xl"
+            >
+              Review values
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={deleteDialogOpen}
         onOpenChange={(o) => {

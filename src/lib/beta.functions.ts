@@ -500,7 +500,11 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
     const feedback = (feedbackRes.data ?? []) as FeedbackRow[];
     const reports = (reportsRes.data ?? []) as ReportRow[];
 
-    // Unique visitors — sessions with any landing_viewed or demo_started
+    // Unique visitors — distinct sessions that fired ANY tracked event with
+    // an anonymous_session_id (not scoped to landing_viewed/demo_started —
+    // a prior version of this comment claimed that scoping, but the filter
+    // below has never actually restricted by event_name; corrected
+    // 2026-07-25 to describe what the code does).
     const uniqueSessions = new Set(
       events.filter((e) => e.anonymous_session_id).map((e) => e.anonymous_session_id as string),
     );
@@ -526,8 +530,20 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
     };
     const pctUnder = (arr: number[], ms: number) =>
       arr.length ? arr.filter((n) => n <= ms).length / arr.length : 0;
+    // AI-stage latency must only be measured over parses that actually
+    // called the AI. Fixed 2026-07-25: this previously included every
+    // food_parse_succeeded event regardless of resolution_path, and
+    // cache/verified_db paths always report ai_parsing_ms: 0 (see
+    // food.functions.ts) — those zeros were dragging AI p50/p95 down,
+    // understating true AI latency. This is a read-only aggregation fix
+    // (which events feed the percentile); it does not touch parsing,
+    // caching, or provider behavior at all.
     const aiDurations = events
-      .filter((e) => e.event_name === "food_parse_succeeded")
+      .filter(
+        (e) =>
+          e.event_name === "food_parse_succeeded" &&
+          (e.event_properties as Record<string, unknown>)?.resolution_path === "ai_parse",
+      )
       .map((e) => Number((e.event_properties as Record<string, unknown>)?.ai_parsing_ms))
       .filter((n) => Number.isFinite(n))
       .sort((a, b) => a - b);
@@ -549,6 +565,7 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
       under5s: pctUnder(durations, 5000),
       under8s: pctUnder(durations, 8000),
       under10s: pctUnder(durations, 10000),
+      aiSamples: aiDurations.length,
       aiP50: Math.round(pct(aiDurations, 50)),
       aiP95: Math.round(pct(aiDurations, 95)),
       timeoutRate: totalParses ? timeoutCount / totalParses : 0,
@@ -637,12 +654,18 @@ export const getBetaMetrics = createServerFn({ method: "GET" })
         d7 += 1;
     }
 
-    // Same-day activation funnel: of everyone who signed up, how many
-    // reached each step on their own signup day (Manila calendar day)?
-    // Reuses `signups` and `events` already fetched above — no new query.
-    // Mirrors the "Activation" definition on the retention cohort card
-    // (signed up AND logged >=1 food on signup day) so the two numbers
-    // stay consistent with each other.
+    // Same-day activation funnel: of everyone who ever fired a
+    // signup_completed analytics event (all-time), how many reached each
+    // step on their own signup day (Manila calendar day)? Reuses `signups`
+    // and `events` already fetched above — no new query.
+    // Conceptually the same question as the retention cohort card's
+    // "Signup-day activation" tile (signed up AND logged >=1 food on
+    // signup day), but NOT guaranteed to match it numerically: this counts
+    // from the signup_completed *event* over all time, while the retention
+    // card counts from the `profiles` table over a rolling last-30-days
+    // window and checks `food_entries` rather than a `food_confirmed`
+    // event. Different source table, different population, different
+    // window — see admin.beta.tsx's "Post-signup activation" caption.
     function reachedOnSignupDay(eventName: string): number {
       let n = 0;
       for (const [uid, signupAt] of signups) {

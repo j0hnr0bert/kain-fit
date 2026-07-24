@@ -146,6 +146,42 @@ describe("messageFor -> tone mapping (matches evaluateCoaching's kind)", () => {
   });
 });
 
+describe("protein-remaining Guide never claims unsupported pacing (2026-07-25 truthfulness fix)", () => {
+  const weekly = { thisWeekDays: 1, lastWeekDays: 1 };
+
+  it("does not use 'behind pace' or any pacing/timing language — there is no clock, schedule, or meal-count model behind this branch", () => {
+    const content = messageFor({ kind: "guide", reason: "protein-remaining" }, 220, weekly, true);
+    const pacingLanguage = /behind pace|ahead of pace|on pace|on track|falling behind|catch up/i;
+    expect(content?.headline).not.toMatch(pacingLanguage);
+    expect(content?.body).not.toMatch(pacingLanguage);
+    expect(content?.headline).toBe("Protein is the priority.");
+  });
+
+  it("states the remaining amount as a fact, calculated from the value passed in", () => {
+    const content = messageFor({ kind: "guide", reason: "protein-remaining" }, 42, weekly, true);
+    expect(content?.body).toBe("You have 42g remaining. Build your next meal around it.");
+  });
+
+  it("never renders a negative remaining amount, regardless of what it's handed", () => {
+    const content = messageFor({ kind: "guide", reason: "protein-remaining" }, -10, weekly, true);
+    expect(content?.body).not.toContain("-10g");
+    expect(content?.body).not.toMatch(/-\d/);
+    expect(content?.body).toBe("You have 0g remaining. Build your next meal around it.");
+  });
+
+  it("Taglish conveys the same fact without the previous awkward literal translation", () => {
+    const content = messageFor({ kind: "guide", reason: "protein-remaining" }, 220, weekly, true);
+    expect(content?.taglish).toBe("Kulang pa ng 220g protein. Unahin sa susunod na meal.");
+    expect(content?.taglish).not.toContain("May 220g kang protein na kulang");
+  });
+
+  it("rounds to whole grams — no decimal display beyond existing rounding rules", () => {
+    const content = messageFor({ kind: "guide", reason: "protein-remaining" }, 41.6, weekly, true);
+    expect(content?.body).toContain("42g");
+    expect(content?.body).not.toMatch(/\d+\.\d/);
+  });
+});
+
 describe("promise-language eligibility gates Celebrate's copy", () => {
   const weekly = { thisWeekDays: 3, lastWeekDays: 2 };
   const result = { kind: "celebrate", reason: "same-day-complete" } as const;
@@ -210,9 +246,7 @@ describe("default (live) coaching copy never repeats a tie-down on repeat-prone 
 describe("tie-down alternates — approved phrasing, demonstrated in the QA harness, not wired into the repeat-prone live path", () => {
   it("protein-remaining variant follows a clear instruction with a grammatically sensible question", () => {
     const content = proteinRemainingTieDownVariant(68);
-    expect(content.body).toBe(
-      "You have 68g left. Build the next meal around protein. Is that clear?",
-    );
+    expect(content.body).toBe("You have 68g remaining. Protein muna sa next meal. Clear?");
     expect(content.body).toMatch(KNOWN_TIE_DOWNS);
   });
 

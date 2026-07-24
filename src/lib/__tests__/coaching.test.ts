@@ -18,6 +18,8 @@ function base(overrides: Partial<CoachingInput> = {}): CoachingInput {
     targetsActive: true,
     proteinRemaining: 0,
     caloriesRemaining: 0,
+    carbsRemaining: 0,
+    fatRemaining: 0,
     calorieNearMarginKcal: 200,
     celebratedTodayAlready: false,
     weekly: { thisWeekDays: 1, lastWeekDays: 3 },
@@ -138,6 +140,42 @@ describe("evaluateCoaching — Celebrate repetition guard", () => {
   it("does not re-fire steady-state Celebrate once already shown today", () => {
     const r = evaluateCoaching(
       base({ proteinRemaining: 0, caloriesRemaining: 0, celebratedTodayAlready: true }),
+    );
+    expect(r.kind).not.toBe("celebrate");
+  });
+});
+
+describe("evaluateCoaching — Celebrate requires all four targets, not just protein and calories", () => {
+  it("does not Celebrate when protein and calories are met but carbs are not", () => {
+    const r = evaluateCoaching(
+      base({ proteinRemaining: 0, caloriesRemaining: 0, carbsRemaining: 40, fatRemaining: 0 }),
+    );
+    expect(r.kind).not.toBe("celebrate");
+  });
+
+  it("does not Celebrate when protein and calories are met but fat is not", () => {
+    const r = evaluateCoaching(
+      base({ proteinRemaining: 0, caloriesRemaining: 0, carbsRemaining: 0, fatRemaining: 15 }),
+    );
+    expect(r.kind).not.toBe("celebrate");
+  });
+
+  it("Celebrates once all four targets are actually met", () => {
+    const r = evaluateCoaching(
+      base({ proteinRemaining: 0, caloriesRemaining: 0, carbsRemaining: 0, fatRemaining: 0 }),
+    );
+    expect(r.kind).toBe("celebrate");
+  });
+
+  it("the transient override also requires all four, not just protein/calories", () => {
+    const r = evaluateCoaching(
+      base({
+        proteinRemaining: 0,
+        caloriesRemaining: 0,
+        carbsRemaining: 10,
+        fatRemaining: 0,
+        justCompletedCelebrate: true,
+      }),
     );
     expect(r.kind).not.toBe("celebrate");
   });
@@ -328,8 +366,12 @@ describe("celebration state machine", () => {
         targetsActive: true,
         preProteinRemaining: 0,
         preCaloriesRemaining: 0,
+        preCarbsRemaining: 0,
+        preFatRemaining: 0,
         postProteinRemaining: 0,
         postCaloriesRemaining: 0,
+        postCarbsRemaining: 0,
+        postFatRemaining: 0,
       }),
     ).toBe(false);
     // Also false when targets were already met before this (failed or not)
@@ -339,8 +381,12 @@ describe("celebration state machine", () => {
         targetsActive: true,
         preProteinRemaining: 0,
         preCaloriesRemaining: 0,
+        preCarbsRemaining: 0,
+        preFatRemaining: 0,
         postProteinRemaining: 0,
         postCaloriesRemaining: 5,
+        postCarbsRemaining: 0,
+        postFatRemaining: 0,
       }),
     ).toBe(false);
     const state = createInitialCelebrationState();
@@ -353,8 +399,12 @@ describe("celebration state machine", () => {
         targetsActive: true,
         preProteinRemaining: 5,
         preCaloriesRemaining: 0,
+        preCarbsRemaining: 0,
+        preFatRemaining: 0,
         postProteinRemaining: 0,
         postCaloriesRemaining: 0,
+        postCarbsRemaining: 0,
+        postFatRemaining: 0,
       }),
     ).toBe(true);
     expect(
@@ -362,8 +412,28 @@ describe("celebration state machine", () => {
         targetsActive: false,
         preProteinRemaining: 5,
         preCaloriesRemaining: 5,
+        preCarbsRemaining: 0,
+        preFatRemaining: 0,
         postProteinRemaining: 0,
         postCaloriesRemaining: 0,
+        postCarbsRemaining: 0,
+        postFatRemaining: 0,
+      }),
+    ).toBe(false);
+  });
+
+  it("is false when protein and calories are both newly met but carbs or fat are not — all four targets must close, not just two", () => {
+    expect(
+      saveCausedCelebration({
+        targetsActive: true,
+        preProteinRemaining: 5,
+        preCaloriesRemaining: 5,
+        preCarbsRemaining: 20,
+        preFatRemaining: 0,
+        postProteinRemaining: 0,
+        postCaloriesRemaining: 0,
+        postCarbsRemaining: 20,
+        postFatRemaining: 0,
       }),
     ).toBe(false);
   });

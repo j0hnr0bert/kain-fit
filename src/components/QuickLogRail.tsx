@@ -356,7 +356,21 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
 
   return (
     <>
-      <div className="mt-4 flex gap-2 overflow-x-auto no-scrollbar px-1 -mx-1">
+      {/* Deliberately horizontally scrollable when the four chips don't
+          all fit — the trailing pr-5 (wider than the leading px-1) gives
+          the last chip breathing room instead of ending flush with the
+          viewport edge, and the mask-image fade signals "more content"
+          now that the native scrollbar is hidden. Without both, a partial
+          last chip at rest reads as accidentally clipped rather than an
+          intentional scroll affordance (see the 2026-07-25 production
+          report: "+ Sa…" from "Save today as meal" cut mid-word). */}
+      <div
+        className="mt-4 flex gap-2 overflow-x-auto no-scrollbar px-1 -mx-1 pr-5"
+        style={{
+          maskImage: "linear-gradient(to right, black calc(100% - 24px), transparent 100%)",
+          WebkitMaskImage: "linear-gradient(to right, black calc(100% - 24px), transparent 100%)",
+        }}
+      >
         <RailChip
           icon={<Clock className="h-3.5 w-3.5" />}
           label="Recent"
@@ -375,7 +389,7 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
         {todaysEntries.length > 0 && (
           <RailChip
             icon={<Plus className="h-3.5 w-3.5" />}
-            label="Save today as meal"
+            label="Save as meal"
             onClick={() => setSaveMealOpen(true)}
             subtle
           />
@@ -530,8 +544,12 @@ function RailChip({
       onClick={onClick}
       className={cn(
         "shrink-0 flex items-center gap-1.5 px-3 h-8 rounded-full text-xs font-medium border transition",
+        // A solid, lighter-weight border reads as a genuine secondary
+        // action; a dashed one reads as a placeholder or disabled control,
+        // which is what made this chip look accidentally broken rather
+        // than intentional (2026-07-25 fix).
         subtle
-          ? "border-dashed border-border text-muted-foreground hover:text-foreground hover:border-primary/40"
+          ? "border-border/60 bg-transparent text-muted-foreground hover:text-foreground hover:border-primary/40"
           : "border-border bg-card text-foreground hover:border-primary/60",
       )}
     >

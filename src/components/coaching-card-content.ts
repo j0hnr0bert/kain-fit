@@ -151,15 +151,28 @@ function guideMessage(
     };
   }
   if (reason === "protein-remaining") {
+    // Copy fix (2026-07-24): "Protein is behind pace" claimed a time-of-day
+    // pacing judgment KainFit does not have — evaluateCoaching's
+    // protein-remaining branch fires purely on proteinRemaining > 0, with
+    // no clock, wake/sleep schedule, meal-count expectation, or
+    // distribution model behind it (see coaching.ts). A remaining
+    // quantity is real; "behind pace" is not something this app can
+    // truthfully claim yet. Clamped defensively even though the caller
+    // (today.tsx) already clamps to >=0 — this function must never render
+    // "-10g" regardless of what it's handed.
     // No tie-down by default — this can legitimately re-fire after every
     // meal until protein is met. See proteinRemainingTieDownVariant.
-    const g = Math.round(proteinRemaining);
+    const g = Math.max(0, Math.round(proteinRemaining));
     return {
       icon: Compass,
       tone: "guide",
-      headline: "Protein is behind pace.",
-      body: `You have ${g}g left. Make the next meal count.`,
-      taglish: `May ${g}g kang protein na kulang. Gawing laman ng susunod na meal.`,
+      headline: "Protein is the priority.",
+      body: `You have ${g}g remaining. Build your next meal around it.`,
+      // Density pass (2026-07-25): says the same thing as the English
+      // without mechanically repeating it — "ka" and the second "ang
+      // protein" were redundant once the headline already establishes the
+      // subject, and the card only has room for one short companion line.
+      taglish: `Kulang pa ng ${g}g protein. Unahin sa susunod na meal.`,
     };
   }
   // calories-near — also no tie-down by default, same repetition risk.
@@ -220,13 +233,13 @@ function reinforceMessage(weekly: { thisWeekDays: number; lastWeekDays: number }
 // repetition risk today.
 
 export function proteinRemainingTieDownVariant(proteinRemaining: number): Content {
-  const g = Math.round(proteinRemaining);
+  const g = Math.max(0, Math.round(proteinRemaining));
   return {
     icon: Compass,
     tone: "guide",
-    headline: "Protein is behind pace.",
-    body: `You have ${g}g left. Build the next meal around protein. Is that clear?`,
-    taglish: `May ${g}g kang protein na kulang. Protein muna sa next meal. Clear?`,
+    headline: "Protein is the priority.",
+    body: `You have ${g}g remaining. Protein muna sa next meal. Clear?`,
+    taglish: `Kulang ka pa ng ${g}g protein. Unahin ang protein sa susunod na meal.`,
   };
 }
 

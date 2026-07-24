@@ -310,7 +310,10 @@ function AdminBetaPage() {
 
   if (error) {
     return (
-      <div className="min-h-[100dvh] bg-background px-6 py-10 max-w-md mx-auto">
+      <div
+        className="min-h-[100dvh] bg-background px-6 pb-10 max-w-md mx-auto"
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 2.5rem)" }}
+      >
         <h1 className="text-xl font-semibold">Not authorised</h1>
         <p className="text-sm text-muted-foreground mt-2">
           Only KainFit administrators can view this page.
@@ -324,11 +327,14 @@ function AdminBetaPage() {
 
   return (
     <div className="min-h-[100dvh] bg-background pb-24">
-      <div className="max-w-3xl mx-auto px-5 pt-6">
+      <div
+        className="max-w-3xl mx-auto px-5"
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)" }}
+      >
         <div className="flex items-center justify-between">
           <Link
             to="/profile"
-            className="inline-flex items-center gap-1 text-sm text-muted-foreground -ml-2 px-2 py-1"
+            className="inline-flex min-h-11 items-center gap-1 text-sm text-muted-foreground -ml-2 px-2 py-2"
           >
             <ArrowLeft className="h-4 w-4" /> Back
           </Link>
@@ -373,11 +379,21 @@ function AdminBetaPage() {
           <div className="mt-8 text-sm text-muted-foreground">Loading metrics…</div>
         ) : (
           <>
-            <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+            <h2 className="mt-6 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Acquisition &amp; activity totals · all time
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Raw event/table counts since launch, not a rolling window. &quot;Signups
+              completed&quot; counts an analytics event and can under-count real signups (see the
+              30-day, database- backed count in Activation &amp; Retention below). &quot;Day-1/7
+              returning&quot; here are raw counts with no cohort-maturity filter — for a
+              maturity-gated percentage, use D1/D7 retention below instead.
+            </p>
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
               <Metric label="Unique visitors" value={data.uniqueVisitors} />
               <Metric label="Demo starts" value={data.demoStarts} />
-              <Metric label="Signups completed" value={data.signupsCompleted} />
-              <Metric label="Signups started" value={data.signupsStarted} />
+              <Metric label="Signups completed (event)" value={data.signupsCompleted} />
+              <Metric label="Signups started (event)" value={data.signupsStarted} />
               <Metric label="Users w/ 1st entry" value={data.firstConfirmedByUser} />
               <Metric label="Median parse time" value={`${data.medianProcessingMs} ms`} />
               <Metric
@@ -389,8 +405,8 @@ function AdminBetaPage() {
                 value={`${(data.correctionRate * 100).toFixed(1)}%`}
               />
               <Metric label="Incorrect-macro reports" value={data.incorrectMacroReports} />
-              <Metric label="Day-1 returning" value={data.day1Return} />
-              <Metric label="Day-7 returning" value={data.day7Return} />
+              <Metric label="Day-1 returning (raw)" value={data.day1Return} />
+              <Metric label="Day-7 returning (raw)" value={data.day7Return} />
               <Metric label="Avg entries / active" value={data.avgConfirmedPerActiveUser} />
             </div>
 
@@ -510,11 +526,14 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Post-signup activation
+                Post-signup activation · all time
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Of everyone who finished signing up, how far they got on their own signup day.
-                Drop-off between rows is where people abandon before their first log.
+                Of everyone who ever fired a signup-completed event (all time, not the last-30-days
+                cohort below), how far they got on their own signup day. Drop-off between rows is
+                where people abandon before their first log. This tracks the same idea as Signup-day
+                activation in Activation &amp; Retention below, but from a different population and
+                time window — the two percentages will not always match.
               </p>
               <div className="mt-3 rounded-2xl border border-border bg-card divide-y divide-border">
                 {[
@@ -637,34 +656,36 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Activation &amp; Retention (Manila TZ)
+                Activation &amp; Retention
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Activation = signed up and logged ≥1 food on signup day. D1 = active on Manila
-                calendar day signup+1. D7 (exact) = active on signup+7. 7-day return = active any
-                day in signup+1..signup+7. Denominators exclude cohorts whose window has not fully
-                elapsed (shown as “pending”).
+                Manila-time cohorts · signups from the last 30 days · immature windows excluded.
+                Activation = signed up and logged ≥1 food on signup day (database-backed, not the
+                analytics-event count above). D1 = active on Manila calendar day signup+1. D7
+                (exact) = active on signup+7. 7-day return = active any day in signup+1..signup+7.
+                Denominators (the number after the slash) already exclude cohorts whose window has
+                not fully elapsed — those show as “pending” in the table below instead of a rate.
               </p>
               {!retention ? (
                 <p className="mt-2 text-sm text-muted-foreground">Loading…</p>
               ) : (
                 <>
                   <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <Metric label="Signups (30d)" value={retention.overall.users} />
+                    <Metric label="Signups · last 30 days" value={retention.overall.users} />
                     <Metric
-                      label="Activation"
+                      label="Signup-day activation"
                       value={`${Math.round(retention.overall.activationRate * 100)}% (${retention.overall.activated}/${retention.overall.users})`}
                     />
                     <Metric
-                      label="D1 retention"
+                      label="D1 retained · eligible cohorts"
                       value={`${Math.round(retention.overall.d1Rate * 100)}% (${retention.overall.d1}/${retention.overall.matureD1})`}
                     />
                     <Metric
-                      label="D7 retention (exact)"
+                      label="D7 exact retention · eligible cohorts"
                       value={`${Math.round(retention.overall.d7ExactRate * 100)}% (${retention.overall.d7Exact}/${retention.overall.matureD7})`}
                     />
                     <Metric
-                      label="7-day return rate"
+                      label="7-day return rate · eligible cohorts"
                       value={`${Math.round(retention.overall.d7ReturnRate * 100)}% (${retention.overall.d7Return}/${retention.overall.matureD7})`}
                     />
                   </div>
@@ -724,14 +745,16 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Performance
+                Performance · all time
               </h2>
 
               <p className="mt-1 text-xs text-muted-foreground">
-                End-to-end parse latency measured client-side. AI stage measured server-side.
+                End-to-end parse latency measured client-side, all resolution paths pooled together
+                (cache, verified-database, and AI). AI p50/p95 below are scoped to AI-resolved
+                parses only. Not a rolling window — this covers every sample since launch.
               </p>
               <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
-                <Metric label="Samples" value={data.performance?.samples ?? 0} />
+                <Metric label="Samples (total, all paths)" value={data.performance?.samples ?? 0} />
                 <Metric label="p50 (total)" value={`${data.performance?.p50 ?? 0} ms`} />
                 <Metric label="p75 (total)" value={`${data.performance?.p75 ?? 0} ms`} />
                 <Metric label="p90 (total)" value={`${data.performance?.p90 ?? 0} ms`} />
@@ -752,6 +775,7 @@ function AdminBetaPage() {
                   label="% under 10s"
                   value={`${((data.performance?.under10s ?? 0) * 100).toFixed(0)}%`}
                 />
+                <Metric label="AI samples" value={data.performance?.aiSamples ?? 0} />
                 <Metric label="AI p50" value={`${data.performance?.aiP50 ?? 0} ms`} />
                 <Metric label="AI p95" value={`${data.performance?.aiP95 ?? 0} ms`} />
                 <Metric
@@ -763,14 +787,16 @@ function AdminBetaPage() {
 
             <section className="mt-8">
               <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-                Resolution pipeline
+                Resolution pipeline · all time
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Where confirmed parses came from. Cache hits skip the AI call entirely.
+                Where confirmed parses came from. Cache hits skip the AI call entirely. Cache hit
+                rate/hits below are all-time; see Operations further down for a live 1-minute
+                window.
               </p>
               <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-3">
                 <Metric
-                  label="Cache hit rate"
+                  label="Cache hit rate (all-time)"
                   value={`${((data.resolution?.cacheHitRate ?? 0) * 100).toFixed(0)}%`}
                 />
                 <Metric label="Cache hits (all-time)" value={data.resolution?.cacheHits ?? 0} />
@@ -779,10 +805,16 @@ function AdminBetaPage() {
                   value={data.resolution?.cacheStats?.live_entries ?? 0}
                 />
                 <Metric
-                  label="Cache hits (24h)"
+                  label="Hits on entries touched in 24h"
                   value={data.resolution?.cacheStats?.hits_last_24h ?? 0}
                 />
               </div>
+              <p className="mt-2 text-[11px] text-muted-foreground">
+                &quot;Hits on entries touched in 24h&quot; sums each cache entry&apos;s full
+                lifetime hit count for entries with at least one hit in the last 24h — it is not a
+                count of hits that occurred in the last 24 hours, and can overstate recent activity
+                for long-lived, frequently-reused entries. Known limitation, not fixed in this pass.
+              </p>
               <div className="mt-3 rounded-2xl border border-border bg-card divide-y divide-border">
                 {Object.entries(data.resolution?.counts ?? {}).length === 0 && (
                   <div className="p-4 text-sm text-muted-foreground">
