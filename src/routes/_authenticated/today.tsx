@@ -54,6 +54,7 @@ import { track, markReturned } from "@/lib/analytics";
 import {
   useVoiceRecorder,
   ERROR_COPY as VOICE_ERROR_COPY,
+  RECORDING_LIMIT_REACHED_MESSAGE,
   mergeTranscriptIntoInput,
   type VoiceState,
 } from "@/hooks/useVoiceRecorder";
@@ -193,8 +194,17 @@ const VOICE_FAILURE_STATES: ReadonlySet<VoiceState> = new Set([
   "no_speech",
   "capture_failed",
   "network_failed",
-  "provider_failed",
   "timeout",
+  // Stage 2.5: each of these is its own distinct terminal state with its
+  // own required copy (see VOICE_ERROR_COPY) — never collapsed into one
+  // generic bucket.
+  "rate_limited",
+  "request_in_progress",
+  "feature_disabled",
+  "limiter_unavailable",
+  "invalid_audio",
+  "payload_too_large",
+  "provider_failed",
 ]);
 
 function formatVoiceElapsed(ms: number): string {
@@ -863,6 +873,9 @@ function TodayPage() {
     }
     if (prev === "stopping" && (curr === "transcribing" || curr === "no_speech")) {
       track("recording_duration_bucket", { bucket: bucketVoiceDuration(voice.elapsedMs) });
+      // Informational, not an error: the 20s cap stopped the recording on
+      // its own — nothing was rejected, transcription proceeds normally.
+      if (voice.autoStoppedAtLimit) toast(RECORDING_LIMIT_REACHED_MESSAGE);
     }
     if (curr === "transcript_ready") {
       track("transcription_success", {});
@@ -876,7 +889,7 @@ function TodayPage() {
       if (msg) toast.error(msg);
       requestAnimationFrame(() => inputRef.current?.focus());
     }
-  }, [voice.state, voice.elapsedMs, voice.reset]);
+  }, [voice.state, voice.elapsedMs, voice.reset, voice.autoStoppedAtLimit]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

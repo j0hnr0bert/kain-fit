@@ -8,7 +8,7 @@
 // out separately in the sprint's outstanding blockers.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import { useVoiceRecorder } from "../useVoiceRecorder";
 
 const invokeMock = vi.fn();
@@ -103,6 +103,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // This project has no global RTL setup file, so cleanup() must be called
+  // explicitly here — without it, a hook rendered by one test stays
+  // "mounted" (live effects, timers, in-flight promises) into the next
+  // test, which is exactly what caused an unhandled-rejection leak from an
+  // earlier test's fire-and-forget transcribe() call surfacing during a
+  // later, unrelated test.
+  cleanup();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -247,8 +254,66 @@ describe("useVoiceRecorder — recording lifecycle", () => {
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(20_000);
+      await Promise.resolve(); // let the resulting transcribe() call settle before the test ends
     });
     expect(recorder.state).toBe("inactive"); // recorder.stop() was called by the auto-stop timer
+    expect(result.current.autoStoppedAtLimit).toBe(true);
+  });
+
+  it("does not set autoStoppedAtLimit on a manual stop()", async () => {
+    installBrowserMocks({ permissionsState: "granted" });
+    invokeMock.mockResolvedValue({
+      data: { transcript: "x", requestId: "r", latencyMs: 1 },
+      error: null,
+    });
+    const { result } = renderHook(() => useVoiceRecorder());
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state).toBe("listening"));
+    const recorder = FakeMediaRecorder.instances[0];
+    act(() => recorder.emitData(5000));
+    await passDurationGate();
+    act(() => result.current.stop());
+    await waitFor(() => expect(result.current.state).toBe("transcript_ready"));
+
+    expect(result.current.autoStoppedAtLimit).toBe(false);
+  });
+
+  it("clears autoStoppedAtLimit on the next start()", async () => {
+    vi.useFakeTimers();
+    installBrowserMocks({ permissionsState: "granted" });
+    invokeMock.mockResolvedValue({
+      data: { transcript: "x", requestId: "r", latencyMs: 1 },
+      error: null,
+    });
+    const { result, unmount } = renderHook(() => useVoiceRecorder());
+
+    await act(async () => {
+      result.current.start();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    const recorder = FakeMediaRecorder.instances[0];
+    act(() => recorder.emitData(5000));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+      // Let the auto-stopped recording's own transcribe() call fully
+      // settle before starting a second session, so nothing is left
+      // in-flight when this test ends.
+      await Promise.resolve();
+    });
+    expect(result.current.autoStoppedAtLimit).toBe(true);
+
+    await act(async () => {
+      result.current.reset();
+      result.current.start();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.autoStoppedAtLimit).toBe(false);
+
+    // Cleanly cancel the still-listening second session rather than
+    // leaving it to unmount/timer teardown ordering.
+    act(() => result.current.cancel());
+    unmount();
   });
 
   it("displays elapsed recording time while listening", async () => {
@@ -420,6 +485,110 @@ describe("useVoiceRecorder — transcription failure mapping", () => {
     act(() => result.current.stop());
 
     await waitFor(() => expect(result.current.state).toBe("timeout"));
+  });
+
+  it("maps Stage 2.5's rate_limited_short_window category to its own rate_limited state, distinct from provider_failed", async () => {
+    installBrowserMocks({ permissionsState: "granted" });
+    const response = new Response(JSON.stringify({ error: "rate_limited_short_window" }), {
+      status: 429,
+    });
+    invokeMock.mockResolvedValue({ data: null, error: { context: response } });
+    const { result } = renderHook(() => useVoiceRecorder());
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state).toBe("listening"));
+    const recorder = FakeMediaRecorder.instances[0];
+    act(() => recorder.emitData(5000));
+    await passDurationGate();
+    act(() => result.current.stop());
+
+    await waitFor(() => expect(result.current.state).toBe("rate_limited"));
+  });
+
+  it("maps request_in_progress (active lease conflict) to its own state", async () => {
+    installBrowserMocks({ permissionsState: "granted" });
+    const response = new Response(JSON.stringify({ error: "request_in_progress" }), {
+      status: 429,
+    });
+    invokeMock.mockResolvedValue({ data: null, error: { context: response } });
+    const { result } = renderHook(() => useVoiceRecorder());
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state).toBe("listening"));
+    const recorder = FakeMediaRecorder.instances[0];
+    act(() => recorder.emitData(5000));
+    await passDurationGate();
+    act(() => result.current.stop());
+
+    await waitFor(() => expect(result.current.state).toBe("request_in_progress"));
+  });
+
+  it("maps feature_disabled (kill switch / circuit breaker) to its own state", async () => {
+    installBrowserMocks({ permissionsState: "granted" });
+    const response = new Response(JSON.stringify({ error: "feature_disabled" }), { status: 503 });
+    invokeMock.mockResolvedValue({ data: null, error: { context: response } });
+    const { result } = renderHook(() => useVoiceRecorder());
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state).toBe("listening"));
+    const recorder = FakeMediaRecorder.instances[0];
+    act(() => recorder.emitData(5000));
+    await passDurationGate();
+    act(() => result.current.stop());
+
+    await waitFor(() => expect(result.current.state).toBe("feature_disabled"));
+  });
+
+  it("maps limiter_unavailable to its own state, distinct from network_failed", async () => {
+    installBrowserMocks({ permissionsState: "granted" });
+    const response = new Response(JSON.stringify({ error: "limiter_unavailable" }), {
+      status: 503,
+    });
+    invokeMock.mockResolvedValue({ data: null, error: { context: response } });
+    const { result } = renderHook(() => useVoiceRecorder());
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state).toBe("listening"));
+    const recorder = FakeMediaRecorder.instances[0];
+    act(() => recorder.emitData(5000));
+    await passDurationGate();
+    act(() => result.current.stop());
+
+    await waitFor(() => expect(result.current.state).toBe("limiter_unavailable"));
+  });
+
+  it("maps payload_too_large to its own state", async () => {
+    installBrowserMocks({ permissionsState: "granted" });
+    const response = new Response(JSON.stringify({ error: "payload_too_large" }), {
+      status: 413,
+    });
+    invokeMock.mockResolvedValue({ data: null, error: { context: response } });
+    const { result } = renderHook(() => useVoiceRecorder());
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state).toBe("listening"));
+    const recorder = FakeMediaRecorder.instances[0];
+    act(() => recorder.emitData(5000));
+    await passDurationGate();
+    act(() => result.current.stop());
+
+    await waitFor(() => expect(result.current.state).toBe("payload_too_large"));
+  });
+
+  it("maps invalid_audio to its own state, distinct from the client-only unsupported state", async () => {
+    installBrowserMocks({ permissionsState: "granted" });
+    const response = new Response(JSON.stringify({ error: "invalid_audio" }), { status: 415 });
+    invokeMock.mockResolvedValue({ data: null, error: { context: response } });
+    const { result } = renderHook(() => useVoiceRecorder());
+
+    act(() => result.current.start());
+    await waitFor(() => expect(result.current.state).toBe("listening"));
+    const recorder = FakeMediaRecorder.instances[0];
+    act(() => recorder.emitData(5000));
+    await passDurationGate();
+    act(() => result.current.stop());
+
+    await waitFor(() => expect(result.current.state).toBe("invalid_audio"));
   });
 
   it("reaches the client-side transcription timeout when the provider never responds, capped at one client call (Stage 1 owns its own 2-attempt bound internally)", async () => {

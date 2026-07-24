@@ -19,7 +19,7 @@ import {
   canStop,
   pickSupportedMimeType,
   isNearEmptyRecording,
-  mapServerErrorCategory,
+  mapServerErrorCategoryToEvent,
   statusMessageFor,
   MAX_RECORDING_MS,
   TRANSCRIBE_TIMEOUT_MS,
@@ -30,6 +30,7 @@ export type { VoiceState } from "./voice-state-machine";
 export {
   ERROR_COPY,
   STATUS_COPY,
+  RECORDING_LIMIT_REACHED_MESSAGE,
   mergeTranscriptIntoInput,
   statusMessageFor,
 } from "./voice-state-machine";
@@ -56,6 +57,9 @@ export interface UseVoiceRecorderResult {
   elapsedMs: number;
   statusMessage: string | null;
   isSupported: boolean;
+  // True for exactly the recording that was cut off by the 20s cap —
+  // see RECORDING_LIMIT_REACHED_MESSAGE. Cleared on the next start().
+  autoStoppedAtLimit: boolean;
   start: () => void;
   stop: () => void;
   cancel: () => void;
@@ -88,6 +92,10 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
   const [state, setState] = useState<VoiceState>("idle");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [isSupported] = useState(detectSupport);
+  // True for exactly the recording that was cut off by the 20s auto-stop
+  // timer (not a manual Stop tap) — lets the caller show the "up to 20
+  // seconds" informational message exactly once, at the moment it's true.
+  const [autoStoppedAtLimit, setAutoStoppedAtLimit] = useState(false);
 
   const stateRef = useRef<VoiceState>(state);
   const streamRef = useRef<MediaStream | null>(null);
@@ -190,10 +198,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
           if (response && typeof response.json === "function") {
             const body = await response.json().catch(() => null);
             const category = typeof body?.error === "string" ? body.error : "provider_error";
-            const mapped = mapServerErrorCategory(category);
-            dispatch({
-              type: mapped === "timeout" ? "TRANSCRIPT_TIMED_OUT" : "TRANSCRIPT_PROVIDER_FAILED",
-            });
+            dispatch({ type: mapServerErrorCategoryToEvent(category) });
           } else {
             dispatch({ type: "TRANSCRIPT_NETWORK_FAILED" });
           }
@@ -221,23 +226,27 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
     [dispatch, onTranscriptReady, languageMode],
   );
 
-  const stop = useCallback(() => {
-    if (!canStop(stateRef.current)) return;
-    if (autoStopTimerRef.current) {
-      clearTimeout(autoStopTimerRef.current);
-      autoStopTimerRef.current = null;
-    }
-    if (elapsedTimerRef.current) {
-      clearInterval(elapsedTimerRef.current);
-      elapsedTimerRef.current = null;
-    }
-    dispatch({ type: "STOP_REQUESTED" });
-    try {
-      recorderRef.current?.stop();
-    } catch {
-      // ignore — recorder already stopped/inactive
-    }
-  }, [dispatch]);
+  const stop = useCallback(
+    (reason: "manual" | "auto_limit" = "manual") => {
+      if (!canStop(stateRef.current)) return;
+      if (autoStopTimerRef.current) {
+        clearTimeout(autoStopTimerRef.current);
+        autoStopTimerRef.current = null;
+      }
+      if (elapsedTimerRef.current) {
+        clearInterval(elapsedTimerRef.current);
+        elapsedTimerRef.current = null;
+      }
+      if (reason === "auto_limit") setAutoStoppedAtLimit(true);
+      dispatch({ type: "STOP_REQUESTED" });
+      try {
+        recorderRef.current?.stop();
+      } catch {
+        // ignore — recorder already stopped/inactive
+      }
+    },
+    [dispatch],
+  );
 
   const cancel = useCallback(() => {
     if (!canCancel(stateRef.current)) return;
@@ -353,12 +362,13 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
       setElapsedMs(Date.now() - startedAtRef.current);
     }, ELAPSED_TICK_MS);
     autoStopTimerRef.current = setTimeout(() => {
-      stop();
+      stop("auto_limit");
     }, MAX_RECORDING_MS);
   }, [dispatch, releaseStream, clearTimers, stop, transcribe, isSupported]);
 
   const start = useCallback(() => {
     if (isActiveState(stateRef.current)) return; // duplicate-tap guard
+    setAutoStoppedAtLimit(false);
     void beginSession();
   }, [beginSession]);
 
@@ -403,6 +413,7 @@ export function useVoiceRecorder(options: UseVoiceRecorderOptions = {}): UseVoic
     elapsedMs,
     statusMessage: statusMessageFor(state),
     isSupported,
+    autoStoppedAtLimit,
     start,
     stop,
     cancel,

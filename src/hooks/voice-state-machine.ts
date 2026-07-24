@@ -19,9 +19,20 @@ export type VoiceState =
   | "no_speech"
   | "capture_failed"
   | "network_failed"
-  | "provider_failed"
   | "timeout"
-  | "cancelled";
+  | "cancelled"
+  // Stage 2.5: distinct terminal states for each server-side rejection
+  // category the rate limiter/circuit breaker can produce — deliberately
+  // NOT collapsed into one generic "provider_failed" bucket, so the user
+  // (and tests) can tell "you're being rate limited" apart from "the
+  // whole feature is off" apart from "that file was too big".
+  | "rate_limited"
+  | "request_in_progress"
+  | "feature_disabled"
+  | "limiter_unavailable"
+  | "invalid_audio"
+  | "payload_too_large"
+  | "provider_failed";
 
 export type VoiceEvent =
   | { type: "START_REQUESTED" }
@@ -35,8 +46,14 @@ export type VoiceEvent =
   | { type: "RECORDING_STOPPED_VALID" }
   | { type: "TRANSCRIPT_SUCCEEDED" }
   | { type: "TRANSCRIPT_NETWORK_FAILED" }
-  | { type: "TRANSCRIPT_PROVIDER_FAILED" }
   | { type: "TRANSCRIPT_TIMED_OUT" }
+  | { type: "TRANSCRIPT_RATE_LIMITED" }
+  | { type: "TRANSCRIPT_REQUEST_IN_PROGRESS" }
+  | { type: "TRANSCRIPT_FEATURE_DISABLED" }
+  | { type: "TRANSCRIPT_LIMITER_UNAVAILABLE" }
+  | { type: "TRANSCRIPT_INVALID_AUDIO" }
+  | { type: "TRANSCRIPT_PAYLOAD_TOO_LARGE" }
+  | { type: "TRANSCRIPT_PROVIDER_FAILED" }
   | { type: "CANCELLED" }
   | { type: "RESET" };
 
@@ -75,8 +92,14 @@ const TRANSITIONS: Record<VoiceState, Partial<Record<VoiceEvent["type"], VoiceSt
   transcribing: {
     TRANSCRIPT_SUCCEEDED: "transcript_ready",
     TRANSCRIPT_NETWORK_FAILED: "network_failed",
-    TRANSCRIPT_PROVIDER_FAILED: "provider_failed",
     TRANSCRIPT_TIMED_OUT: "timeout",
+    TRANSCRIPT_RATE_LIMITED: "rate_limited",
+    TRANSCRIPT_REQUEST_IN_PROGRESS: "request_in_progress",
+    TRANSCRIPT_FEATURE_DISABLED: "feature_disabled",
+    TRANSCRIPT_LIMITER_UNAVAILABLE: "limiter_unavailable",
+    TRANSCRIPT_INVALID_AUDIO: "invalid_audio",
+    TRANSCRIPT_PAYLOAD_TOO_LARGE: "payload_too_large",
+    TRANSCRIPT_PROVIDER_FAILED: "provider_failed",
     CANCELLED: "cancelled",
   },
   // Terminal states: only an explicit RESET or a fresh, user-initiated
@@ -91,9 +114,15 @@ const TRANSITIONS: Record<VoiceState, Partial<Record<VoiceEvent["type"], VoiceSt
   no_speech: RETRYABLE_TERMINAL,
   capture_failed: RETRYABLE_TERMINAL,
   network_failed: RETRYABLE_TERMINAL,
-  provider_failed: RETRYABLE_TERMINAL,
   timeout: RETRYABLE_TERMINAL,
   cancelled: RETRYABLE_TERMINAL,
+  rate_limited: RETRYABLE_TERMINAL,
+  request_in_progress: RETRYABLE_TERMINAL,
+  feature_disabled: RETRYABLE_TERMINAL,
+  limiter_unavailable: RETRYABLE_TERMINAL,
+  invalid_audio: RETRYABLE_TERMINAL,
+  payload_too_large: RETRYABLE_TERMINAL,
+  provider_failed: RETRYABLE_TERMINAL,
 };
 
 export function reduceVoiceState(state: VoiceState, event: VoiceEvent): VoiceState {
@@ -159,16 +188,47 @@ export function isNearEmptyRecording(byteLength: number, durationMs: number): bo
 }
 
 // --- Server error-category mapping --------------------------------------
-// Maps Stage 1's TranscriptionErrorCategory (supabase/functions/transcribe-voice/logic.ts)
-// down to the 3 failure buckets this state machine distinguishes.
-// invalid_request/unsupported_media_type/too_large should never occur given
-// Stage 2's own pre-send validation, but if they ever do, "provider_failed"
-// is the safe, non-blaming fallback rather than inventing a new state.
-export function mapServerErrorCategory(
-  category: string,
-): "network_failed" | "provider_failed" | "timeout" {
-  if (category === "timeout") return "timeout";
-  return "provider_failed";
+// Maps every category the transcribe-voice Edge Function's guard.ts can
+// return to its own distinct terminal VoiceState — deliberately NOT
+// collapsed into one generic bucket (Stage 2.5 correction: an earlier
+// version of this function did exactly that, and it was wrong — see the
+// Stage 2.5 checkpoint report). "timeout" is Stage 1's original category
+// name; "transcription_timeout" is Stage 2.5's rename of the same thing —
+// both map to the same client state.
+//
+// unauthenticated/invalid_request have no dedicated required copy (they
+// represent the caller not being signed in, or a malformed request — both
+// edge cases that should never occur through the real KainFit UI, since
+// the route is already auth-gated and this client always sends a
+// well-formed request). They fall back to provider_failed rather than
+// inventing new unreachable-in-practice states.
+export function mapServerErrorCategoryToEvent(category: string): VoiceEvent["type"] {
+  switch (category) {
+    case "timeout":
+    case "transcription_timeout":
+      return "TRANSCRIPT_TIMED_OUT";
+    case "rate_limited_short_window":
+    case "rate_limited_daily":
+      return "TRANSCRIPT_RATE_LIMITED";
+    case "request_in_progress":
+      return "TRANSCRIPT_REQUEST_IN_PROGRESS";
+    case "feature_disabled":
+    case "project_limit_reached":
+      return "TRANSCRIPT_FEATURE_DISABLED";
+    case "limiter_unavailable":
+      return "TRANSCRIPT_LIMITER_UNAVAILABLE";
+    case "invalid_audio":
+    case "unsupported_media_type":
+      return "TRANSCRIPT_INVALID_AUDIO";
+    case "payload_too_large":
+    case "too_large":
+      return "TRANSCRIPT_PAYLOAD_TOO_LARGE";
+    default:
+      // unauthenticated, invalid_request, provider_unavailable,
+      // transcription_failed, unauthorized, provider_error, and anything
+      // unrecognized all land here — see comment above.
+      return "TRANSCRIPT_PROVIDER_FAILED";
+  }
 }
 
 // --- Timing constants ----------------------------------------------------
@@ -189,11 +249,26 @@ export const ERROR_COPY: Partial<Record<VoiceState, string>> = {
     "Microphone access is off. Enable it in your browser settings or type your meal.",
   no_speech: "I didn't catch anything. Try again or type your meal.",
   network_failed: "Voice couldn't connect. Try again or type your meal.",
-  provider_failed: "Voice couldn't be processed right now. Try again or type your meal.",
   timeout: "Voice took too long. Nothing was saved—please try again.",
   unsupported: "Voice input isn't supported in this browser. You can still type your meal.",
   capture_failed: "Couldn't access the microphone. Try again or type your meal.",
+  // Stage 2.5 required copy — exact strings, do not reword without re-review.
+  rate_limited:
+    "You've made several voice requests. Wait a moment, then try again—or type your meal.",
+  request_in_progress: "A voice request is already processing. Wait a moment or type your meal.",
+  feature_disabled: "Voice is temporarily unavailable. You can still type your meal.",
+  limiter_unavailable: "Voice couldn't connect right now. Try again later or type your meal.",
+  payload_too_large: "That recording was too large. Try a shorter recording or type your meal.",
+  invalid_audio: "This browser couldn't send the recording. Try again or type your meal.",
+  provider_failed: "Voice transcription didn't work this time. Try again or type your meal.",
 };
+
+// Informational (not an error) copy shown once when the client's own 20s
+// recording cap auto-stops the recorder — distinct from an error state,
+// since nothing was rejected; the recording proceeds to transcription
+// normally right after this fires.
+export const RECORDING_LIMIT_REACHED_MESSAGE =
+  "Voice entries can be up to 20 seconds. Try a shorter description or type your meal.";
 
 export const STATUS_COPY: Partial<Record<VoiceState, string>> = {
   requesting_permission: "Starting microphone…",

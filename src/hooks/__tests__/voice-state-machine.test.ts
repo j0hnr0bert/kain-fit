@@ -7,11 +7,12 @@ import {
   canStop,
   pickSupportedMimeType,
   isNearEmptyRecording,
-  mapServerErrorCategory,
+  mapServerErrorCategoryToEvent,
   mergeTranscriptIntoInput,
   statusMessageFor,
   ERROR_COPY,
   STATUS_COPY,
+  RECORDING_LIMIT_REACHED_MESSAGE,
   ACTIVE_STATES,
   type VoiceState,
 } from "../voice-state-machine";
@@ -29,9 +30,15 @@ const ALL_STATES: VoiceState[] = [
   "no_speech",
   "capture_failed",
   "network_failed",
-  "provider_failed",
   "timeout",
   "cancelled",
+  "rate_limited",
+  "request_in_progress",
+  "feature_disabled",
+  "limiter_unavailable",
+  "invalid_audio",
+  "payload_too_large",
+  "provider_failed",
 ];
 
 describe("reduceVoiceState — valid transitions", () => {
@@ -71,17 +78,35 @@ describe("reduceVoiceState — valid transitions", () => {
     expect(reduceVoiceState("stopping", { type: "CAPTURE_FAILED" })).toBe("capture_failed");
   });
 
-  it("transcribing fans out to every server outcome", () => {
+  it("transcribing fans out to every server outcome, including Stage 2.5's distinct rejection categories", () => {
     expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_SUCCEEDED" })).toBe(
       "transcript_ready",
     );
     expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_NETWORK_FAILED" })).toBe(
       "network_failed",
     );
+    expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_TIMED_OUT" })).toBe("timeout");
+    expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_RATE_LIMITED" })).toBe(
+      "rate_limited",
+    );
+    expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_REQUEST_IN_PROGRESS" })).toBe(
+      "request_in_progress",
+    );
+    expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_FEATURE_DISABLED" })).toBe(
+      "feature_disabled",
+    );
+    expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_LIMITER_UNAVAILABLE" })).toBe(
+      "limiter_unavailable",
+    );
+    expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_INVALID_AUDIO" })).toBe(
+      "invalid_audio",
+    );
+    expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_PAYLOAD_TOO_LARGE" })).toBe(
+      "payload_too_large",
+    );
     expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_PROVIDER_FAILED" })).toBe(
       "provider_failed",
     );
-    expect(reduceVoiceState("transcribing", { type: "TRANSCRIPT_TIMED_OUT" })).toBe("timeout");
     expect(reduceVoiceState("transcribing", { type: "CANCELLED" })).toBe("cancelled");
   });
 
@@ -92,9 +117,15 @@ describe("reduceVoiceState — valid transitions", () => {
     "no_speech",
     "capture_failed",
     "network_failed",
-    "provider_failed",
     "timeout",
     "cancelled",
+    "rate_limited",
+    "request_in_progress",
+    "feature_disabled",
+    "limiter_unavailable",
+    "invalid_audio",
+    "payload_too_large",
+    "provider_failed",
   ];
 
   it("every terminal error/cancelled state accepts RESET -> idle and START_REQUESTED -> requesting_permission (manual retry only)", () => {
@@ -135,8 +166,14 @@ describe("reduceVoiceState — deterministic no-ops for invalid events", () => {
       "RECORDING_STOPPED_VALID",
       "TRANSCRIPT_SUCCEEDED",
       "TRANSCRIPT_NETWORK_FAILED",
-      "TRANSCRIPT_PROVIDER_FAILED",
       "TRANSCRIPT_TIMED_OUT",
+      "TRANSCRIPT_RATE_LIMITED",
+      "TRANSCRIPT_REQUEST_IN_PROGRESS",
+      "TRANSCRIPT_FEATURE_DISABLED",
+      "TRANSCRIPT_LIMITER_UNAVAILABLE",
+      "TRANSCRIPT_INVALID_AUDIO",
+      "TRANSCRIPT_PAYLOAD_TOO_LARGE",
+      "TRANSCRIPT_PROVIDER_FAILED",
       "CANCELLED",
       "RESET",
     ] as const;
@@ -205,22 +242,60 @@ describe("isNearEmptyRecording", () => {
   });
 });
 
-describe("mapServerErrorCategory", () => {
-  it("maps the server's timeout category to timeout", () => {
-    expect(mapServerErrorCategory("timeout")).toBe("timeout");
+describe("mapServerErrorCategoryToEvent — never collapses distinct server categories into one bucket", () => {
+  it("maps both timeout spellings to TRANSCRIPT_TIMED_OUT", () => {
+    expect(mapServerErrorCategoryToEvent("timeout")).toBe("TRANSCRIPT_TIMED_OUT");
+    expect(mapServerErrorCategoryToEvent("transcription_timeout")).toBe("TRANSCRIPT_TIMED_OUT");
   });
 
-  it("maps every other server category to the safe provider_failed bucket", () => {
+  it("maps both rate-limit windows to TRANSCRIPT_RATE_LIMITED", () => {
+    expect(mapServerErrorCategoryToEvent("rate_limited_short_window")).toBe(
+      "TRANSCRIPT_RATE_LIMITED",
+    );
+    expect(mapServerErrorCategoryToEvent("rate_limited_daily")).toBe("TRANSCRIPT_RATE_LIMITED");
+  });
+
+  it("maps request_in_progress to its own event", () => {
+    expect(mapServerErrorCategoryToEvent("request_in_progress")).toBe(
+      "TRANSCRIPT_REQUEST_IN_PROGRESS",
+    );
+  });
+
+  it("maps the kill switch and the circuit breaker to the same feature_disabled event", () => {
+    expect(mapServerErrorCategoryToEvent("feature_disabled")).toBe("TRANSCRIPT_FEATURE_DISABLED");
+    expect(mapServerErrorCategoryToEvent("project_limit_reached")).toBe(
+      "TRANSCRIPT_FEATURE_DISABLED",
+    );
+  });
+
+  it("maps limiter_unavailable to its own event, distinct from a client-side network failure", () => {
+    expect(mapServerErrorCategoryToEvent("limiter_unavailable")).toBe(
+      "TRANSCRIPT_LIMITER_UNAVAILABLE",
+    );
+  });
+
+  it("maps invalid_audio and Stage 1's unsupported_media_type to the same event", () => {
+    expect(mapServerErrorCategoryToEvent("invalid_audio")).toBe("TRANSCRIPT_INVALID_AUDIO");
+    expect(mapServerErrorCategoryToEvent("unsupported_media_type")).toBe(
+      "TRANSCRIPT_INVALID_AUDIO",
+    );
+  });
+
+  it("maps payload_too_large and Stage 1's too_large to the same event", () => {
+    expect(mapServerErrorCategoryToEvent("payload_too_large")).toBe("TRANSCRIPT_PAYLOAD_TOO_LARGE");
+    expect(mapServerErrorCategoryToEvent("too_large")).toBe("TRANSCRIPT_PAYLOAD_TOO_LARGE");
+  });
+
+  it("falls back to TRANSCRIPT_PROVIDER_FAILED only for genuinely generic/unreachable-in-practice categories", () => {
     for (const c of [
       "unauthorized",
       "provider_error",
       "provider_unavailable",
       "invalid_request",
-      "unsupported_media_type",
-      "too_large",
+      "unauthenticated",
       "anything_unrecognized",
     ]) {
-      expect(mapServerErrorCategory(c)).toBe("provider_failed");
+      expect(mapServerErrorCategoryToEvent(c)).toBe("TRANSCRIPT_PROVIDER_FAILED");
     }
   });
 });
@@ -256,6 +331,40 @@ describe("status/error copy", () => {
     expect(ERROR_COPY.unsupported).toBe(
       "Voice input isn't supported in this browser. You can still type your meal.",
     );
+  });
+
+  it("has the exact required Stage 2.5 copy for each distinct rejection category", () => {
+    expect(ERROR_COPY.rate_limited).toBe(
+      "You've made several voice requests. Wait a moment, then try again—or type your meal.",
+    );
+    expect(ERROR_COPY.request_in_progress).toBe(
+      "A voice request is already processing. Wait a moment or type your meal.",
+    );
+    expect(ERROR_COPY.feature_disabled).toBe(
+      "Voice is temporarily unavailable. You can still type your meal.",
+    );
+    expect(ERROR_COPY.limiter_unavailable).toBe(
+      "Voice couldn't connect right now. Try again later or type your meal.",
+    );
+    expect(ERROR_COPY.payload_too_large).toBe(
+      "That recording was too large. Try a shorter recording or type your meal.",
+    );
+    expect(ERROR_COPY.invalid_audio).toBe(
+      "This browser couldn't send the recording. Try again or type your meal.",
+    );
+    expect(ERROR_COPY.provider_failed).toBe(
+      "Voice transcription didn't work this time. Try again or type your meal.",
+    );
+    expect(RECORDING_LIMIT_REACHED_MESSAGE).toBe(
+      "Voice entries can be up to 20 seconds. Try a shorter description or type your meal.",
+    );
+  });
+
+  it("no error message exposes internal details (SQL, provider names, exceptions, env vars)", () => {
+    const forbidden = /sql|postgres|openai|exception|stack|env|secret|api[_-]?key/i;
+    for (const msg of Object.values(ERROR_COPY)) {
+      expect(msg).not.toMatch(forbidden);
+    }
   });
 
   it("every non-idle, non-transcript_ready, non-cancelled state resolves to a non-null status message", () => {
