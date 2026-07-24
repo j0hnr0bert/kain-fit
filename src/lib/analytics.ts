@@ -144,7 +144,16 @@ export type EventName =
   | "recent_item_reused"
   | "favorite_used"
   | "saved_meal_reused"
-  | "rage_tap";
+  | "rage_tap"
+  // Voice input (Stage 2, useVoiceRecorder) — metadata only, never raw
+  // audio/transcript/food content. See src/hooks/useVoiceRecorder.ts.
+  | "voice_started"
+  | "permission_result"
+  | "recording_duration_bucket"
+  | "transcription_success"
+  | "categorized_failure"
+  | "retry"
+  | "transcript_edited";
 
 // These fire more than once per second (e.g. web_vital LCP+INP+CLS,
 // cache_hit per item) — client-side dedupe would silently drop them.

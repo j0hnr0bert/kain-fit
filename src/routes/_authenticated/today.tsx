@@ -46,9 +46,17 @@ import {
   AlertCircle,
   Flag,
   Flame,
+  Square,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { track, markReturned } from "@/lib/analytics";
+import {
+  useVoiceRecorder,
+  ERROR_COPY as VOICE_ERROR_COPY,
+  mergeTranscriptIntoInput,
+  type VoiceState,
+} from "@/hooks/useVoiceRecorder";
 import { mark, elapsed } from "@/lib/perf";
 import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
@@ -178,6 +186,31 @@ function formatDbError(error: {
     .join(" ");
 }
 
+const VOICE_FAILURE_STATES: ReadonlySet<VoiceState> = new Set([
+  "permission_denied",
+  "permission_blocked",
+  "unsupported",
+  "no_speech",
+  "capture_failed",
+  "network_failed",
+  "provider_failed",
+  "timeout",
+]);
+
+function formatVoiceElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function bucketVoiceDuration(ms: number): string {
+  if (ms < 5000) return "0-5s";
+  if (ms < 10000) return "5-10s";
+  if (ms < 15000) return "10-15s";
+  return "15-20s";
+}
+
 function mealFromHour(h: number): Entry["meal_type"] {
   if (h < 10) return "breakfast";
   if (h < 14) return "lunch";
@@ -200,8 +233,17 @@ function TodayPage() {
   const anyRecalcing = recalcingRows.size > 0;
   const [originalInput, setOriginalInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
-  const [listening, setListening] = useState(false);
+  const voiceTranscriptRef = useRef<string | null>(null);
+  const voicePrevStateRef = useRef<VoiceState>("idle");
+  const voice = useVoiceRecorder({
+    onTranscriptReady: (transcript) => {
+      setInput((prev) => {
+        const merged = mergeTranscriptIntoInput(prev, transcript);
+        voiceTranscriptRef.current = merged;
+        return merged;
+      });
+    },
+  });
   // Coaching Card state — see .lovable/evidence-engine.md and the
   // deterministic state machine in src/lib/coaching.ts. `celebratedToday`
   // also persists to localStorage per Manila day so the steady-state
@@ -796,9 +838,53 @@ function TodayPage() {
     return () => window.clearTimeout(t);
   }, [saveReaction]);
 
+  // Voice-input side effects: privacy-safe analytics (status/category/
+  // duration-bucket only — never raw audio, transcript, or food content),
+  // the required error toasts, and focus return after cancel/error. Reacts
+  // to voice.state rather than duplicating the hook's own transition logic.
+  useEffect(() => {
+    const prev = voicePrevStateRef.current;
+    const curr = voice.state;
+    voicePrevStateRef.current = curr;
+    if (prev === curr) return;
+
+    if (curr === "requesting_permission") {
+      if (VOICE_FAILURE_STATES.has(prev)) {
+        track("retry", { previous_category: prev });
+      } else {
+        track("voice_started", {});
+      }
+    }
+    if (curr === "listening" && prev === "requesting_permission") {
+      track("permission_result", { granted: true });
+    }
+    if (curr === "permission_denied" || curr === "permission_blocked") {
+      track("permission_result", { granted: false, category: curr });
+    }
+    if (prev === "stopping" && (curr === "transcribing" || curr === "no_speech")) {
+      track("recording_duration_bucket", { bucket: bucketVoiceDuration(voice.elapsedMs) });
+    }
+    if (curr === "transcript_ready") {
+      track("transcription_success", {});
+      voice.reset();
+    }
+    if (VOICE_FAILURE_STATES.has(curr)) {
+      track("categorized_failure", { category: curr });
+    }
+    if (VOICE_FAILURE_STATES.has(curr) || curr === "cancelled") {
+      const msg = VOICE_ERROR_COPY[curr];
+      if (msg) toast.error(msg);
+      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+  }, [voice.state, voice.elapsedMs, voice.reset]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim() || parsing) return;
+    if (voiceTranscriptRef.current !== null) {
+      track("transcript_edited", { edited: input !== voiceTranscriptRef.current });
+      voiceTranscriptRef.current = null;
+    }
     if (betaUsage?.reachedLimit) {
       toast.error(
         "You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.",
@@ -880,29 +966,6 @@ function TodayPage() {
       window.clearTimeout(highDemandTimer);
       setParsing(false);
     }
-  }
-
-  function startVoice() {
-    const SR: any =
-      typeof window !== "undefined" &&
-      ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
-    if (!SR) {
-      toast.error("Voice input isn't supported on this device.");
-      return;
-    }
-    const rec = new SR();
-    rec.lang = "en-PH";
-    rec.interimResults = false;
-    rec.maxAlternatives = 1;
-    rec.onresult = (ev: any) => {
-      const text = ev.results[0][0].transcript;
-      setInput((prev) => (prev ? prev + " " + text : text));
-    };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
-    recognitionRef.current = rec;
-    setListening(true);
-    rec.start();
   }
 
   async function confirmAdd() {
@@ -1156,37 +1219,73 @@ function TodayPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Type your next food or meal…"
-              className="h-14 pl-5 pr-24 bg-transparent border-0 rounded-3xl text-base focus-visible:ring-0"
-              disabled={parsing}
+              className="h-14 pl-5 pr-28 bg-transparent border-0 rounded-3xl text-base focus-visible:ring-0"
+              disabled={parsing || voice.isActive}
             />
-            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-              <button
-                type="button"
-                onClick={startVoice}
-                disabled={parsing}
-                className={cn(
-                  "h-10 w-10 rounded-full flex items-center justify-center",
-                  listening
-                    ? "bg-coral text-coral-foreground animate-pulse"
-                    : "text-muted-foreground hover:bg-muted",
+            {voice.isActive ? (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
+                {voice.state === "listening" && (
+                  <span
+                    className="text-xs tabular-nums text-muted-foreground min-w-[2.25rem] text-right"
+                    aria-hidden="true"
+                  >
+                    {formatVoiceElapsed(voice.elapsedMs)}
+                  </span>
                 )}
-                aria-label="Voice input"
-              >
-                <Mic className="h-5 w-5" />
-              </button>
-              <button
-                type="submit"
-                disabled={parsing || !input.trim()}
-                className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
-                aria-label="Submit"
-              >
-                {parsing ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
+                {voice.state === "listening" ? (
+                  <button
+                    type="button"
+                    onClick={voice.stop}
+                    className="h-11 w-11 rounded-full flex items-center justify-center bg-coral text-coral-foreground motion-safe:animate-pulse"
+                    aria-label="Stop recording"
+                  >
+                    <Square className="h-4 w-4" fill="currentColor" />
+                  </button>
                 ) : (
-                  <ArrowUp className="h-5 w-5" />
+                  <span
+                    className="h-11 w-11 flex items-center justify-center text-muted-foreground"
+                    aria-hidden="true"
+                  >
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </span>
                 )}
-              </button>
-            </div>
+                <button
+                  type="button"
+                  onClick={voice.cancel}
+                  className="h-11 w-11 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted"
+                  aria-label="Cancel voice input"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            ) : (
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={voice.start}
+                  disabled={parsing}
+                  className="h-11 w-11 rounded-full flex items-center justify-center text-muted-foreground hover:bg-muted"
+                  aria-label="Voice input"
+                >
+                  <Mic className="h-5 w-5" />
+                </button>
+                <button
+                  type="submit"
+                  disabled={parsing || !input.trim()}
+                  className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40"
+                  aria-label="Submit"
+                >
+                  {parsing ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <ArrowUp className="h-5 w-5" />
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+          <div aria-live="polite" className="sr-only">
+            {voice.statusMessage ?? ""}
           </div>
           <p className="mt-2 px-1 text-xs text-muted-foreground">
             Try: <span className="text-foreground/80">{placeholderExamples[placeholderIdx]}</span>
