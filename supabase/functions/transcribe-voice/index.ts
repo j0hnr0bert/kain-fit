@@ -194,7 +194,13 @@ Deno.serve(async (req: Request) => {
     return json(200, outcome.result);
   }
 
-  console.error("transcribe-voice: rejected", { category: outcome.category });
+  // Server log only. Never spread `outcome` here — the client response
+  // below is built from `category` alone, deliberately excluding
+  // `diagnostics` (see guard.ts's VoiceGuardFailure comment).
+  console.error("transcribe-voice: rejected", {
+    category: outcome.category,
+    diagnostics: outcome.diagnostics,
+  });
   return json(
     ERROR_STATUS[outcome.category],
     { error: outcome.category, message: ERROR_MESSAGE[outcome.category] },

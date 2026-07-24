@@ -466,3 +466,83 @@ describe("runVoiceTranscriptionGuard — privacy (no persistence of audio/transc
     expect(JSON.stringify(outcome)).not.toContain("x@y.com");
   });
 });
+
+// Stage 3B Phase 3: sanitized upstream diagnostics thread through the
+// guard's failure outcome for SERVER LOGS ONLY. index.ts's client-facing
+// json() response is built from `outcome.category` alone and must never
+// spread `outcome.diagnostics` into it — that boundary can't be unit
+// tested here (index.ts is Deno-only, outside this Vitest surface), so
+// this suite proves the guard-level contract precisely and index.ts's own
+// json() call is deliberately kept to `{ error, message }` only (see the
+// comment directly above that call).
+describe("runVoiceTranscriptionGuard — sanitized upstream diagnostics (server-log-only)", () => {
+  it("threads diagnostics from a TranscriptionError onto the failure outcome", async () => {
+    const { TranscriptionError } = await import("../logic");
+    const err = new TranscriptionError("provider_error", "rate limited");
+    err.diagnostics = {
+      upstreamStatus: 429,
+      upstreamErrorType: "insufficient_quota",
+      upstreamErrorCode: "insufficient_quota",
+      upstreamRequestId: "req-1",
+      sanitizedUpstreamMessage: "You exceeded your current quota.",
+    };
+    err.attempt = 2;
+    err.totalLatencyMs = 3800;
+
+    const deps = baseDeps({
+      transcribe: vi.fn(async () => {
+        throw err;
+      }),
+    });
+    const outcome = await runVoiceTranscriptionGuard(deps);
+
+    expect(outcome).toMatchObject({
+      ok: false,
+      category: "transcription_failed",
+      diagnostics: {
+        upstreamStatus: 429,
+        upstreamErrorType: "insufficient_quota",
+        upstreamErrorCode: "insufficient_quota",
+        upstreamRequestId: "req-1",
+        sanitizedUpstreamMessage: "You exceeded your current quota.",
+        attempt: 2,
+        totalLatencyMs: 3800,
+      },
+    });
+  });
+
+  it("a malicious upstream error message, even if it slipped past logic.ts's redaction, still never contains raw audio/multipart markers by construction (diagnostics is built from named string fields only)", async () => {
+    const { TranscriptionError } = await import("../logic");
+    const err = new TranscriptionError("provider_error", "failed");
+    err.diagnostics = {
+      upstreamStatus: 500,
+      sanitizedUpstreamMessage: "generic server error",
+    };
+    const deps = baseDeps({
+      transcribe: vi.fn(async () => {
+        throw err;
+      }),
+    });
+    const outcome = await runVoiceTranscriptionGuard(deps);
+    const serialized = JSON.stringify(outcome);
+    expect(serialized).not.toContain("multipart");
+    expect(serialized).not.toContain("FormData");
+    expect(serialized).not.toMatch(/Bearer /);
+  });
+
+  it("a non-TranscriptionError throw yields no diagnostics at all (nothing to attach)", async () => {
+    const deps = baseDeps({
+      transcribe: vi.fn(async () => {
+        throw new Error("unexpected");
+      }),
+    });
+    const outcome = await runVoiceTranscriptionGuard(deps);
+    expect(outcome).toMatchObject({ ok: false, category: "transcription_failed" });
+    expect((outcome as { diagnostics?: unknown }).diagnostics).toBeUndefined();
+  });
+
+  it("a successful outcome never has a diagnostics field", async () => {
+    const outcome = await runVoiceTranscriptionGuard(baseDeps());
+    expect(outcome).not.toHaveProperty("diagnostics");
+  });
+});

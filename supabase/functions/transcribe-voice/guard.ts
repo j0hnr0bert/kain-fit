@@ -134,6 +134,22 @@ export interface VoiceGuardFailure {
   ok: false;
   category: VoiceGuardErrorCategory;
   retryAfterSeconds?: number;
+  // Sanitized, SERVER-LOG-ONLY diagnostic detail (upstream HTTP status,
+  // OpenAI's own error.type/error.code, its request id, attempt count,
+  // latency). Populated only when the failure came from a Stage 1
+  // TranscriptionError with diagnostics attached (see logic.ts). Contains
+  // no audio, no transcript, no API key, no Authorization header, and no
+  // raw provider body — index.ts's client-facing json() response is built
+  // from `category` alone and must never spread this field into it.
+  diagnostics?: {
+    upstreamStatus?: number;
+    upstreamErrorType?: string;
+    upstreamErrorCode?: string;
+    upstreamRequestId?: string | null;
+    sanitizedUpstreamMessage?: string;
+    attempt?: number;
+    totalLatencyMs?: number;
+  };
 }
 
 export type VoiceGuardOutcome = VoiceGuardSuccess | VoiceGuardFailure;
@@ -245,7 +261,19 @@ export async function runVoiceTranscriptionGuard(deps: VoiceGuardDeps): Promise<
       return { ok: true, result };
     } catch (err) {
       if (err instanceof TranscriptionError) {
-        return { ok: false, category: mapTranscriptionErrorCategory(err.category) };
+        return {
+          ok: false,
+          category: mapTranscriptionErrorCategory(err.category),
+          diagnostics: {
+            upstreamStatus: err.diagnostics?.upstreamStatus,
+            upstreamErrorType: err.diagnostics?.upstreamErrorType,
+            upstreamErrorCode: err.diagnostics?.upstreamErrorCode,
+            upstreamRequestId: err.diagnostics?.upstreamRequestId,
+            sanitizedUpstreamMessage: err.diagnostics?.sanitizedUpstreamMessage,
+            attempt: err.attempt,
+            totalLatencyMs: err.totalLatencyMs,
+          },
+        };
       }
       return { ok: false, category: "transcription_failed" };
     }

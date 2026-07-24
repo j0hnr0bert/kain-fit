@@ -49,8 +49,64 @@ export type TranscriptionErrorCategory =
   | "provider_error"
   | "provider_unavailable";
 
+// Sanitized, SERVER-LOG-ONLY detail about what the upstream provider
+// actually said on failure — never forwarded to the client (see guard.ts's
+// VoiceGuardFailure comment and index.ts's json() call, which builds the
+// client payload from `category` alone). Deliberately a small, fixed set
+// of short fields extracted from OpenAI's documented `{error:{type,code,
+// message}}` shape — never the raw body, never request headers, never the
+// audio/multipart we sent.
+export interface UpstreamDiagnostics {
+  upstreamStatus?: number;
+  upstreamErrorType?: string;
+  upstreamErrorCode?: string;
+  upstreamRequestId?: string | null;
+  sanitizedUpstreamMessage?: string;
+}
+
+const MAX_SANITIZED_MESSAGE_LENGTH = 200;
+// Defense-in-depth redaction: OpenAI's own error messages shouldn't ever
+// echo back OUR key, but a key-shaped substring is stripped regardless
+// before this ever reaches a log line.
+const SECRET_LIKE_PATTERN = /sk-[A-Za-z0-9_-]{10,}/g;
+
+function sanitizeUpstreamMessage(raw: unknown): string | undefined {
+  if (typeof raw !== "string" || raw.length === 0) return undefined;
+  const redacted = raw.replace(SECRET_LIKE_PATTERN, "[redacted]");
+  return redacted.length > MAX_SANITIZED_MESSAGE_LENGTH
+    ? redacted.slice(0, MAX_SANITIZED_MESSAGE_LENGTH) + "…"
+    : redacted;
+}
+
+// Best-effort only: if the body isn't JSON or doesn't match OpenAI's
+// documented error shape, diagnostics simply stays limited to status +
+// request id — never throws, never blocks the caller's own error handling.
+async function extractUpstreamDiagnostics(res: Response): Promise<UpstreamDiagnostics> {
+  const diagnostics: UpstreamDiagnostics = {
+    upstreamStatus: res.status,
+    upstreamRequestId: res.headers.get("x-request-id"),
+  };
+  try {
+    const body = await res.clone().json();
+    const err = (body as { error?: { type?: unknown; code?: unknown; message?: unknown } } | null)
+      ?.error;
+    if (err) {
+      if (typeof err.type === "string") diagnostics.upstreamErrorType = err.type;
+      if (typeof err.code === "string") diagnostics.upstreamErrorCode = err.code;
+      diagnostics.sanitizedUpstreamMessage = sanitizeUpstreamMessage(err.message);
+    }
+  } catch {
+    // Not JSON / not the documented shape — fine, see comment above.
+  }
+  return diagnostics;
+}
+
 export class TranscriptionError extends Error {
   readonly category: TranscriptionErrorCategory;
+  // Mutable, optional, server-log-only — see UpstreamDiagnostics above.
+  diagnostics?: UpstreamDiagnostics;
+  attempt?: number;
+  totalLatencyMs?: number;
   constructor(category: TranscriptionErrorCategory, message: string) {
     super(message);
     this.name = "TranscriptionError";
@@ -137,50 +193,58 @@ async function attemptOnce(opts: {
     clearTimeout(timer);
   }
 
-  if (res.status === 401 || res.status === 403) {
-    throw new TranscriptionError(
-      "unauthorized",
-      "Transcription provider rejected the request credentials.",
-    );
-  }
-  if (res.status === 400 || res.status === 413 || res.status === 415) {
-    throw new TranscriptionError(
-      "invalid_request",
-      "Transcription provider rejected the audio payload.",
-    );
-  }
-  if (res.status === 429) {
-    throw new TranscriptionError("provider_error", "Transcription provider rate limit reached.");
-  }
-  if (res.status >= 500) {
-    throw new TranscriptionError(
-      "provider_error",
-      "Transcription provider returned a server error.",
-    );
-  }
   if (!res.ok) {
-    // Any other unexpected non-success status: fail safe, don't guess.
-    throw new TranscriptionError(
-      "provider_error",
-      "Transcription provider returned an unexpected response.",
-    );
+    // Same status -> category mapping as before, byte-for-byte — only
+    // addition is attaching sanitized upstream diagnostics for server logs.
+    let category: TranscriptionErrorCategory;
+    let message: string;
+    if (res.status === 401 || res.status === 403) {
+      category = "unauthorized";
+      message = "Transcription provider rejected the request credentials.";
+    } else if (res.status === 400 || res.status === 413 || res.status === 415) {
+      category = "invalid_request";
+      message = "Transcription provider rejected the audio payload.";
+    } else if (res.status === 429) {
+      category = "provider_error";
+      message = "Transcription provider rate limit reached.";
+    } else if (res.status >= 500) {
+      category = "provider_error";
+      message = "Transcription provider returned a server error.";
+    } else {
+      // Any other unexpected non-success status: fail safe, don't guess.
+      category = "provider_error";
+      message = "Transcription provider returned an unexpected response.";
+    }
+    const error = new TranscriptionError(category, message);
+    error.diagnostics = await extractUpstreamDiagnostics(res);
+    throw error;
   }
 
   let body: unknown;
   try {
     body = await res.json();
   } catch {
-    throw new TranscriptionError(
+    const error = new TranscriptionError(
       "provider_error",
       "Transcription provider returned an invalid response body.",
     );
+    error.diagnostics = {
+      upstreamStatus: res.status,
+      upstreamRequestId: res.headers.get("x-request-id"),
+    };
+    throw error;
   }
   const text = (body as { text?: unknown } | null)?.text;
   if (typeof text !== "string") {
-    throw new TranscriptionError(
+    const error = new TranscriptionError(
       "provider_error",
       "Transcription provider response was missing a transcript.",
     );
+    error.diagnostics = {
+      upstreamStatus: res.status,
+      upstreamRequestId: res.headers.get("x-request-id"),
+    };
+    throw error;
   }
   return text;
 }
@@ -218,6 +282,8 @@ export async function transcribeAudio(opts: {
       return { transcript, requestId, latencyMs: Date.now() - started };
     } catch (err) {
       if (!(err instanceof TranscriptionError)) throw err;
+      err.attempt = attempt;
+      err.totalLatencyMs = Date.now() - started;
       lastError = err;
       const canRetry = RETRYABLE_CATEGORIES.has(err.category) && attempt < MAX_ATTEMPTS;
       if (!canRetry) throw err;
