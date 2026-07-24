@@ -815,6 +815,7 @@ function RenameMealPanel({
     <div className="py-2">
       <SheetHeader>
         <SheetTitle>Rename meal</SheetTitle>
+        <SheetDescription>Choose a new name for "{meal.name}".</SheetDescription>
       </SheetHeader>
       <div className="mt-4">
         <Input value={name} onChange={(e) => setName(e.target.value)} className="h-12" autoFocus />
