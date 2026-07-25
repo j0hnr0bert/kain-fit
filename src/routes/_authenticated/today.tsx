@@ -101,6 +101,24 @@ type PendingItem = {
   client_request_id?: string;
 };
 
+// Minimal shape of the browser's (non-standard, vendor-prefixed) Web Speech
+// API actually used by startVoice() below — not part of lib.dom.d.ts, so
+// there's no built-in type to import.
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: { results: { transcript: string }[][] }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start(): void;
+};
+type SpeechRecognitionConstructorLike = new () => SpeechRecognitionLike;
+type SpeechRecognitionWindow = {
+  SpeechRecognition?: SpeechRecognitionConstructorLike;
+  webkitSpeechRecognition?: SpeechRecognitionConstructorLike;
+};
+
 const MANILA_TIME_ZONE = "Asia/Manila";
 // "Near" the calorie target — a positive remainder at or below this reads
 // as a close-out nudge (Guide) rather than an open-ended remaining amount.
@@ -200,7 +218,7 @@ function TodayPage() {
   const anyRecalcing = recalcingRows.size > 0;
   const [originalInput, setOriginalInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [listening, setListening] = useState(false);
   // Coaching Card state — see .lovable/evidence-engine.md and the
   // deterministic state machine in src/lib/coaching.ts. `celebratedToday`
@@ -883,9 +901,11 @@ function TodayPage() {
   }
 
   function startVoice() {
-    const SR: any =
-      typeof window !== "undefined" &&
-      ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+    const SR =
+      typeof window !== "undefined"
+        ? ((window as unknown as SpeechRecognitionWindow).SpeechRecognition ??
+          (window as unknown as SpeechRecognitionWindow).webkitSpeechRecognition)
+        : undefined;
     if (!SR) {
       toast.error("Voice input isn't supported on this device.");
       return;
@@ -894,7 +914,7 @@ function TodayPage() {
     rec.lang = "en-PH";
     rec.interimResults = false;
     rec.maxAlternatives = 1;
-    rec.onresult = (ev: any) => {
+    rec.onresult = (ev) => {
       const text = ev.results[0][0].transcript;
       setInput((prev) => (prev ? prev + " " + text : text));
     };
@@ -1694,7 +1714,7 @@ function UserInitial() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const email = data.user?.email ?? "";
-      const name = (data.user?.user_metadata as any)?.full_name ?? email;
+      const name = data.user?.user_metadata?.full_name ?? email;
       if (name) setInitial(String(name).charAt(0).toUpperCase());
     });
   }, []);
