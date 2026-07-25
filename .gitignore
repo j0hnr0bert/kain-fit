@@ -20,6 +20,12 @@ dist-ssr
 .wrangler/
 .dev.vars
 
+# Voice-beta tester evidence — real session data (device details, transcripts,
+# tester notes). Never committed by default; each session file is reviewed
+# and selectively committed like any other evaluation artifact. See
+# eval/voice-accuracy/evidence/README.md.
+eval/voice-accuracy/evidence/sessions/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
