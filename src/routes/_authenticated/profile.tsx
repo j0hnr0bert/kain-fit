@@ -29,11 +29,7 @@ import {
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { BetaBadge } from "@/components/BetaBadge";
 import { deleteOwnAccount } from "@/lib/account.functions";
-import {
-  checkTargetConsistency,
-  targetMismatchMessage,
-  targetComboKey,
-} from "@/lib/target-consistency";
+import { deriveCaloriesFromMacros } from "@/lib/target-consistency";
 
 export const Route = createFileRoute("/_authenticated/profile")({
   component: ProfilePage,
@@ -81,32 +77,41 @@ function ProfilePage() {
   const [heightInput, setHeightInput] = useState("");
   const [weightInput, setWeightInput] = useState("");
 
-  // Manual macro targets
+  // Manual macro targets. Calories are read-only, derived from
+  // protein/carbs/fat via deriveCaloriesFromMacros — see the memo below —
+  // so there is no tCalories input state; a stored calorie value can never
+  // disagree with its macros because the app never accepts one typed
+  // independently.
   const [targetsEnabled, setTargetsEnabled] = useState(false);
-  const [tCalories, setTCalories] = useState("");
   const [tProtein, setTProtein] = useState("");
   const [tCarbs, setTCarbs] = useState("");
   const [tFat, setTFat] = useState("");
 
   const [savingDetails, setSavingDetails] = useState(false);
   const [savingTargets, setSavingTargets] = useState(false);
+  // Synchronous re-entrancy guard (2026-07-26 manual verification finding):
+  // savingTargets alone doesn't prevent a rapid double-tap/duplicate submit,
+  // because React batches the re-render that would disable the button, so
+  // several clicks can fire before the DOM actually reflects
+  // savingTargets=true. A ref is checked and set synchronously, before any
+  // state update or await, so re-entrant calls are blocked immediately
+  // regardless of render timing. savingTargets itself is kept for the
+  // visual disabled state.
+  const savingTargetsInFlightRef = useRef(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const deleteAccountFn = useServerFn(deleteOwnAccount);
 
-  // Manual-target consistency warning (2026-07-24) — see saveTargets below.
-  const [mismatchOpen, setMismatchOpen] = useState(false);
-  const [mismatchCopy, setMismatchCopy] = useState<{ headline: string; body: string } | null>(null);
-  const [pendingTargets, setPendingTargets] = useState<{
-    cal: number;
-    prot: number;
-    carb: number;
-    fat: number;
-  } | null>(null);
-  // The exact combination of values the user has already explicitly kept
-  // via "Keep targets" — re-saving the identical numbers skips the warning;
-  // changing any of them invalidates this and requires confirmation again.
-  const confirmedMismatchKeyRef = useRef<string | null>(null);
+  // Derived, never stored as separately-typed input. Rounded once here for
+  // both display and save, so what the user sees is exactly what gets
+  // written to target_calories.
+  const derivedCalories = useMemo(
+    () =>
+      Math.round(
+        deriveCaloriesFromMacros(Number(tProtein) || 0, Number(tCarbs) || 0, Number(tFat) || 0),
+      ),
+    [tProtein, tCarbs, tFat],
+  );
 
   useEffect(() => {
     (async () => {
@@ -139,7 +144,9 @@ function ProfilePage() {
           target_fat_g?: number | null;
         };
         setTargetsEnabled(Boolean(targets.manual_targets_enabled));
-        setTCalories(targets.target_calories != null ? String(targets.target_calories) : "");
+        // target_calories itself is not loaded into editable state — it's
+        // always re-derived from protein/carbs/fat (see derivedCalories
+        // above), never read back as an independent value.
         setTProtein(targets.target_protein_g != null ? String(targets.target_protein_g) : "");
         setTCarbs(targets.target_carbs_g != null ? String(targets.target_carbs_g) : "");
         setTFat(targets.target_fat_g != null ? String(targets.target_fat_g) : "");
@@ -272,67 +279,46 @@ function ProfilePage() {
     }
   }
 
+  // Calories are never taken as input here — always deriveCaloriesFromMacros
+  // on the just-validated protein/carbs/fat, then range-checked against the
+  // same 500–10,000 bound the database enforces (target_calories_range in
+  // the profiles table), so an extreme macro combination fails validation
+  // here with a clear message instead of failing at the database with a
+  // generic error. This is what makes a stale/disagreeing stored calorie
+  // value structurally impossible: the app never writes any calorie number
+  // except this exact derivation.
   async function saveTargets() {
-    const cal = Number(tCalories);
-    const prot = Number(tProtein);
-    const carb = Number(tCarbs);
-    const fat = Number(tFat);
-    if (!Number.isFinite(cal) || cal < 500 || cal > 10000) {
-      toast.error("Daily calories must be between 500 and 10,000.");
-      return;
-    }
-    for (const [name, v] of [
-      ["Protein", prot],
-      ["Carbohydrates", carb],
-      ["Fat", fat],
-    ] as const) {
-      if (!Number.isFinite(v) || v < 0 || v > 1000) {
-        toast.error(`${name} must be between 0 and 1,000 g.`);
+    // Synchronous check-and-set, before any validation or state update —
+    // see savingTargetsInFlightRef's declaration for why this can't be
+    // savingTargets state alone.
+    if (savingTargetsInFlightRef.current) return;
+    savingTargetsInFlightRef.current = true;
+    try {
+      const prot = Number(tProtein);
+      const carb = Number(tCarbs);
+      const fat = Number(tFat);
+      for (const [name, v] of [
+        ["Protein", prot],
+        ["Carbohydrates", carb],
+        ["Fat", fat],
+      ] as const) {
+        if (!Number.isFinite(v) || v < 0 || v > 1000) {
+          toast.error(`${name} must be between 0 and 1,000 g.`);
+          return;
+        }
+      }
+      const cal = Math.round(deriveCaloriesFromMacros(prot, carb, fat));
+      if (cal < 500 || cal > 10000) {
+        toast.error(
+          `These macros work out to ${cal.toLocaleString("en-US")} calories, outside the allowed 500–10,000 range. Adjust protein, carbs, or fat.`,
+        );
         return;
       }
+
+      await performSaveTargets(cal, prot, carb, fat);
+    } finally {
+      savingTargetsInFlightRef.current = false;
     }
-
-    // Consistency check — display-only, never blocks saving and never
-    // touches the four values. See target-consistency.ts for the formula
-    // and threshold. Skipped for a combination already explicitly kept.
-    const consistency = checkTargetConsistency({
-      calorieTarget: cal,
-      proteinG: prot,
-      carbsG: carb,
-      fatG: fat,
-    });
-    const key = targetComboKey({ calorieTarget: cal, proteinG: prot, carbsG: carb, fatG: fat });
-    if (consistency.mismatched && confirmedMismatchKeyRef.current !== key) {
-      setMismatchCopy(targetMismatchMessage(consistency, cal));
-      setPendingTargets({ cal, prot, carb, fat });
-      setMismatchOpen(true);
-      return;
-    }
-
-    await performSaveTargets(cal, prot, carb, fat);
-  }
-
-  async function confirmKeepMismatchedTargets() {
-    if (!pendingTargets) return;
-    confirmedMismatchKeyRef.current = targetComboKey({
-      calorieTarget: pendingTargets.cal,
-      proteinG: pendingTargets.prot,
-      carbsG: pendingTargets.carb,
-      fatG: pendingTargets.fat,
-    });
-    setMismatchOpen(false);
-    await performSaveTargets(
-      pendingTargets.cal,
-      pendingTargets.prot,
-      pendingTargets.carb,
-      pendingTargets.fat,
-    );
-    setPendingTargets(null);
-  }
-
-  function reviewMismatchedValues() {
-    setMismatchOpen(false);
-    setPendingTargets(null);
   }
 
   async function toggleTargets(next: boolean) {
@@ -350,18 +336,13 @@ function ProfilePage() {
       qc.invalidateQueries({ queryKey: ["profile", "targets"] });
       return;
     }
-    // Only enable when all four numbers are already filled in.
-    const cal = Number(tCalories);
+    // Only enable when all three macro inputs are already filled in —
+    // calories are derived, so there's nothing to check for that field.
     const prot = Number(tProtein);
     const carb = Number(tCarbs);
     const fat = Number(tFat);
-    if (
-      !Number.isFinite(cal) ||
-      !Number.isFinite(prot) ||
-      !Number.isFinite(carb) ||
-      !Number.isFinite(fat)
-    ) {
-      toast("Enter all four targets, then save.", { duration: 3000 });
+    if (!Number.isFinite(prot) || !Number.isFinite(carb) || !Number.isFinite(fat)) {
+      toast("Enter protein, carbs, and fat, then save.", { duration: 3000 });
       return;
     }
     await saveTargets();
@@ -548,8 +529,9 @@ function ProfilePage() {
               Manual Macro Targets
             </div>
             <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-              Enter targets you already follow. KainFit will display them but will not recommend or
-              adjust them.
+              Enter the protein, carbs, and fat targets you already follow. KainFit will display
+              them but will not recommend or adjust them. Daily calories are calculated from these
+              three — protein × 4 + carbs × 4 + fat × 9 — and can't be edited directly.
             </p>
           </div>
 
@@ -560,13 +542,15 @@ function ProfilePage() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="tcal">Daily calories</Label>
+              <Label htmlFor="tcal">Daily calories (calculated)</Label>
               <Input
                 id="tcal"
                 inputMode="numeric"
-                placeholder="e.g. 2000"
-                value={tCalories}
-                onChange={(e) => setTCalories(e.target.value.replace(/[^\d]/g, "").slice(0, 5))}
+                value={derivedCalories}
+                disabled
+                readOnly
+                aria-readonly="true"
+                aria-live="polite"
                 className="h-11 rounded-xl"
               />
             </div>
@@ -681,42 +665,6 @@ function ProfilePage() {
           typeof window !== "undefined" ? (localStorage.getItem("kf.sid") ?? "") : ""
         }
       />
-      <Dialog
-        open={mismatchOpen}
-        onOpenChange={(o) => {
-          if (!o) reviewMismatchedValues();
-        }}
-      >
-        <DialogContent className="max-w-sm rounded-3xl">
-          <DialogHeader>
-            <DialogTitle>{mismatchCopy?.headline}</DialogTitle>
-            <DialogDescription>{mismatchCopy?.body}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col gap-2 sm:flex-col">
-            <Button
-              onClick={confirmKeepMismatchedTargets}
-              disabled={savingTargets}
-              className="w-full h-12 rounded-2xl"
-            >
-              {savingTargets ? (
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Saving…
-                </span>
-              ) : (
-                "Keep targets"
-              )}
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={reviewMismatchedValues}
-              disabled={savingTargets}
-              className="w-full h-12 rounded-2xl"
-            >
-              Review values
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
       <Dialog
         open={deleteDialogOpen}
         onOpenChange={(o) => {
