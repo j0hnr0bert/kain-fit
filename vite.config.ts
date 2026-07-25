@@ -12,4 +12,15 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  vite: {
+    server: {
+      // Dev-server-only host allowlist (Vite's DNS-rebinding protection).
+      // The leading dot allows any *.ts.net subdomain — a Tailscale tailnet
+      // hostname, needed for real-device (iPhone/Android) testing over a
+      // private tailnet — without hardcoding any one person's specific
+      // tailnet name. Never affects production builds; `server.allowedHosts`
+      // only applies to `vite dev`.
+      allowedHosts: [".ts.net"],
+    },
+  },
 });
