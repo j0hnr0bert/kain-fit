@@ -36,6 +36,16 @@ export type ChallengeCategory =
   | "false_start"
   | "filipino_number_words"
   | "abbreviated_unit"
+  // A Filipino food word that risks being misheard as an unrelated,
+  // standalone English word or phrase (not merely a spelling variant, and
+  // not reduplication-collapse or word-boundary-merging risk — those are
+  // separate, already-covered categories). Applied only where either the
+  // word's own vocabulary/filipino-vocabulary.ts entry explicitly frames
+  // the risk as a homophone/English-word collision, or its documented
+  // plausibleMisTranscriptions list lands on an unambiguous standalone
+  // English word. See STAGE_3C_LANGUAGE_DEVICE_EVALUATION_PLAN.md Section 4
+  // for the per-record rationale.
+  | "filipino_english_homophone"
   | "mixed_dish_no_ingredient_inference"
   | "fast_speech"
   | "quiet_speech"

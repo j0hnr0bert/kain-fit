@@ -516,9 +516,11 @@ const englishBroad: CorpusRecord[] = [
       utteranceLanguage: "english",
     }),
     difficulty: "medium",
-    challengeCategories: ["exclusion"],
+    challengeCategories: ["exclusion", "filipino_english_homophone"],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'tapa' is commonly misheard as the English phrase 'tap a' — documented explicitly in vocabulary/filipino-vocabulary.ts's reason text for this word.",
   }),
   rec({
     id: "en-05",
@@ -709,9 +711,11 @@ const englishBroad: CorpusRecord[] = [
       utteranceLanguage: "english",
     }),
     difficulty: "easy",
-    challengeCategories: ["preparation_method"],
+    challengeCategories: ["preparation_method", "filipino_english_homophone"],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'tocino' is a documented mis-transcription risk into the real English word 'toucan' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "en-16",
@@ -722,9 +726,11 @@ const englishBroad: CorpusRecord[] = [
       utteranceLanguage: "english",
     }),
     difficulty: "easy",
-    challengeCategories: ["mixed_dish_no_ingredient_inference"],
+    challengeCategories: ["mixed_dish_no_ingredient_inference", "filipino_english_homophone"],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'pancit' has an explicitly documented homophone risk with the English phrase 'pan sit' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "en-17",
@@ -971,10 +977,12 @@ const filipinoAdversarial: CorpusRecord[] = [
       criticalTokens: ["may kanin"],
     }),
     difficulty: "adversarial",
-    challengeCategories: ["multi_food", "exclusion"],
+    challengeCategories: ["multi_food", "exclusion", "filipino_english_homophone"],
     testSplit: "locked_challenge",
     isAdversarial: true,
     adversarialPairId: "adv-pair-fil-06",
+    reviewerNotes:
+      "'tapa' is commonly misheard as the English phrase 'tap a' — documented explicitly in vocabulary/filipino-vocabulary.ts's reason text for this word.",
   }),
   rec({
     id: "fil-adv-06b",
@@ -987,10 +995,12 @@ const filipinoAdversarial: CorpusRecord[] = [
       criticalTokens: ["walang kanin"],
     }),
     difficulty: "adversarial",
-    challengeCategories: ["multi_food", "exclusion"],
+    challengeCategories: ["multi_food", "exclusion", "filipino_english_homophone"],
     testSplit: "locked_challenge",
     isAdversarial: true,
     adversarialPairId: "adv-pair-fil-06",
+    reviewerNotes:
+      "'tapa' is commonly misheard as the English phrase 'tap a' — documented explicitly in vocabulary/filipino-vocabulary.ts's reason text for this word.",
   }),
   rec({
     id: "fil-adv-07a",
@@ -1150,9 +1160,11 @@ const filipinoBroad: CorpusRecord[] = [
       utteranceLanguage: "filipino",
     }),
     difficulty: "medium",
-    challengeCategories: ["exclusion"],
+    challengeCategories: ["exclusion", "filipino_english_homophone"],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'tapa' is commonly misheard as the English phrase 'tap a' — documented explicitly in vocabulary/filipino-vocabulary.ts's reason text for this word.",
   }),
   rec({
     id: "fil-03",
@@ -1172,11 +1184,15 @@ const filipinoBroad: CorpusRecord[] = [
       utteranceLanguage: "filipino",
     }),
     difficulty: "hard",
-    challengeCategories: ["mixed_dish_no_ingredient_inference", "filipino_number_words"],
+    challengeCategories: [
+      "mixed_dish_no_ingredient_inference",
+      "filipino_number_words",
+      "filipino_english_homophone",
+    ],
     testSplit: "development",
     isAdversarial: false,
     reviewerNotes:
-      "Mixed dish kept as one food entity — vegetables/aromatics in sinigang are never spoken and must not be inferred.",
+      "Mixed dish kept as one food entity — vegetables/aromatics in sinigang are never spoken and must not be inferred. 'sinigang' is also a documented mis-transcription risk into the real English word 'cinnamon' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "fil-04",
@@ -1246,9 +1262,15 @@ const filipinoBroad: CorpusRecord[] = [
       utteranceLanguage: "filipino",
     }),
     difficulty: "hard",
-    challengeCategories: ["mixed_dish_no_ingredient_inference", "trailing_exclusion"],
+    challengeCategories: [
+      "mixed_dish_no_ingredient_inference",
+      "trailing_exclusion",
+      "filipino_english_homophone",
+    ],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'tinola' is a documented mis-transcription risk into the English-word phrase 'tin cola' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "fil-08",
@@ -1352,9 +1374,15 @@ const filipinoBroad: CorpusRecord[] = [
       utteranceLanguage: "filipino",
     }),
     difficulty: "hard",
-    challengeCategories: ["spoken_correction", "filipino_number_words"],
+    challengeCategories: [
+      "spoken_correction",
+      "filipino_number_words",
+      "filipino_english_homophone",
+    ],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'tocino' is a documented mis-transcription risk into the real English word 'toucan' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "fil-15",
@@ -1401,9 +1429,11 @@ const filipinoBroad: CorpusRecord[] = [
       utteranceLanguage: "filipino",
     }),
     difficulty: "easy",
-    challengeCategories: ["exclusion"],
+    challengeCategories: ["exclusion", "filipino_english_homophone"],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'lumpia' has a documented mis-hearing risk into the English-ish phrase 'lump ya' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "fil-18",
@@ -1848,9 +1878,11 @@ const taglishBroad: CorpusRecord[] = [
       codeSwitchPoints: [2, 8],
     }),
     difficulty: "medium",
-    challengeCategories: ["multi_food", "code_switching"],
+    challengeCategories: ["multi_food", "code_switching", "filipino_english_homophone"],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'adobo' is a documented mis-transcription risk into the real English word 'adobe' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "tgl-02",
@@ -1904,9 +1936,11 @@ const taglishBroad: CorpusRecord[] = [
       codeSwitchPoints: [1],
     }),
     difficulty: "medium",
-    challengeCategories: ["exclusion", "code_switching"],
+    challengeCategories: ["exclusion", "code_switching", "filipino_english_homophone"],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'tapa' is commonly misheard as the English phrase 'tap a' — documented explicitly in vocabulary/filipino-vocabulary.ts's reason text for this word.",
   }),
   rec({
     id: "tgl-05",
@@ -1921,9 +1955,16 @@ const taglishBroad: CorpusRecord[] = [
       codeSwitchPoints: [2],
     }),
     difficulty: "medium",
-    challengeCategories: ["multi_food", "mixed_dish_no_ingredient_inference", "code_switching"],
+    challengeCategories: [
+      "multi_food",
+      "mixed_dish_no_ingredient_inference",
+      "code_switching",
+      "filipino_english_homophone",
+    ],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'pancit' has an explicitly documented homophone risk with the English phrase 'pan sit' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "tgl-06",
@@ -1954,12 +1995,17 @@ const taglishBroad: CorpusRecord[] = [
       codeSwitchPoints: [5],
     }),
     difficulty: "medium",
-    challengeCategories: ["quiet_speech", "multi_food", "code_switching"],
+    challengeCategories: [
+      "quiet_speech",
+      "multi_food",
+      "code_switching",
+      "filipino_english_homophone",
+    ],
     testSplit: "development",
     isAdversarial: false,
     speakingRate: "quiet",
     reviewerNotes:
-      "No quantity/unit spoken for rice — left null. speakingRate is a Stage 3A metadata placeholder describing the INTENDED delivery for Stage 3B recording, not a real acoustic measurement yet.",
+      "No quantity/unit spoken for rice — left null. speakingRate is a Stage 3A metadata placeholder describing the INTENDED delivery for Stage 3B recording, not a real acoustic measurement yet. 'tocino' is also a documented mis-transcription risk into the real English word 'toucan' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "tgl-08",
@@ -2106,9 +2152,15 @@ const taglishBroad: CorpusRecord[] = [
       codeSwitchPoints: [2],
     }),
     difficulty: "medium",
-    challengeCategories: ["mixed_dish_no_ingredient_inference", "code_switching"],
+    challengeCategories: [
+      "mixed_dish_no_ingredient_inference",
+      "code_switching",
+      "filipino_english_homophone",
+    ],
     testSplit: "development",
     isAdversarial: false,
+    reviewerNotes:
+      "'adobo' is a documented mis-transcription risk into the real English word 'adobe' — see vocabulary/filipino-vocabulary.ts.",
   }),
   rec({
     id: "tgl-17",
