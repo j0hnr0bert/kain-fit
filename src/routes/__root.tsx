@@ -196,6 +196,19 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
+    // Background PWA registration — never blocks first paint or hydration.
+    // See public/sw.js: caches only one static offline-fallback page, never
+    // any API/auth/personal data.
+    if (typeof window === "undefined" || !("serviceWorker" in navigator)) return;
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("/sw.js").catch(() => {
+        // Installability/offline fallback is a progressive enhancement —
+        // never surface this to the user or block anything.
+      });
+    });
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     // Time from navigation start to React mount.
     let ttiMs: number | undefined;

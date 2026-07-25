@@ -153,7 +153,16 @@ export type EventName =
   | "transcription_success"
   | "categorized_failure"
   | "retry"
-  | "transcript_edited";
+  | "transcript_edited"
+  // Acquisition/PWA sprint (2026-07-26)
+  | "install_cta_shown"
+  | "install_cta_selected"
+  | "install_accepted"
+  | "install_dismissed"
+  | "ios_install_guide_opened"
+  | "already_installed"
+  | "post_demo_signup_selected"
+  | "post_demo_install_selected";
 
 // These fire more than once per second (e.g. web_vital LCP+INP+CLS,
 // cache_hit per item) — client-side dedupe would silently drop them.

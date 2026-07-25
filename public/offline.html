@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>KainFit — You're offline</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        padding: 24px;
+        text-align: center;
+        background: #f9f7f5;
+        color: #172121;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      }
+      .mark {
+        height: 56px;
+        width: 56px;
+        border-radius: 18px;
+        background: #0f766e;
+        color: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 24px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 4px 0 0;
+      }
+      p {
+        font-size: 14px;
+        color: #5b6a6a;
+        margin: 0;
+        max-width: 320px;
+        line-height: 1.5;
+      }
+      button {
+        margin-top: 6px;
+        height: 44px;
+        padding: 0 20px;
+        border-radius: 16px;
+        border: none;
+        background: #0f766e;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mark" aria-hidden="true">K</div>
+    <h1>You're offline</h1>
+    <p>KainFit needs a connection to log and calculate meals. Reconnect and try again.</p>
+    <button onclick="location.reload()">Retry</button>
+  </body>
+</html>

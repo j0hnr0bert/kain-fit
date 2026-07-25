@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { ArrowLeft, Check, Eye, EyeOff, Phone, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Eye, EyeOff, Loader2 } from "lucide-react";
 import { track } from "@/lib/analytics";
 import { logSignupFunnelEvent } from "@/lib/beta.functions";
 import { useServerFn } from "@tanstack/react-start";
@@ -32,23 +32,31 @@ function AuthPage() {
   const { mode: initialMode } = useSearch({ from: "/auth" });
   const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">(initialMode);
-  const [method, setMethod] = useState<"main" | "phone">("main");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
   const [emailTouched, setEmailTouched] = useState(false);
-  const [phone, setPhone] = useState("");
-  const [otp, setOtp] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState<null | "google" | "apple">(null);
   const [formError, setFormError] = useState("");
-  const [lastFailedAction, setLastFailedAction] = useState<
-    null | "email" | "google" | "apple" | "phone_send" | "phone_verify"
-  >(null);
+  const [lastFailedAction, setLastFailedAction] = useState<null | "email" | "google" | "apple">(
+    null,
+  );
   const [errorSuggestion, setErrorSuggestion] = useState<AuthRecoverySuggestion>(null);
   const logFunnel = useServerFn(logSignupFunnelEvent);
+  // Whether the visitor arrived with demo entries waiting to be imported —
+  // purely a copy decision (see today.tsx for the actual import handling,
+  // untouched here). Read once; this page doesn't need to react to it
+  // changing mid-session.
+  const [fromDemo, setFromDemo] = useState(false);
+  useEffect(() => {
+    try {
+      setFromDemo(Boolean(localStorage.getItem("kf.demoPendingImport")));
+    } catch {
+      // ignore
+    }
+  }, []);
 
   function funnelSessionId(): string {
     if (typeof window === "undefined") return "";
@@ -165,7 +173,6 @@ function AuthPage() {
     setFormError("");
     setPasswordTouched(false);
     setEmailTouched(false);
-    setMethod("main");
   }
 
   async function continueAfterAuth(isNewAccount: boolean) {
@@ -372,58 +379,6 @@ function AuthPage() {
     }
   }
 
-  async function handlePhoneSend(e?: React.FormEvent) {
-    e?.preventDefault();
-    setFormError("");
-    setLastFailedAction(null);
-    setErrorSuggestion(null);
-    if (mode === "signup") track("auth_method_chosen", { method: "phone", mode });
-    setLoading(true);
-    const startedAt = performance.now();
-    try {
-      const { error } = await supabase.auth.signInWithOtp({ phone });
-      if (error) throw error;
-      recordAuthAttempt("phone", "otp_send", startedAt);
-      setOtpSent(true);
-      toast.success("Code sent to your phone");
-    } catch (err) {
-      const norm = recordAuthAttempt("phone", "otp_send", startedAt, err)!;
-      if (mode === "signup")
-        track("signup_failed", { method: "phone", reason: norm.rawMessage.slice(0, 120) });
-      setFormError(norm.userMessage);
-      setErrorSuggestion(norm.suggestion);
-      setLastFailedAction("phone_send");
-      toast.error(norm.userMessage);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handlePhoneVerify(e?: React.FormEvent) {
-    e?.preventDefault();
-    setFormError("");
-    setLastFailedAction(null);
-    setErrorSuggestion(null);
-    setLoading(true);
-    const startedAt = performance.now();
-    try {
-      const { error } = await supabase.auth.verifyOtp({ phone, token: otp, type: "sms" });
-      if (error) throw error;
-      recordAuthAttempt("phone", "otp_verify", startedAt);
-      await continueAfterAuth(mode === "signup");
-    } catch (err) {
-      const norm = recordAuthAttempt("phone", "otp_verify", startedAt, err)!;
-      if (mode === "signup")
-        track("signup_failed", { method: "phone", reason: norm.rawMessage.slice(0, 120) });
-      setFormError(norm.userMessage);
-      setErrorSuggestion(norm.suggestion);
-      setLastFailedAction("phone_verify");
-      toast.error(norm.userMessage);
-    } finally {
-      setLoading(false);
-    }
-  }
-
   function retryLastAction() {
     switch (lastFailedAction) {
       case "email":
@@ -434,12 +389,6 @@ function AuthPage() {
         break;
       case "apple":
         void handleOAuth("apple");
-        break;
-      case "phone_send":
-        void handlePhoneSend();
-        break;
-      case "phone_verify":
-        void handlePhoneVerify();
         break;
       default:
         break;
@@ -461,7 +410,7 @@ function AuthPage() {
     >
       <button
         type="button"
-        onClick={() => (method === "main" ? navigate({ to: "/" }) : setMethod("main"))}
+        onClick={() => navigate({ to: "/" })}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground w-fit -ml-2 px-2 py-2 min-h-11 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
         aria-label="Go back"
       >
@@ -479,333 +428,245 @@ function AuthPage() {
           </div>
         </div>
         <h1 className="text-3xl font-bold tracking-tight">
-          {mode === "signup" ? "Create your account" : "Welcome back"}
+          {mode === "signup" ? "Create your free account" : "Welcome back"}
         </h1>
         <p className="mt-1 text-lg font-medium text-foreground">
           Know what you ate. <span className="text-primary">Instantly.</span>
         </p>
         <p className="mt-0.5 text-sm font-medium text-primary">Kain mo. Klaro agad.</p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Fast macro tracking built for Filipino food.
+          {mode === "signup"
+            ? fromDemo
+              ? "Create your free account to save your demo day."
+              : "Save today's entries and keep tracking."
+            : "Fast macro tracking built for Filipino food."}
         </p>
         {mode === "signup" && (
-          <p className="mt-3 inline-flex flex-wrap items-center gap-1 text-[12px] font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5 w-fit">
-            Free beta · No credit card · Start in under 30 seconds
-          </p>
-        )}
-
-        {method === "main" && (
-          <div className="mt-6 space-y-3">
-            {/* Priority order: Google → Phone → Apple → Email */}
-            <button
-              type="button"
-              onClick={() => handleOAuth("google")}
-              disabled={loading || oauthLoading !== null}
-              className="w-full h-12 rounded-2xl bg-card border border-border text-foreground font-medium inline-flex items-center justify-center gap-2 transition active:scale-[0.99] hover:bg-muted disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:active:scale-100"
-            >
-              {oauthLoading === "google" ? (
-                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-              ) : (
-                <GoogleIcon className="h-5 w-5" />
-              )}
-              <span>Continue with Google</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMethod("phone")}
-              disabled={loading || oauthLoading !== null}
-              className="w-full h-12 rounded-2xl bg-card border border-border text-foreground font-medium inline-flex items-center justify-center gap-2 transition active:scale-[0.99] hover:bg-muted disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:active:scale-100"
-            >
-              <Phone className="h-5 w-5" />
-              <span>Continue with phone</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOAuth("apple")}
-              disabled={loading || oauthLoading !== null}
-              className="w-full h-12 rounded-2xl bg-foreground text-background font-medium inline-flex items-center justify-center gap-2 transition active:scale-[0.99] hover:bg-foreground/90 disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:active:scale-100"
-            >
-              {oauthLoading === "apple" ? (
-                <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
-              ) : (
-                <AppleIcon className="h-5 w-5" />
-              )}
-              <span>Continue with Apple</span>
-            </button>
-
-            {/* Divider */}
-            <div className="relative py-2" role="separator" aria-label="or continue with email">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-border" />
+          <>
+            <p className="mt-3 inline-flex flex-wrap items-center gap-1 text-[12px] font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5 w-fit">
+              Free beta · No credit card required · Start in under 30 seconds
+            </p>
+            <div className="mt-4 rounded-2xl border border-border bg-muted/40 px-4 py-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                What your account saves
               </div>
-              <div className="relative flex justify-center">
-                <span className="bg-background px-3 text-xs uppercase tracking-wider text-muted-foreground">
-                  or continue with email
-                </span>
-              </div>
+              <ul className="mt-2 space-y-1 text-sm text-foreground">
+                <li>Today's entries</li>
+                <li>Daily calories and macros</li>
+                <li>Recent foods and saved meals</li>
+              </ul>
             </div>
-
-            <form onSubmit={handleEmail} className="space-y-4" noValidate>
-              <div className="space-y-1.5">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  inputMode="email"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  spellCheck={false}
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onBlur={() => {
-                    setEmailTouched(true);
-                    if (mode === "signup" && email.trim().length > 0)
-                      logStep("signup_email_entered");
-                  }}
-                  aria-invalid={showEmailError || undefined}
-                  aria-describedby={showEmailError ? "email-error" : undefined}
-                  className="h-12 rounded-xl"
-                />
-                {showEmailError && (
-                  <p id="email-error" className="text-xs text-destructive">
-                    Please enter a valid email address.
-                  </p>
-                )}
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password">Password</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    autoComplete={mode === "signup" ? "new-password" : "current-password"}
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    onBlur={() => {
-                      setPasswordTouched(true);
-                      if (mode === "signup" && password.length > 0)
-                        logStep("signup_password_entered");
-                    }}
-                    aria-invalid={
-                      mode === "signup" && passwordTouched && !passwordValid ? true : undefined
-                    }
-                    aria-describedby={mode === "signup" ? "password-requirements" : undefined}
-                    className="h-12 rounded-xl pr-12"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    aria-label={showPassword ? "Hide password" : "Show password"}
-                    aria-pressed={showPassword}
-                    tabIndex={0}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {mode === "signup" && (
-                  <ul
-                    id="password-requirements"
-                    aria-live="polite"
-                    className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]"
-                  >
-                    {passwordChecks.map((r) => (
-                      <li
-                        key={r.label}
-                        className={
-                          !passwordTouched
-                            ? "text-muted-foreground"
-                            : r.ok
-                              ? "text-primary"
-                              : "text-muted-foreground"
-                        }
-                      >
-                        <span className="inline-flex items-center gap-1.5">
-                          <span
-                            className={
-                              "inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border " +
-                              (r.ok
-                                ? "bg-primary border-primary text-primary-foreground"
-                                : "border-border")
-                            }
-                            aria-hidden="true"
-                          >
-                            {r.ok && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
-                          </span>
-                          {r.label}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              <div
-                role="alert"
-                aria-live="assertive"
-                className={
-                  formError
-                    ? "rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-                    : "sr-only"
-                }
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="flex-1">{formError}</span>
-                  {formError && lastFailedAction && (
-                    <button
-                      type="button"
-                      onClick={retryLastAction}
-                      className="shrink-0 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
-                    >
-                      Retry
-                    </button>
-                  )}
-                </div>
-                {formError && errorSuggestion === "switch_to_signin" && (
-                  <button
-                    type="button"
-                    onClick={() => updateMode("signin")}
-                    className="mt-2 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
-                  >
-                    Sign in with this email instead →
-                  </button>
-                )}
-                {formError && errorSuggestion === "reset_password" && (
-                  <p className="mt-2 text-xs opacity-80">
-                    Forgot your password? Contact support to reset it.
-                  </p>
-                )}
-              </div>
-
-              <Button
-                type="submit"
-                disabled={submitDisabled}
-                className="w-full h-12 rounded-2xl text-base transition active:scale-[0.99] motion-reduce:active:scale-100"
-              >
-                {loading ? (
-                  <span className="inline-flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                    Please wait…
-                  </span>
-                ) : mode === "signup" ? (
-                  "Create account"
-                ) : (
-                  "Sign in"
-                )}
-              </Button>
-
-              {mode === "signup" && (
-                <p className="text-[12px] text-muted-foreground text-center leading-relaxed px-2">
-                  By creating an account, you agree to our{" "}
-                  <Link
-                    to="/terms"
-                    className="text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                  >
-                    Terms of Service
-                  </Link>{" "}
-                  and acknowledge our{" "}
-                  <Link
-                    to="/privacy"
-                    className="text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                  >
-                    Privacy Policy
-                  </Link>
-                  .
-                </p>
-              )}
-            </form>
-          </div>
+          </>
         )}
 
-        {method === "phone" && !otpSent && (
-          <form onSubmit={handlePhoneSend} className="mt-6 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="phone">Phone number</Label>
+        <div className="mt-6 space-y-3">
+          {/* Beta auth methods (2026-07-26): Google + email only. Phone
+                was removed entirely (unsupported backend). Apple OAuth
+                integration is intentionally left intact below
+                (handleOAuth("apple"), oauthLoading's "apple" state,
+                AppleIcon) but has no button reaching it — hidden from the
+                beta UX pending real demand, not deleted. See the
+                acquisition-sprint report for what remains dormant. */}
+          <button
+            type="button"
+            onClick={() => handleOAuth("google")}
+            disabled={loading || oauthLoading !== null}
+            className="w-full h-12 rounded-2xl bg-card border border-border text-foreground font-medium inline-flex items-center justify-center gap-2 transition active:scale-[0.99] hover:bg-muted disabled:opacity-60 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:active:scale-100"
+          >
+            {oauthLoading === "google" ? (
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden="true" />
+            ) : (
+              <GoogleIcon className="h-5 w-5" />
+            )}
+            <span>Continue with Google</span>
+          </button>
+
+          {/* Divider */}
+          <div className="relative py-2" role="separator" aria-label="or continue with email">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-border" />
+            </div>
+            <div className="relative flex justify-center">
+              <span className="bg-background px-3 text-xs uppercase tracking-wider text-muted-foreground">
+                or continue with email
+              </span>
+            </div>
+          </div>
+
+          <form onSubmit={handleEmail} className="space-y-4" noValidate>
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Email</Label>
               <Input
-                id="phone"
-                type="tel"
-                autoComplete="tel"
-                inputMode="tel"
-                placeholder="+639171234567"
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
                 required
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                onBlur={() => {
+                  setEmailTouched(true);
+                  if (mode === "signup" && email.trim().length > 0) logStep("signup_email_entered");
+                }}
+                aria-invalid={showEmailError || undefined}
+                aria-describedby={showEmailError ? "email-error" : undefined}
                 className="h-12 rounded-xl"
               />
-              <p className="text-xs text-muted-foreground">
-                Enter a Philippine mobile number in +63 format.
-              </p>
+              {showEmailError && (
+                <p id="email-error" className="text-xs text-destructive">
+                  Please enter a valid email address.
+                </p>
+              )}
             </div>
-            {formError && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="flex-1">{formError}</span>
-                  {lastFailedAction && (
-                    <button
-                      type="button"
-                      onClick={retryLastAction}
-                      className="shrink-0 text-xs font-semibold underline underline-offset-2"
-                    >
-                      Retry
-                    </button>
-                  )}
-                </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  autoComplete={mode === "signup" ? "new-password" : "current-password"}
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onBlur={() => {
+                    setPasswordTouched(true);
+                    if (mode === "signup" && password.length > 0)
+                      logStep("signup_password_entered");
+                  }}
+                  aria-invalid={
+                    mode === "signup" && passwordTouched && !passwordValid ? true : undefined
+                  }
+                  aria-describedby={mode === "signup" ? "password-requirements" : undefined}
+                  className="h-12 rounded-xl pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-10 w-10 inline-flex items-center justify-center text-muted-foreground hover:text-foreground rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
+                  tabIndex={0}
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
-            )}
-            <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
-              {loading ? "Sending…" : "Send code"}
-            </Button>
-          </form>
-        )}
+              {mode === "signup" && (
+                <ul
+                  id="password-requirements"
+                  aria-live="polite"
+                  className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 text-[12px]"
+                >
+                  {passwordChecks.map((r) => (
+                    <li
+                      key={r.label}
+                      className={
+                        !passwordTouched
+                          ? "text-muted-foreground"
+                          : r.ok
+                            ? "text-primary"
+                            : "text-muted-foreground"
+                      }
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        <span
+                          className={
+                            "inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border " +
+                            (r.ok
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-border")
+                          }
+                          aria-hidden="true"
+                        >
+                          {r.ok && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                        </span>
+                        {r.label}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
 
-        {method === "phone" && otpSent && (
-          <form onSubmit={handlePhoneVerify} className="mt-6 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="otp">Verification code</Label>
-              <Input
-                id="otp"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                required
-                value={otp}
-                onChange={(e) => setOtp(e.target.value)}
-                className="h-12 rounded-xl text-center tracking-widest text-lg"
-              />
-            </div>
-            {formError && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="flex-1">{formError}</span>
-                  {lastFailedAction && (
-                    <button
-                      type="button"
-                      onClick={retryLastAction}
-                      className="shrink-0 text-xs font-semibold underline underline-offset-2"
-                    >
-                      Retry
-                    </button>
-                  )}
-                </div>
+            <div
+              role="alert"
+              aria-live="assertive"
+              className={
+                formError
+                  ? "rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                  : "sr-only"
+              }
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className="flex-1">{formError}</span>
+                {formError && lastFailedAction && (
+                  <button
+                    type="button"
+                    onClick={retryLastAction}
+                    className="shrink-0 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
+                  >
+                    Retry
+                  </button>
+                )}
               </div>
-            )}
-            <Button type="submit" disabled={loading} className="w-full h-12 rounded-2xl">
-              {loading ? "Verifying…" : "Verify & continue"}
+              {formError && errorSuggestion === "switch_to_signin" && (
+                <button
+                  type="button"
+                  onClick={() => updateMode("signin")}
+                  className="mt-2 text-xs font-semibold underline underline-offset-2 hover:opacity-80"
+                >
+                  Sign in with this email instead →
+                </button>
+              )}
+              {formError && errorSuggestion === "reset_password" && (
+                <p className="mt-2 text-xs opacity-80">
+                  Forgot your password? Contact support to reset it.
+                </p>
+              )}
+            </div>
+
+            <Button
+              type="submit"
+              disabled={submitDisabled}
+              className="w-full h-12 rounded-2xl text-base transition active:scale-[0.99] motion-reduce:active:scale-100"
+            >
+              {loading ? (
+                <span className="inline-flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Please wait…
+                </span>
+              ) : mode === "signup" ? (
+                "Create account"
+              ) : (
+                "Sign in"
+              )}
             </Button>
+
+            {mode === "signup" && (
+              <p className="text-[12px] text-muted-foreground text-center leading-relaxed px-2">
+                By creating an account, you agree to our{" "}
+                <Link
+                  to="/terms"
+                  className="text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                >
+                  Terms of Service
+                </Link>{" "}
+                and acknowledge our{" "}
+                <Link
+                  to="/privacy"
+                  className="text-foreground underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </p>
+            )}
           </form>
-        )}
+        </div>
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
           {mode === "signup" ? (
