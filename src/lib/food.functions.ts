@@ -221,16 +221,57 @@ function suppressSpuriousPrepClarifications(
   };
 }
 
+// AI gateway selection. Lovable's gateway is the ONLY path in hosted
+// production — LOVABLE_API_KEY is platform-injected there, and this branch
+// is byte-for-byte what ran before this fallback was added. Lovable does
+// not expose a reusable key for local development, so when LOVABLE_API_KEY
+// is absent (in practice, local dev only), this falls back to calling
+// OpenAI directly with the same server-side OPENAI_API_KEY already
+// configured for voice transcription (supabase/functions/.env.local).
+// Neither key is ever sent to the browser or committed — both are read
+// from process.env inside a server-function handler, same as the existing
+// LOVABLE_API_KEY usage this pattern is copied from.
+const LOVABLE_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const LOVABLE_MODEL = "google/gemini-3-flash-preview";
+const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
+const OPENAI_LOCAL_DEV_MODEL = "gpt-4o-mini";
+
+interface AiGatewayRequest {
+  url: string;
+  headers: Record<string, string>;
+  model: string;
+}
+
+function resolveAiGateway(): AiGatewayRequest | null {
+  const lovableKey = process.env.LOVABLE_API_KEY;
+  if (lovableKey) {
+    return {
+      url: LOVABLE_GATEWAY_URL,
+      headers: { "Content-Type": "application/json", "Lovable-API-Key": lovableKey },
+      model: LOVABLE_MODEL,
+    };
+  }
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (openaiKey) {
+    return {
+      url: OPENAI_CHAT_URL,
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${openaiKey}` },
+      model: OPENAI_LOCAL_DEV_MODEL,
+    };
+  }
+  return null;
+}
+
 async function callParseAi(input: string, mealHint: string) {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("AI is not configured. Please contact support.");
+  const gateway = resolveAiGateway();
+  if (!gateway) throw new Error("AI is not configured. Please contact support.");
   const userPrompt = `Current meal hint (from local time): ${mealHint}\n\nUser said: "${input}"\n\nReturn a JSON object matching this shape:\n{\n  "items": [\n    {\n      "display_name": string,\n      "normalized_name": string,\n      "quantity": number,\n      "unit": string,\n      "preparation": string | null,\n      "meal_type": "breakfast" | "lunch" | "dinner" | "snacks",\n      "calories": number,\n      "protein_g": number,\n      "carbs_g": number,\n      "fat_g": number,\n      "data_source": "verified_database" | "recipe_based" | "estimated" | "user_confirmed",\n      "confidence": number,\n      "is_estimate": boolean,\n      "clarification_needed": boolean,\n      "clarification_question": string | null\n    }\n  ],\n  "input_language": "english" | "filipino" | "taglish"\n}`;
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch(gateway.url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": apiKey },
+    headers: gateway.headers,
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
+      model: gateway.model,
       messages: [
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
@@ -275,15 +316,15 @@ async function callRecalcAi(item: {
   unit: string;
   preparation: string;
 }) {
-  const apiKey = process.env.LOVABLE_API_KEY;
-  if (!apiKey) throw new Error("AI is not configured. Please contact support.");
+  const gateway = resolveAiGateway();
+  if (!gateway) throw new Error("AI is not configured. Please contact support.");
   const userPrompt = `Recalculate nutrition for this single food.\n\nFood: ${item.display_name}\nNormalized name: ${item.normalized_name}\nQuantity: ${item.quantity}\nUnit: ${item.unit}\nPreparation: ${item.preparation}\n\nReturn a JSON object matching:\n{\n  "calories": number,\n  "protein_g": number,\n  "carbs_g": number,\n  "fat_g": number,\n  "data_source": "verified_database" | "recipe_based" | "estimated" | "user_confirmed",\n  "confidence": number,\n  "is_estimate": boolean\n}`;
 
-  const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+  const res = await fetch(gateway.url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "Lovable-API-Key": apiKey },
+    headers: gateway.headers,
     body: JSON.stringify({
-      model: "google/gemini-3-flash-preview",
+      model: gateway.model,
       messages: [
         { role: "system", content: RECALC_SYSTEM_PROMPT },
         { role: "user", content: userPrompt },
