@@ -108,6 +108,14 @@ export interface CorpusRecord extends FixtureMetadataPlaceholders {
   isAdversarial: boolean;
   adversarialPairId: string | null; // links two records that differ by one critical token
   reviewerNotes: string;
+  // True for any newly-drafted Filipino/Taglish record that has NOT been
+  // confirmed correct by an actual native speaker — machine/engineer-
+  // drafted Filipino or Taglish text is never linguistically approved by
+  // default. Optional so the 120 locked corpus records (already treated
+  // as reviewed) don't need it; every record in
+  // corpus/native-review-extension.ts must set it explicitly. English
+  // records should never need this field.
+  needsNativeReview?: boolean;
 }
 
 export interface AdversarialPair {
