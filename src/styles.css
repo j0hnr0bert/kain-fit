@@ -54,6 +54,8 @@
   --color-reinforce-foreground: var(--reinforce-foreground);
   --color-celebrate: var(--celebrate);
   --color-celebrate-foreground: var(--celebrate-foreground);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
   --color-ring-protein: var(--ring-protein);
   --color-ring-calories: var(--ring-calories);
   --color-ring-calories-complete: var(--ring-calories-complete);
@@ -114,6 +116,18 @@
      saturated green (>=5:1, verified) purely for that purpose. */
   --celebrate: oklch(0.5 0.15 145);
   --celebrate-foreground: oklch(0.99 0.005 90);
+  /* KainSignal card state (2026-07-26) — a genuinely new token, not a reuse
+     of --primary/--reinforce, because KainSignal is a structurally
+     different surface (a personalized, evidence-backed finding) from the
+     routine Coaching Card nudges and deserves to read as visually distinct
+     at a glance. Hue 280 sits in the widest open gap on the existing hue
+     wheel (25/50/75/145/165/190/215/240/320 are all already in use — the
+     240-320 span is the only gap over 80 degrees wide), so it can't be
+     mistaken for the blue carbs ring (240) or the plum fat ring (320) it
+     sits between. Same lightness/chroma recipe as --reinforce (L0.5 C0.1)
+     for consistent contrast behavior against card/page backgrounds. */
+  --signal: oklch(0.5 0.1 280);
+  --signal-foreground: oklch(0.99 0.005 90);
   /* Target-ring macro identity colors. Revised 2026-07-24: the first pass
      reused --primary for Calories and a near-primary teal for Protein,
      which read as "too similar" sitting side by side. These four are
