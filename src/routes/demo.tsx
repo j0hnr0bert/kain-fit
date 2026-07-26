@@ -40,6 +40,12 @@ import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { parseFoodDemo, getDemoStatus, recalcItemDemo } from "@/lib/food.functions";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  saveReactionMessage,
+  REACTION_THEME,
+  type ReactionContent,
+} from "@/components/coaching-card-content";
+import { InstallKainFitCTA } from "@/components/InstallKainFitCTA";
 
 export const Route = createFileRoute("/demo")({
   head: () => ({
@@ -70,6 +76,13 @@ type DemoEntry = {
   data_source: string;
   is_estimate: boolean;
   confidence: number;
+  // Bug fix (2026-07-26): this field didn't exist at all, so confirmAdd()
+  // below silently dropped whatever preparation the user answered (or left
+  // as "Not sure") — every saved demo entry then read as
+  // foodStatus()'s no-preparation-known default ("standard preparation")
+  // even when the review sheet had correctly shown "preparation estimated"
+  // moments earlier. See DemoStatusBadge, which now receives this.
+  preparation?: string | null;
 };
 
 type PendingItem = {
@@ -121,6 +134,20 @@ function DemoPage() {
   const [limitReached, setLimitReached] = useState(false);
   const [signupPrompt, setSignupPrompt] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // Post-save reward (2026-07-26) — the demo's equivalent of Today's
+  // "doggy-biscuit moment". Reuses the same pure saveReactionMessage()
+  // used in production (never promise language, since a demo visitor has
+  // no confirmed targets — see coaching-card-content.ts). Purely a
+  // display-layer overlay: no new network request, computed synchronously
+  // from the already-parsed items.
+  const [saveReaction, setSaveReaction] = useState<ReactionContent | null>(null);
+  const [pulseSeq, setPulseSeq] = useState(0);
+  const REACTION_DURATION_MS = 2200;
+  useEffect(() => {
+    if (!saveReaction) return;
+    const t = window.setTimeout(() => setSaveReaction(null), REACTION_DURATION_MS);
+    return () => window.clearTimeout(t);
+  }, [saveReaction]);
   const [reportTarget, setReportTarget] = useState<{
     id: string | null;
     values: Record<string, unknown>;
@@ -281,16 +308,25 @@ function DemoPage() {
       data_source: i.data_source,
       is_estimate: i.is_estimate,
       confidence: i.confidence,
+      preparation: i.preparation ?? null,
     }));
     setEntries((prev) => [...prev, ...added]);
     track("demo_food_confirmed", {
       demo_or_registered: "demo",
       number_of_items: pending.length,
     });
+    setSaveReaction(
+      saveReactionMessage({
+        protein: added.reduce((s, i) => s + i.protein, 0),
+        calories: added.reduce((s, i) => s + i.calories, 0),
+        carbs: added.reduce((s, i) => s + i.carbs, 0),
+        fat: added.reduce((s, i) => s + i.fat, 0),
+      }),
+    );
+    setPulseSeq((n) => n + 1);
     setPending(null);
     setPendingOriginalInput("");
     setInput("");
-    toast.success("Added to demo day");
   }
 
   async function recalcRow(idx: number, next: PendingItem) {
@@ -350,6 +386,7 @@ function DemoPage() {
   }
 
   function requireAccount() {
+    track("post_demo_signup_selected", { had_demo_entries: entries.length > 0 });
     if (entries.length > 0) {
       try {
         // Use localStorage so the pending import survives an OAuth redirect
@@ -413,7 +450,10 @@ function DemoPage() {
         {/* Totals */}
         <div className="mt-5 rounded-3xl bg-card border border-border p-5 shadow-sm">
           <div className="text-xs uppercase tracking-wide text-muted-foreground">Today · demo</div>
-          <div className="mt-1 flex items-baseline gap-2">
+          <div
+            key={saveReaction ? pulseSeq : undefined}
+            className={cn("mt-1 flex items-baseline gap-2", saveReaction && "ring-just-added")}
+          >
             <div className="text-5xl font-bold tracking-tight">{totals.calories}</div>
             <div className="text-sm text-muted-foreground">kcal</div>
           </div>
@@ -423,6 +463,37 @@ function DemoPage() {
             <MacroPill label="Fat" value={totals.fat} />
           </div>
         </div>
+
+        {/* Post-save reward — settles back to nothing after a few seconds;
+            the contextual signup CTA below is always there once entries
+            exist, reward or not. */}
+        {saveReaction && (
+          <div
+            className={cn(
+              "mt-3 rounded-2xl border p-4 flex items-start gap-3",
+              "motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-300",
+              REACTION_THEME[saveReaction.quality].bg,
+              REACTION_THEME[saveReaction.quality].border,
+            )}
+          >
+            <div
+              className={cn(
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+                REACTION_THEME[saveReaction.quality].iconWrap,
+              )}
+            >
+              <saveReaction.icon
+                className={cn("h-4 w-4", REACTION_THEME[saveReaction.quality].icon)}
+                aria-hidden="true"
+              />
+            </div>
+            <div className="min-w-0 pt-0.5">
+              <div className="text-sm font-semibold text-foreground">{saveReaction.headline}</div>
+              <div className="mt-0.5 text-sm text-foreground/85">{saveReaction.body}</div>
+              <div className="mt-1 text-xs text-muted-foreground">{saveReaction.taglish}</div>
+            </div>
+          </div>
+        )}
 
         {/* Input */}
         <form onSubmit={handleTry} className="mt-5">
@@ -502,7 +573,11 @@ function DemoPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium truncate">{e.name}</span>
-                    <DemoStatusBadge data_source={e.data_source} is_estimate={e.is_estimate} />
+                    <DemoStatusBadge
+                      data_source={e.data_source}
+                      is_estimate={e.is_estimate}
+                      preparation={e.preparation}
+                    />
                   </div>
                   <div className="text-xs text-muted-foreground mt-0.5">
                     {formatQuantity(e.quantity, e.unit)} · {e.calories} kcal · P {e.protein} · C{" "}
@@ -541,19 +616,36 @@ function DemoPage() {
           </div>
         </div>
 
-        {/* Save CTA */}
+        {/* Contextual save CTA — becomes specific once there's something to
+            keep (section 12/13 of the acquisition sprint spec). The reward
+            above is allowed to finish on its own timer; this CTA doesn't
+            wait for that or replace it, it just sits below it. */}
         <div className="mt-8">
-          <Button
-            type="button"
-            onClick={requireAccount}
-            disabled={entries.length === 0}
-            className={cn("w-full h-12 rounded-2xl")}
-          >
-            Save this day to my account
-          </Button>
-          <p className="mt-2 text-center text-xs text-muted-foreground">
-            You'll create a free account first. We'll ask before importing these entries.
-          </p>
+          {entries.length > 0 ? (
+            <div className="rounded-3xl bg-primary/5 border border-primary/20 p-5">
+              <div className="text-base font-semibold text-foreground">Keep today's progress.</div>
+              <p className="mt-1 text-sm text-muted-foreground leading-relaxed">
+                Create your free account to save these entries and continue tracking.
+              </p>
+              <Button
+                type="button"
+                onClick={requireAccount}
+                className="mt-3 w-full h-12 rounded-2xl"
+              >
+                Create free account
+              </Button>
+              <p className="mt-2 text-center text-[11px] text-primary font-medium">
+                Free beta · No credit card required
+              </p>
+            </div>
+          ) : (
+            <p className="text-center text-xs text-muted-foreground">
+              Log a meal above to see your day take shape.
+            </p>
+          )}
+          {entries.length > 0 && !saveReaction && (
+            <InstallKainFitCTA variant="post_demo" className="mt-3" />
+          )}
           <button
             type="button"
             onClick={() => setFeedbackOpen(true)}
@@ -748,6 +840,15 @@ function PendingRow({
   useEffect(() => {
     if (prepClarification) setShowPrep(true);
   }, [prepClarification]);
+  // Density fix (2026-07-26): once answered, collapse the raw/cooked
+  // picker back to a compact confirmation line instead of leaving the full
+  // three-button block (plus its explanatory note) open indefinitely for
+  // every item in a multi-item meal — that's what made the sheet feel
+  // dense. "Change" below reopens it for that one item.
+  useEffect(() => {
+    if (!item.clarification_needed && showPrep) setShowPrep(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.clarification_needed]);
   const prep = item.preparation;
   const prepNote =
     prep === "raw"
@@ -809,6 +910,16 @@ function PendingRow({
           <div className="text-xs text-muted-foreground mt-0.5">
             {formatQuantity(item.quantity, item.unit)}
             {item.preparation && item.preparation !== "estimated" ? ` · ${item.preparation}` : ""}
+            {item.preparation === "estimated" && !showPrep && " · preparation estimated"}
+            {!showPrep && !item.clarification_needed && item.preparation && (
+              <button
+                type="button"
+                onClick={() => setShowPrep(true)}
+                className="ml-1.5 underline underline-offset-2 hover:text-foreground"
+              >
+                Change
+              </button>
+            )}
             {recalcing && (
               <span className="ml-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" /> Recalculating…
