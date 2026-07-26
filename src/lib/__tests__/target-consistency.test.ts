@@ -3,9 +3,37 @@ import {
   checkTargetConsistency,
   targetMismatchMessage,
   targetComboKey,
+  deriveCaloriesFromMacros,
   TARGET_MISMATCH_TOLERANCE_KCAL,
   TARGET_MISMATCH_TOLERANCE_PCT,
 } from "../target-consistency";
+
+describe("deriveCaloriesFromMacros", () => {
+  it("computes protein*4 + carbs*4 + fat*9", () => {
+    expect(deriveCaloriesFromMacros(220, 50, 100)).toBe(220 * 4 + 50 * 4 + 100 * 9);
+    expect(deriveCaloriesFromMacros(220, 50, 100)).toBe(1980);
+  });
+
+  it("is exactly what checkTargetConsistency uses internally — single source of truth", () => {
+    const direct = deriveCaloriesFromMacros(150, 200, 55);
+    const viaConsistencyCheck = checkTargetConsistency({
+      calorieTarget: direct,
+      proteinG: 150,
+      carbsG: 200,
+      fatG: 55,
+    }).macroCalories;
+    expect(viaConsistencyCheck).toBe(direct);
+  });
+
+  it("returns 0 for all-zero macros", () => {
+    expect(deriveCaloriesFromMacros(0, 0, 0)).toBe(0);
+  });
+
+  it("never produces NaN or Infinity for finite inputs, including negative or extreme values", () => {
+    expect(Number.isFinite(deriveCaloriesFromMacros(-10, 5, 5))).toBe(true);
+    expect(Number.isFinite(deriveCaloriesFromMacros(1000, 1000, 1000))).toBe(true);
+  });
+});
 
 describe("checkTargetConsistency", () => {
   it("the exact reported example (2400/220/50/100) produces 1,980 macro calories and a 420 kcal difference", () => {
