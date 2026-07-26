@@ -56,9 +56,11 @@ import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
 import { CoachingCard } from "@/components/CoachingCard";
 import { saveReactionMessage, type ReactionContent } from "@/components/coaching-card-content";
+import { KainSignalCard } from "@/components/KainSignalCard";
 import { TargetRings, type JustAdded } from "@/components/TargetRings";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
+import { getKainSignalToday } from "@/lib/kain-signal.functions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/_authenticated/today")({
@@ -99,6 +101,24 @@ type PendingItem = {
   clarification_needed: boolean;
   clarification_question?: string | null;
   client_request_id?: string;
+};
+
+// Minimal shape of the browser's (non-standard, vendor-prefixed) Web Speech
+// API actually used by startVoice() below — not part of lib.dom.d.ts, so
+// there's no built-in type to import.
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: { results: { transcript: string }[][] }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+  start(): void;
+};
+type SpeechRecognitionConstructorLike = new () => SpeechRecognitionLike;
+type SpeechRecognitionWindow = {
+  SpeechRecognition?: SpeechRecognitionConstructorLike;
+  webkitSpeechRecognition?: SpeechRecognitionConstructorLike;
 };
 
 const MANILA_TIME_ZONE = "Asia/Manila";
@@ -200,7 +220,7 @@ function TodayPage() {
   const anyRecalcing = recalcingRows.size > 0;
   const [originalInput, setOriginalInput] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [listening, setListening] = useState(false);
   // Coaching Card state — see .lovable/evidence-engine.md and the
   // deterministic state machine in src/lib/coaching.ts. `celebratedToday`
@@ -697,6 +717,20 @@ function TodayPage() {
     refetchInterval: 60_000,
     retry: false,
   });
+
+  // KainSignal (Phase 1 — see kain-signal.functions.ts). Renders in place
+  // of CoachingCard only once state === "connected" — see the precedence
+  // rule at the render site below. States no_data/building/eligible are
+  // computed and persisted server-side but intentionally produce no new UI
+  // here yet, so the existing Coaching Card experience is untouched for
+  // every user who hasn't reached Signal Connected.
+  const fetchKainSignalToday = useServerFn(getKainSignalToday);
+  const { data: signalPayload } = useQuery({
+    queryKey: ["kain-signal", "today"],
+    queryFn: () => fetchKainSignalToday(),
+    retry: false,
+  });
+  const showKainSignalSlot = signalPayload?.state === "connected";
   // Refresh usage after each successful add.
   useEffect(() => {
     qc.invalidateQueries({ queryKey: ["beta-usage"] });
@@ -883,9 +917,11 @@ function TodayPage() {
   }
 
   function startVoice() {
-    const SR: any =
-      typeof window !== "undefined" &&
-      ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+    const SR =
+      typeof window !== "undefined"
+        ? ((window as unknown as SpeechRecognitionWindow).SpeechRecognition ??
+          (window as unknown as SpeechRecognitionWindow).webkitSpeechRecognition)
+        : undefined;
     if (!SR) {
       toast.error("Voice input isn't supported on this device.");
       return;
@@ -894,7 +930,7 @@ function TodayPage() {
     rec.lang = "en-PH";
     rec.interimResults = false;
     rec.maxAlternatives = 1;
-    rec.onresult = (ev: any) => {
+    rec.onresult = (ev) => {
       const text = ev.results[0][0].transcript;
       setInput((prev) => (prev ? prev + " " + text : text));
     };
@@ -1125,14 +1161,18 @@ function TodayPage() {
             justCompletedGold={justCompletedGold}
           />
         </div>
-        <CoachingCard
-          result={coachingResult}
-          proteinRemaining={proteinRemaining}
-          weekly={weekly}
-          promiseEligible={promiseEligible}
-          justCompletedCelebrate={celebration.transientCelebrate}
-          reaction={saveReaction}
-        />
+        {showKainSignalSlot && signalPayload ? (
+          <KainSignalCard payload={signalPayload} />
+        ) : (
+          <CoachingCard
+            result={coachingResult}
+            proteinRemaining={proteinRemaining}
+            weekly={weekly}
+            promiseEligible={promiseEligible}
+            justCompletedCelebrate={celebration.transientCelebrate}
+            reaction={saveReaction}
+          />
+        )}
         {betaUsage?.enabled &&
           betaUsage.cap > 0 &&
           (betaUsage.reachedLimit ? (
@@ -1694,7 +1734,7 @@ function UserInitial() {
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       const email = data.user?.email ?? "";
-      const name = (data.user?.user_metadata as any)?.full_name ?? email;
+      const name = data.user?.user_metadata?.full_name ?? email;
       if (name) setInitial(String(name).charAt(0).toUpperCase());
     });
   }, []);

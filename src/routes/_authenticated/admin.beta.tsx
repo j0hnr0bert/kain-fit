@@ -203,17 +203,16 @@ function AdminBetaPage() {
       setBetaInputLenDraft(String(ops.settings.beta_max_input_length ?? 500));
       setBetaMaxFoodsDraft(String(ops.settings.beta_max_foods_per_submission ?? 10));
     }
-  }, [
-    ops?.settings.high_demand_banner,
-    ops?.settings.demo_allowance,
-    ops?.settings.session_burst_per_min,
-    ops?.settings.user_daily_ai_cap,
-    ops?.settings.monthly_ai_call_cap,
-    ops?.settings.daily_ai_call_alert,
-    ops?.settings.beta_daily_submission_cap,
-    ops?.settings.beta_max_input_length,
-    ops?.settings.beta_max_foods_per_submission,
-  ]);
+    // Depending on the whole `ops.settings` object (rather than nine
+    // separate primitive fields) is safe against the 5s poll above
+    // (refetchInterval) only because TanStack Query's default
+    // structuralSharing reuses the previous `settings` reference whenever
+    // its content is unchanged, even while sibling fields like
+    // `capacity`/`lastMinute` change every tick — see
+    // ops-snapshot-structural-sharing.test.ts, which pins this exact
+    // invariant so a change to QueryClient config or to getOpsSnapshot's
+    // shape is caught here rather than as a live draft-clobbering bug.
+  }, [ops?.settings]);
 
   async function toggle(
     key: "pause_demo" | "pause_ai" | "db_only_mode" | "beta_limits_enabled",

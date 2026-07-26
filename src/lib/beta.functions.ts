@@ -54,6 +54,16 @@ const ALLOWED_EVENTS = [
   "favorite_used",
   "saved_meal_reused",
   "rage_tap",
+  // Acquisition/PWA sprint (2026-07-26) — see use-install-prompt.ts and
+  // index.tsx/demo.tsx for call sites.
+  "install_cta_shown",
+  "install_cta_selected",
+  "install_accepted",
+  "install_dismissed",
+  "ios_install_guide_opened",
+  "already_installed",
+  "post_demo_signup_selected",
+  "post_demo_install_selected",
 ] as const;
 
 const eventSchema = z.object({

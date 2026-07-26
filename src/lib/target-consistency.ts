@@ -1,12 +1,15 @@
-// Manual macro-target consistency check (2026-07-24). KainFit displays
-// whatever calorie/protein/carb/fat targets the user manually enters — it
-// never recommends or silently adjusts them (see profile.tsx's "Enter
-// targets you already follow" copy). But the four numbers can disagree
-// with each other by simple arithmetic (entered calories vs. what the
-// entered macros actually sum to), and a user typing quickly can enter a
-// combination like 2400 kcal / 220g protein / 50g carbs / 100g fat without
-// noticing the macros only add up to 1,980 kcal. This module only detects
-// and reports that mismatch — it never changes any value.
+// Manual macro-target consistency (2026-07-24, calories made read-only
+// 2026-07-26). Calories are no longer independently typed — profile.tsx
+// derives them from protein/carbs/fat via deriveCaloriesFromMacros() below,
+// the single canonical source for this arithmetic, so a stored calorie
+// value can no longer disagree with its macros by construction.
+//
+// checkTargetConsistency/targetMismatchMessage/targetComboKey below predate
+// that change and are kept — still correct, still tested — for any future
+// caller that receives an independently-sourced calorie number (e.g. an
+// imported/legacy value) and needs to detect a mismatch rather than assume
+// one can't exist. profile.tsx itself no longer calls them, since its own
+// calorie value is always internally derived, never independently entered.
 
 export type TargetConsistency = {
   /** Calories implied by the entered macro grams alone: (protein*4) +
@@ -33,13 +36,21 @@ export type TargetConsistency = {
 export const TARGET_MISMATCH_TOLERANCE_KCAL = 100;
 export const TARGET_MISMATCH_TOLERANCE_PCT = 0.05;
 
+// Canonical shared calculation: protein and carbs at 4 kcal/g, fat at
+// 9 kcal/g. The only place this arithmetic should ever be written — every
+// other caller (checkTargetConsistency below, profile.tsx's read-only
+// calorie display and save flow) goes through this function.
+export function deriveCaloriesFromMacros(proteinG: number, carbsG: number, fatG: number): number {
+  return proteinG * 4 + carbsG * 4 + fatG * 9;
+}
+
 export function checkTargetConsistency(input: {
   calorieTarget: number;
   proteinG: number;
   carbsG: number;
   fatG: number;
 }): TargetConsistency {
-  const macroCalories = input.proteinG * 4 + input.carbsG * 4 + input.fatG * 9;
+  const macroCalories = deriveCaloriesFromMacros(input.proteinG, input.carbsG, input.fatG);
   const differenceCalories = input.calorieTarget - macroCalories;
   const absoluteDifference = Math.abs(differenceCalories);
   const percentageDifference =
