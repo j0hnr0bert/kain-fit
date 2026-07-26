@@ -636,6 +636,180 @@ export type Database = {
           },
         ]
       }
+      kain_signal_events: {
+        Row: {
+          created_at: string
+          event_properties: Json
+          event_type: string
+          id: string
+          insight_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event_properties?: Json
+          event_type: string
+          id?: string
+          insight_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event_properties?: Json
+          event_type?: string
+          id?: string
+          insight_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kain_signal_events_insight_id_fkey"
+            columns: ["insight_id"]
+            isOneToOne: false
+            referencedRelation: "kain_signal_insights"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kain_signal_feedback: {
+        Row: {
+          created_at: string
+          feedback_kind: string
+          id: string
+          insight_id: string
+          insight_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feedback_kind: string
+          id?: string
+          insight_id: string
+          insight_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          feedback_kind?: string
+          id?: string
+          insight_id?: string
+          insight_type?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kain_signal_feedback_insight_id_fkey"
+            columns: ["insight_id"]
+            isOneToOne: false
+            referencedRelation: "kain_signal_insights"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kain_signal_insights: {
+        Row: {
+          computed_for_day: string
+          created_at: string
+          evidence: Json
+          evidence_strength: string
+          id: string
+          insight_type: string
+          is_selected: boolean
+          observation_facts: Json
+          rank_score: number
+          recommended_action_key: string
+          state_id: string
+          suppressed: boolean
+          user_id: string
+        }
+        Insert: {
+          computed_for_day: string
+          created_at?: string
+          evidence: Json
+          evidence_strength: string
+          id?: string
+          insight_type: string
+          is_selected?: boolean
+          observation_facts: Json
+          rank_score: number
+          recommended_action_key: string
+          state_id: string
+          suppressed?: boolean
+          user_id: string
+        }
+        Update: {
+          computed_for_day?: string
+          created_at?: string
+          evidence?: Json
+          evidence_strength?: string
+          id?: string
+          insight_type?: string
+          is_selected?: boolean
+          observation_facts?: Json
+          rank_score?: number
+          recommended_action_key?: string
+          state_id?: string
+          suppressed?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "kain_signal_insights_state_id_fkey"
+            columns: ["state_id"]
+            isOneToOne: false
+            referencedRelation: "kain_signal_states"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      kain_signal_states: {
+        Row: {
+          active_logging_days: number
+          composite_score: number
+          computed_for_day: string
+          created_at: string
+          gate_results: Json
+          gates_met: boolean
+          id: string
+          progress_label: string | null
+          qualifying_entries: number
+          reasonably_complete_days: number
+          state: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active_logging_days?: number
+          composite_score?: number
+          computed_for_day: string
+          created_at?: string
+          gate_results?: Json
+          gates_met: boolean
+          id?: string
+          progress_label?: string | null
+          qualifying_entries?: number
+          reasonably_complete_days?: number
+          state: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active_logging_days?: number
+          composite_score?: number
+          computed_for_day?: string
+          created_at?: string
+          gate_results?: Json
+          gates_met?: boolean
+          id?: string
+          progress_label?: string | null
+          qualifying_entries?: number
+          reasonably_complete_days?: number
+          state?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       macro_reports: {
         Row: {
           corrected_values: Json | null

@@ -56,9 +56,11 @@ import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
 import { CoachingCard } from "@/components/CoachingCard";
 import { saveReactionMessage, type ReactionContent } from "@/components/coaching-card-content";
+import { KainSignalCard } from "@/components/KainSignalCard";
 import { TargetRings, type JustAdded } from "@/components/TargetRings";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
+import { getKainSignalToday } from "@/lib/kain-signal.functions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export const Route = createFileRoute("/_authenticated/today")({
@@ -715,6 +717,20 @@ function TodayPage() {
     refetchInterval: 60_000,
     retry: false,
   });
+
+  // KainSignal (Phase 1 — see kain-signal.functions.ts). Renders in place
+  // of CoachingCard only once state === "connected" — see the precedence
+  // rule at the render site below. States no_data/building/eligible are
+  // computed and persisted server-side but intentionally produce no new UI
+  // here yet, so the existing Coaching Card experience is untouched for
+  // every user who hasn't reached Signal Connected.
+  const fetchKainSignalToday = useServerFn(getKainSignalToday);
+  const { data: signalPayload } = useQuery({
+    queryKey: ["kain-signal", "today"],
+    queryFn: () => fetchKainSignalToday(),
+    retry: false,
+  });
+  const showKainSignalSlot = signalPayload?.state === "connected";
   // Refresh usage after each successful add.
   useEffect(() => {
     qc.invalidateQueries({ queryKey: ["beta-usage"] });
@@ -1145,14 +1161,18 @@ function TodayPage() {
             justCompletedGold={justCompletedGold}
           />
         </div>
-        <CoachingCard
-          result={coachingResult}
-          proteinRemaining={proteinRemaining}
-          weekly={weekly}
-          promiseEligible={promiseEligible}
-          justCompletedCelebrate={celebration.transientCelebrate}
-          reaction={saveReaction}
-        />
+        {showKainSignalSlot && signalPayload ? (
+          <KainSignalCard payload={signalPayload} />
+        ) : (
+          <CoachingCard
+            result={coachingResult}
+            proteinRemaining={proteinRemaining}
+            weekly={weekly}
+            promiseEligible={promiseEligible}
+            justCompletedCelebrate={celebration.transientCelebrate}
+            reaction={saveReaction}
+          />
+        )}
         {betaUsage?.enabled &&
           betaUsage.cap > 0 &&
           (betaUsage.reachedLimit ? (
