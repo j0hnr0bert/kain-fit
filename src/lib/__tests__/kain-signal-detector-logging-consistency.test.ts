@@ -49,6 +49,16 @@ describe("detectLoggingConsistency", () => {
     expect(result!.evidenceStrength).toBe("early_signal");
   });
 
+  it("a single isolated logging day (today-only) cannot qualify as a trend", () => {
+    const todayManila = "2026-07-10";
+    const result = detectLoggingConsistency({
+      activeDays: [todayManila],
+      todayManila,
+      windowDays: 20,
+    });
+    expect(result).toBeNull();
+  });
+
   it("too few active days for the early-signal floor (6 days, floor is 7) -> null", () => {
     const todayManila = "2026-07-10";
     const activeDays = [

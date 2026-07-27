@@ -208,6 +208,20 @@ function mealFromHour(h: number): Entry["meal_type"] {
 function TodayPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // Single mutation-success boundary for every food_entries write (insert,
+  // update, delete — including undo-insert/undo-delete). KainSignal must
+  // re-evaluate after every one of these, not just inserts/deletes that
+  // happen to change entries.length — an edit that changes grams, foods,
+  // or macros while leaving the entry count unchanged must still trigger
+  // re-evaluation. Called explicitly inside each mutation's own success
+  // path below (never on a failure return), so a failed save/edit/delete
+  // can never trigger a false "successful" KainSignal refresh.
+  async function invalidateAfterFoodMutation() {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["entries"] }),
+      qc.invalidateQueries({ queryKey: ["kain-signal", "today"] }),
+    ]);
+  }
   const parseFn = useServerFn(parseFood);
   const recalcFn = useServerFn(recalcItem);
   const [input, setInput] = useState("");
@@ -343,7 +357,7 @@ function TodayPage() {
       /* ignore */
     }
     setDemoImport(null);
-    qc.invalidateQueries({ queryKey: ["entries"] });
+    await invalidateAfterFoodMutation();
     toast.success(`Imported ${rows.length} demo ${rows.length === 1 ? "entry" : "entries"}`);
   }
 
@@ -490,7 +504,7 @@ function TodayPage() {
             });
             setPending(null);
             setInput("");
-            await qc.invalidateQueries({ queryKey: ["entries"] });
+            await invalidateAfterFoodMutation();
             await qc.invalidateQueries({ queryKey: ["beta-usage"] });
             toast.success("Added to Today");
             return true;
@@ -513,7 +527,7 @@ function TodayPage() {
         });
         setSaveError(msg);
         toast.error(msg);
-        await qc.invalidateQueries({ queryKey: ["entries"] });
+        await invalidateAfterFoodMutation();
         return false;
       }
 
@@ -654,14 +668,14 @@ function TodayPage() {
                     toast.error(formatDbError(undoError));
                     return;
                   }
-                  await qc.invalidateQueries({ queryKey: ["entries"] });
+                  await invalidateAfterFoodMutation();
                   toast("Meal removed");
                 },
               }
             : undefined,
         },
       );
-      await qc.invalidateQueries({ queryKey: ["entries"] });
+      await invalidateAfterFoodMutation();
       await qc.invalidateQueries({ queryKey: ["beta-usage"] });
       return true;
     } finally {
@@ -718,20 +732,33 @@ function TodayPage() {
     retry: false,
   });
 
-  // KainSignal (Phase 1 — see kain-signal.functions.ts). Renders in place
-  // of CoachingCard only once state === "connected" — see the precedence
-  // rule at the render site below. States no_data/building/eligible are
-  // computed and persisted server-side but intentionally produce no new UI
-  // here yet, so the existing Coaching Card experience is untouched for
-  // every user who hasn't reached Signal Connected.
+  // KainSignal (see kain-signal.functions.ts) — an independent layer from
+  // event coaching below, never a competing alternative for one slot (see
+  // the 2026-07-27 product-architecture correction: Coaching Card answers
+  // "what should I do next," KainSignal answers "what does my repeated
+  // behavior reveal" — both may render, either may render alone, or neither
+  // may). Recomputed on every load, including after every meal save via the
+  // invalidation below, and rendered whenever it is display-eligible on its
+  // own terms. Module-level readiness (2026-07-27 correction): a milestone
+  // is an independently-certain lifetime fact, not a confidence-graded
+  // trend, so it renders the moment it's selected — it must never wait on
+  // state === "connected", which represents pattern-module (protein/
+  // logging) trust only. Pattern insights still require it, unchanged.
   const fetchKainSignalToday = useServerFn(getKainSignalToday);
   const { data: signalPayload } = useQuery({
     queryKey: ["kain-signal", "today"],
     queryFn: () => fetchKainSignalToday(),
     retry: false,
   });
-  const showKainSignalSlot = signalPayload?.state === "connected";
-  // Refresh usage after each successful add.
+  const kainSignalEligible = Boolean(
+    signalPayload?.selectedInsight &&
+    (signalPayload.selectedInsight.insightType === "behavior_milestone" ||
+      signalPayload.state === "connected"),
+  );
+  // Refresh usage after each successful add. Kept keyed on entries.length —
+  // unlike KainSignal (see invalidateAfterFoodMutation above), beta-usage
+  // genuinely only needs to change when the entry count changes, and count
+  // inference was never the bug here.
   useEffect(() => {
     qc.invalidateQueries({ queryKey: ["beta-usage"] });
   }, [entries.length, qc]);
@@ -956,7 +983,7 @@ function TodayPage() {
       return;
     }
     track("food_deleted", {});
-    qc.invalidateQueries({ queryKey: ["entries"] });
+    await invalidateAfterFoodMutation();
     toast("Entry deleted", {
       duration: 5000,
       action: {
@@ -965,7 +992,7 @@ function TodayPage() {
           if (!uid) return;
           const { id, ...rest } = entry;
           await supabase.from("food_entries").insert({ ...rest, user_id: uid });
-          qc.invalidateQueries({ queryKey: ["entries"] });
+          await invalidateAfterFoodMutation();
         },
       },
     });
@@ -995,7 +1022,7 @@ function TodayPage() {
       toast.error(error.message);
       return false;
     }
-    qc.invalidateQueries({ queryKey: ["entries"] });
+    await invalidateAfterFoodMutation();
     return true;
   }
 
@@ -1161,18 +1188,26 @@ function TodayPage() {
             justCompletedGold={justCompletedGold}
           />
         </div>
-        {showKainSignalSlot && signalPayload ? (
-          <KainSignalCard payload={signalPayload} />
-        ) : (
-          <CoachingCard
-            result={coachingResult}
-            proteinRemaining={proteinRemaining}
-            weekly={weekly}
-            promiseEligible={promiseEligible}
-            justCompletedCelebrate={celebration.transientCelebrate}
-            reaction={saveReaction}
-          />
-        )}
+        {/* Two independent intelligence layers (locked 2026-07-27
+            correction) — never mutually exclusive, never one shared slot:
+            Coaching Card answers "what should I do next" (same-day
+            execution); KainSignal answers "what does my repeated behavior
+            reveal" (longitudinal). Each resolves and renders purely on its
+            own eligibility. All four combinations are valid: both, either
+            alone, or neither. CoachingCard already self-guards on
+            "silence" (messageFor returns null -> CoachingCard returns
+            null), so it's rendered unconditionally here. */}
+        <CoachingCard
+          result={coachingResult}
+          proteinRemaining={proteinRemaining}
+          weekly={weekly}
+          promiseEligible={promiseEligible}
+          justCompletedCelebrate={celebration.transientCelebrate}
+          reaction={saveReaction}
+        />
+        {kainSignalEligible && signalPayload?.selectedInsight ? (
+          <KainSignalCard selectedInsight={signalPayload.selectedInsight} />
+        ) : null}
         {betaUsage?.enabled &&
           betaUsage.cap > 0 &&
           (betaUsage.reachedLimit ? (

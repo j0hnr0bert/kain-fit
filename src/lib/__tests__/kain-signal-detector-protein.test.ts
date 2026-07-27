@@ -53,6 +53,15 @@ describe("detectProteinAdherence", () => {
     expect(result!.evidenceStrength).toBe("clear_signal");
   });
 
+  it("a single isolated day (today-only totals) cannot qualify as a trend, however far below target", () => {
+    const completeDays = ["2026-07-01"];
+    const entriesByDay: Record<string, FoodEntryLite[]> = {
+      "2026-07-01": [proteinEntry("2026-07-01", 20)], // one isolated low-protein day
+    };
+    const result = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 130 });
+    expect(result).toBeNull();
+  });
+
   it("too few complete days for the early-signal floor (4 days, floor is 5) -> null", () => {
     const completeDays = ["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04"];
     const entriesByDay: Record<string, FoodEntryLite[]> = {};
