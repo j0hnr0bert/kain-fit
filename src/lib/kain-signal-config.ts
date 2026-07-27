@@ -67,6 +67,19 @@ export const EVIDENCE_STRENGTH_BASE_SCORE: Record<EvidenceStrength, number> = {
 export const INSIGHT_TYPE_PRIORITY_TIEBREAK = {
   protein_adherence: 0.1,
   logging_consistency: 0,
+  // behavior_milestone's tiebreak value is irrelevant to actual selection —
+  // kain-signal-selection.ts's selectWinner always gives a present milestone
+  // candidate top priority before rankInsights' score even matters (see the
+  // selection-policy doctrine: "newly crossed milestone" outranks
+  // everything). Present only so rankInsights' score math never produces
+  // NaN for a milestone candidate in the audit-trail ranked array.
+  behavior_milestone: 0,
 } as const;
 export const NOT_QUITE_PENALTY_PER_OCCURRENCE = 1.5;
 export const NOT_QUITE_LOOKBACK_DAYS = 30;
+
+// Milestone ladders (kain-signal-detector-milestone.ts). Deliberately
+// small and high-value only — see the doctrine's explicit rejection of
+// weak milestones ("second meal logged", "every five meals forever").
+export const MEAL_COUNT_MILESTONE_THRESHOLDS = [10, 25, 50, 100] as const;
+export const DISTINCT_DAY_MILESTONE_THRESHOLDS = [7, 14, 30] as const;

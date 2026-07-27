@@ -7,12 +7,18 @@
 // Kept as a .ts file (not .tsx), same as coaching-card-content.ts, so
 // react-refresh/only-export-components doesn't warn on a component file
 // that also exports non-component values.
+//
+// No silence-variant handling here — KainSignalCard is only ever rendered
+// by today.tsx once it is display-eligible on its own terms (state ===
+// "connected" AND a real insight was selected). "No eligible KainSignal
+// means no KainSignal card" is enforced at the render-site gate, not
+// inside this component tree.
 
-import { CalendarCheck, Sparkles, TrendingUp } from "lucide-react";
+import { Award, CalendarCheck, TrendingUp } from "lucide-react";
 import {
+  behaviorMilestoneCopy,
   loggingConsistencyCopy,
   proteinAdherenceCopy,
-  validSilenceCopy,
   type SignalCardContent,
 } from "@/lib/kain-signal-copy";
 import type { SelectedInsightPayload } from "@/lib/kain-signal-generate.server";
@@ -27,7 +33,11 @@ export type SignalTheme = {
 
 // One shared identity for any real insight — see styles.css's --signal
 // token comment for why this is a new color rather than a reuse of
-// --primary/--reinforce.
+// --primary/--reinforce. Shared across all three categories, including
+// milestones — KainSignal reads as one consistent, distinct surface, not a
+// different visual system per category (see the doctrine's "do not
+// visually merge the cards [with CoachingCard], but do not introduce a
+// broad visual redesign" instruction).
 const SIGNAL_THEME: SignalTheme = {
   bg: "bg-signal/10",
   border: "border-signal/28",
@@ -35,39 +45,32 @@ const SIGNAL_THEME: SignalTheme = {
   iconWrap: "bg-signal/18",
 };
 
-// The silence variant is deliberately neutral/muted, not tinted with
-// --signal — "nothing urgent today" should read as calm, not as another
-// attention-seeking colored card.
-const SILENCE_THEME: SignalTheme = {
-  bg: "bg-muted/60",
-  border: "border-border",
-  icon: "text-muted-foreground",
-  iconWrap: "bg-muted",
-};
-
 const ICON_BY_INSIGHT_TYPE: Record<InsightType, typeof TrendingUp> = {
   protein_adherence: TrendingUp,
   logging_consistency: CalendarCheck,
+  behavior_milestone: Award,
 };
 
-export function themeForSignal(insightType: InsightType | null): SignalTheme {
-  return insightType ? SIGNAL_THEME : SILENCE_THEME;
+export function themeForSignal(_insightType: InsightType): SignalTheme {
+  return SIGNAL_THEME;
 }
 
-export function iconForSignal(insightType: InsightType | null): typeof Sparkles {
-  return insightType ? ICON_BY_INSIGHT_TYPE[insightType] : Sparkles;
+export function iconForSignal(insightType: InsightType): typeof TrendingUp {
+  return ICON_BY_INSIGHT_TYPE[insightType];
 }
 
-// Dispatches to the exact same pure copy functions kain-signal-copy.ts's
-// own signalCardCopy() uses internally — reimplemented as a thin wrapper
-// here (rather than calling signalCardCopy directly) only because the
-// client only ever has a persisted SelectedInsightPayload, never the
-// server-side-only RankedCandidate shape signalCardCopy expects.
-export function copyForSelectedInsight(
-  selectedInsight: SelectedInsightPayload | null,
-): SignalCardContent {
-  if (!selectedInsight) return validSilenceCopy();
-  return selectedInsight.evidence.insightType === "protein_adherence"
-    ? proteinAdherenceCopy(selectedInsight.evidence)
-    : loggingConsistencyCopy(selectedInsight.evidence);
+// Dispatches to the exact same pure copy functions kain-signal-copy.ts
+// itself uses — reimplemented as a thin wrapper here (rather than exporting
+// a dispatcher from kain-signal-copy.ts) only because the client only ever
+// has a persisted SelectedInsightPayload, never the server-side-only
+// RankedCandidate shape.
+export function copyForSelectedInsight(selectedInsight: SelectedInsightPayload): SignalCardContent {
+  switch (selectedInsight.evidence.insightType) {
+    case "protein_adherence":
+      return proteinAdherenceCopy(selectedInsight.evidence);
+    case "logging_consistency":
+      return loggingConsistencyCopy(selectedInsight.evidence);
+    case "behavior_milestone":
+      return behaviorMilestoneCopy(selectedInsight.evidence);
+  }
 }

@@ -54,5 +54,31 @@ export type LoggingConsistencyEvidence = {
   evidenceStrength: EvidenceStrength;
 };
 
-export type InsightEvidence = ProteinAdherenceEvidence | LoggingConsistencyEvidence;
+// The two lifetime ladders behavior_milestone currently supports. Adding a
+// third ladder means adding a MilestoneType value and its threshold list in
+// kain-signal-registry.ts — never inferring a milestone from same-day data.
+export type MilestoneType = "meal_count" | "distinct_logging_days";
+
+// A milestone is a certain, deterministic fact (a threshold was or wasn't
+// crossed), not a confidence-graded pattern — evidenceStrength is always
+// "strong_signal" here (see kain-signal-registry.ts) purely so it fits the
+// same DB CHECK constraint and ranking base-score table the other two
+// evidence types use, not because milestone strength is actually variable.
+// milestoneType + threshold together are the stable identity used for
+// dedup — see kain-signal-generate.server.ts's recordedMilestoneKeys. Two
+// different thresholds of the same milestoneType are two different
+// identities; crossing 25 meals must never be treated as the same
+// milestone as crossing 50.
+export type MilestoneEvidence = {
+  insightType: "behavior_milestone";
+  milestoneType: MilestoneType;
+  threshold: number;
+  observedValue: number;
+  evidenceStrength: EvidenceStrength;
+};
+
+export type InsightEvidence =
+  | ProteinAdherenceEvidence
+  | LoggingConsistencyEvidence
+  | MilestoneEvidence;
 export type InsightType = InsightEvidence["insightType"];

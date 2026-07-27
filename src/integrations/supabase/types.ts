@@ -715,6 +715,8 @@ export type Database = {
           id: string
           insight_type: string
           is_selected: boolean
+          milestone_threshold: number | null
+          milestone_type: string | null
           observation_facts: Json
           rank_score: number
           recommended_action_key: string
@@ -730,6 +732,8 @@ export type Database = {
           id?: string
           insight_type: string
           is_selected?: boolean
+          milestone_threshold?: number | null
+          milestone_type?: string | null
           observation_facts: Json
           rank_score: number
           recommended_action_key: string
@@ -745,6 +749,8 @@ export type Database = {
           id?: string
           insight_type?: string
           is_selected?: boolean
+          milestone_threshold?: number | null
+          milestone_type?: string | null
           observation_facts?: Json
           rank_score?: number
           recommended_action_key?: string
@@ -1343,6 +1349,31 @@ export type Database = {
         Returns: boolean
       }
       is_allowed_event_name: { Args: { _name: string }; Returns: boolean }
+      kain_signal_replace_selection: {
+        Args: {
+          p_computed_for_day: string
+          p_rows: Json
+          p_state_id: string
+          p_user_id: string
+        }
+        Returns: {
+          computed_for_day: string
+          created_at: string
+          evidence: Json
+          evidence_strength: string
+          id: string
+          insight_type: string
+          is_selected: boolean
+          milestone_threshold: number | null
+          milestone_type: string | null
+          observation_facts: Json
+          rank_score: number
+          recommended_action_key: string
+          state_id: string
+          suppressed: boolean
+          user_id: string
+        }[]
+      }
       log_product_event: {
         Args: {
           _acquisition_source: string
