@@ -449,8 +449,15 @@ function TodayPage() {
     setSaveError(null);
     const saveStarted = mark();
     try {
-      const { data: u, error: authError } = await supabase.auth.getUser();
-      if (authError || !u.user) {
+      // getSession() reads the already-cached session from local storage —
+      // no network round trip — instead of getUser()'s server-validated
+      // fetch. See _authenticated/route.tsx's beforeLoad for the same
+      // reasoning: the real data-access boundary is RLS + PostgREST's own
+      // independent JWT verification on every request, unaffected by which
+      // of these two calls supplies the id used to build the insert rows.
+      const { data: sessionData, error: authError } = await supabase.auth.getSession();
+      const authedUser = sessionData.session?.user;
+      if (authError || !authedUser) {
         const msg = authError?.message ?? "Please sign in again before saving this meal.";
         setSaveError(msg);
         toast.error(msg);
@@ -462,7 +469,7 @@ function TodayPage() {
       const loggedAt = new Date().toISOString();
       const stampedItems = stampClientRequestIds(items);
       const rows = stampedItems.map((i) => ({
-        user_id: u.user!.id,
+        user_id: authedUser.id,
         logged_at: loggedAt,
         meal_type: LEGACY_MEAL_TYPE,
         original_input: sourceInput,
@@ -688,14 +695,17 @@ function TodayPage() {
   const { data: profile } = useQuery({
     queryKey: ["profile", "targets"],
     queryFn: async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u.user) return null;
+      // getSession() — see saveFoodItems above for why this reads from
+      // local storage instead of making a fresh server-validated request.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const authedUser = sessionData.session?.user;
+      if (!authedUser) return null;
       const { data } = await supabase
         .from("profiles")
         .select(
           "manual_targets_enabled,target_calories,target_protein_g,target_carbs_g,target_fat_g",
         )
-        .eq("user_id", u.user.id)
+        .eq("user_id", authedUser.id)
         .maybeSingle();
       return data as {
         manual_targets_enabled: boolean;
@@ -975,8 +985,10 @@ function TodayPage() {
   }
 
   async function deleteEntry(entry: Entry) {
-    const { data: u } = await supabase.auth.getUser();
-    const uid = u.user?.id;
+    // No auth call here — the delete itself needs no client-side identity
+    // (RLS scopes it to the caller's row already); identity is only needed
+    // if Undo is actually clicked, so that lookup moved into its onClick
+    // below instead of blocking this delete.
     const { error } = await supabase.from("food_entries").delete().eq("id", entry.id);
     if (error) {
       toast.error(error.message);
@@ -989,6 +1001,8 @@ function TodayPage() {
       action: {
         label: "Undo",
         onClick: async () => {
+          const { data: sessionData } = await supabase.auth.getSession();
+          const uid = sessionData.session?.user?.id;
           if (!uid) return;
           const { id, ...rest } = entry;
           await supabase.from("food_entries").insert({ ...rest, user_id: uid });
@@ -1767,9 +1781,11 @@ function StatusBadge({
 function UserInitial() {
   const [initial, setInitial] = useState("K");
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      const email = data.user?.email ?? "";
-      const name = data.user?.user_metadata?.full_name ?? email;
+    // getSession() — see saveFoodItems above for why this reads from local
+    // storage instead of making a fresh server-validated request.
+    supabase.auth.getSession().then(({ data }) => {
+      const email = data.session?.user?.email ?? "";
+      const name = data.session?.user?.user_metadata?.full_name ?? email;
       if (name) setInitial(String(name).charAt(0).toUpperCase());
     });
   }, []);
