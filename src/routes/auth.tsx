@@ -169,9 +169,15 @@ function AuthPage() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) navigate({ to: "/today", replace: true });
+      if (!data.user) return;
+      if (nextPath) {
+        window.location.replace(nextPath);
+        return;
+      }
+      navigate({ to: "/today", replace: true });
     });
-  }, [navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate, nextPath]);
 
   useEffect(() => {
     if (mode === "signup") {
@@ -215,6 +221,10 @@ function AuthPage() {
 
     if (isNewAccount) track("signup_completed", {});
     if (isNewAccount) logStep("signup_completed");
+    if (nextPath) {
+      window.location.replace(nextPath);
+      return;
+    }
     navigate({ to: "/today", replace: true });
   }
 
@@ -240,9 +250,9 @@ function AuthPage() {
     }, 8000);
     try {
       const result = isEmbeddedLovableShell()
-        ? await signInWithOAuthPopup(provider, window.location.origin)
+        ? await signInWithOAuthPopup(provider, returnUrl)
         : await lovable.auth.signInWithOAuth(provider, {
-            redirect_uri: window.location.origin,
+            redirect_uri: returnUrl,
           });
       completed = true;
       window.clearTimeout(reminderId);
@@ -341,7 +351,7 @@ function AuthPage() {
           email: emailValue,
           password: passwordValue,
           options: {
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: returnUrl,
             data: { display_name: emailValue.split("@")[0] },
           },
         });
