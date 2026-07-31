@@ -21,7 +21,17 @@ import {
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional().default("signup"),
   source: z.string().max(64).optional(),
+  // Same-origin relative path to return to after auth (used by the OAuth
+  // consent screen so MCP clients land back on the approval page).
+  next: z.string().max(512).optional(),
 });
+
+/** Only same-origin relative paths are allowed as a post-auth destination. */
+function safeNext(next?: string): string | null {
+  if (!next) return null;
+  if (!next.startsWith("/") || next.startsWith("//")) return null;
+  return next;
+}
 
 export const Route = createFileRoute("/auth")({
   validateSearch: (s) => searchSchema.parse(s),
@@ -29,7 +39,14 @@ export const Route = createFileRoute("/auth")({
 });
 
 function AuthPage() {
-  const { mode: initialMode } = useSearch({ from: "/auth" });
+  const { mode: initialMode, next: nextParam } = useSearch({ from: "/auth" });
+  const nextPath = safeNext(nextParam);
+  const returnUrl =
+    typeof window !== "undefined"
+      ? nextPath
+        ? `${window.location.origin}${nextPath}`
+        : window.location.origin
+      : "";
   const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">(initialMode);
   const [email, setEmail] = useState("");
