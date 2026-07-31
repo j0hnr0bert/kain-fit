@@ -56,6 +56,11 @@ import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
 import { CoachingCard } from "@/components/CoachingCard";
 import { saveReactionMessage, type ReactionContent } from "@/components/coaching-card-content";
+import {
+  shouldShowFirstMealCelebration,
+  buildFirstMealCelebrationContent,
+  buildFirstMealSavedEventProperties,
+} from "@/lib/first-meal-celebration";
 import { KainSignalCard } from "@/components/KainSignalCard";
 import { TargetRings, type JustAdded } from "@/components/TargetRings";
 import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
@@ -208,6 +213,16 @@ function mealFromHour(h: number): Entry["meal_type"] {
 function TodayPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // Captured once on first render — feeds first_meal_saved's
+  // elapsed_ms_since_today_mount (see first-meal-celebration.ts). Never
+  // reset, so it reflects time since this Today mount regardless of which
+  // save eventually earns the celebration.
+  const todayMountedAtRef = useRef(mark());
+  // True only when the current pending input text came from voice
+  // recognition; cleared the moment the user types manually (see the main
+  // input's onChange below) so a save's input_mode reflects how *this*
+  // entry was actually produced.
+  const usedVoiceRef = useRef(false);
   // Single mutation-success boundary for every food_entries write (insert,
   // update, delete — including undo-insert/undo-delete). KainSignal must
   // re-evaluate after every one of these, not just inserts/deletes that
@@ -350,6 +365,16 @@ function TodayPage() {
       toast.error(error.message);
       return;
     }
+    // First-meal celebration is deliberately NOT wired here. This upsert's
+    // onConflict: "client_request_id" requires a unique constraint on
+    // food_entries.client_request_id that does not currently exist in this
+    // schema — a pre-existing defect unrelated to this feature. Attempting
+    // the celebration claim after an import that may itself be silently
+    // failing would let the UI claim a celebration for a save that didn't
+    // durably happen. Demo-import celebration is deferred until that
+    // constraint is fixed as its own, separately reviewed change — see the
+    // handoff report. Today saves (via saveFoodItems) are unaffected and
+    // fully covered by claim_first_meal_celebration().
     try {
       localStorage.removeItem("kf.demoPendingImport");
       sessionStorage.removeItem("kf.demoPendingImport");
@@ -582,6 +607,49 @@ function TodayPage() {
       });
       setJustCompletedGold(calorieCompletedByThisSave);
 
+      // First-meal celebration: an atomic, race-safe claim via the
+      // claim_first_meal_celebration() RPC (see the migration that follows
+      // 20260731052355 and first-meal-celebration.ts). The function checks
+      // BOTH first_meal_celebrated_at IS NULL AND that this user's lifetime
+      // food_entries count is exactly 1 after this save's insert — the
+      // count check is what protects against the migration-backfill gap
+      // (a user who created entries between the migration applying and
+      // this code deploying would otherwise have a null flag but more than
+      // one entry). Both checks and the write happen inside one
+      // SECURITY DEFINER transaction with a row lock on the caller's own
+      // profile, so concurrent calls for the same user cannot both claim.
+      // This is deliberately separate from the pre-existing
+      // kf.firstFoodLogged localStorage flag below, which drives an
+      // unrelated "automatic save can be undone" toast explainer, not this
+      // celebration. Only ever attempted on a successful insert, never on
+      // edit/delete/undo, which call neither this function nor this RPC.
+      //
+      // Analytics semantics: first_meal_saved is only ever tracked after
+      // the RPC returns claimed:true, so database eligibility is
+      // enforced at-most-once server-side regardless of network
+      // conditions. The track() call itself is fire-and-forget like every
+      // other event in this file — delivery of the *event* is best-effort,
+      // not exactly-once; the underlying celebration state and the UI the
+      // user actually saw are what's guaranteed exactly-once, not the
+      // analytics record of it.
+      let firstMealContent: ReactionContent | null = null;
+      try {
+        const { data: claimed } = await supabase.rpc("claim_first_meal_celebration");
+        if (shouldShowFirstMealCelebration({ claimed: claimed === true })) {
+          firstMealContent = buildFirstMealCelebrationContent();
+          track(
+            "first_meal_saved",
+            buildFirstMealSavedEventProperties({
+              elapsedMsSinceMount: elapsed(todayMountedAtRef.current),
+              inputMode: usedVoiceRef.current ? "voice" : "typed",
+              source: "today",
+            }),
+          );
+        }
+      } catch {
+        // Never let the celebration claim break a successful save.
+      }
+
       // The "doggy-biscuit moment": every successful save gets an
       // immediate, brief acknowledgment (honest logging is the behavior
       // being reinforced, not "good" eating — see coaching-card-content.ts)
@@ -590,18 +658,19 @@ function TodayPage() {
       // analytics, nothing in the save's own critical path above this
       // point changed. Cleared automatically by the effect below.
       setSaveReaction(
-        saveReactionMessage(
-          {
-            protein: addedProtein,
-            calories: addedCalories,
-            carbs: addedCarbs,
-            fat: addedFat,
-          },
-          {
-            proteinRemainingAfter: targetsActive ? postProteinRemaining : undefined,
-            wasRecovering: gapDays !== null && gapDays >= 3,
-          },
-        ),
+        firstMealContent ??
+          saveReactionMessage(
+            {
+              protein: addedProtein,
+              calories: addedCalories,
+              carbs: addedCarbs,
+              fat: addedFat,
+            },
+            {
+              proteinRemainingAfter: targetsActive ? postProteinRemaining : undefined,
+              wasRecovering: gapDays !== null && gapDays >= 3,
+            },
+          ),
       );
       setJustAdded({
         calories: addedCalories > 0,
@@ -969,6 +1038,7 @@ function TodayPage() {
     rec.maxAlternatives = 1;
     rec.onresult = (ev) => {
       const text = ev.results[0][0].transcript;
+      usedVoiceRef.current = true;
       setInput((prev) => (prev ? prev + " " + text : text));
     };
     rec.onend = () => setListening(false);
@@ -1218,6 +1288,7 @@ function TodayPage() {
           promiseEligible={promiseEligible}
           justCompletedCelebrate={celebration.transientCelebrate}
           reaction={saveReaction}
+          onDismissReaction={() => setSaveReaction(null)}
         />
         {kainSignalEligible && signalPayload?.selectedInsight ? (
           <KainSignalCard selectedInsight={signalPayload.selectedInsight} />
@@ -1243,7 +1314,10 @@ function TodayPage() {
             <Input
               ref={inputRef}
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                usedVoiceRef.current = false;
+                setInput(e.target.value);
+              }}
               placeholder="Type your next food or meal…"
               className="h-14 pl-5 pr-24 bg-transparent border-0 rounded-3xl text-base focus-visible:ring-0"
               disabled={parsing}

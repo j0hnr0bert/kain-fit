@@ -192,6 +192,7 @@ describe("analytics schema accepts every emitted auth event", () => {
     "signup_failed",
     "auth_attempt_completed",
     "first_food_logged",
+    "first_meal_saved",
   ] as const;
 
   // Duplicated locally so this test does not import the server module
@@ -236,6 +237,7 @@ describe("analytics schema accepts every emitted auth event", () => {
     "auth_method_chosen",
     "signup_failed",
     "first_food_logged",
+    "first_meal_saved",
     "auth_attempt_completed",
   ]);
 
