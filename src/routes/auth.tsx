@@ -21,7 +21,17 @@ import {
 const searchSchema = z.object({
   mode: z.enum(["signin", "signup"]).optional().default("signup"),
   source: z.string().max(64).optional(),
+  // Same-origin relative path to return to after auth (used by the OAuth
+  // consent screen so MCP clients land back on the approval page).
+  next: z.string().max(512).optional(),
 });
+
+/** Only same-origin relative paths are allowed as a post-auth destination. */
+function safeNext(next?: string): string | null {
+  if (!next) return null;
+  if (!next.startsWith("/") || next.startsWith("//")) return null;
+  return next;
+}
 
 export const Route = createFileRoute("/auth")({
   validateSearch: (s) => searchSchema.parse(s),
@@ -29,7 +39,14 @@ export const Route = createFileRoute("/auth")({
 });
 
 function AuthPage() {
-  const { mode: initialMode } = useSearch({ from: "/auth" });
+  const { mode: initialMode, next: nextParam } = useSearch({ from: "/auth" });
+  const nextPath = safeNext(nextParam);
+  const returnUrl =
+    typeof window !== "undefined"
+      ? nextPath
+        ? `${window.location.origin}${nextPath}`
+        : window.location.origin
+      : "";
   const navigate = useNavigate();
   const [mode, setMode] = useState<"signin" | "signup">(initialMode);
   const [email, setEmail] = useState("");
@@ -152,9 +169,15 @@ function AuthPage() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      if (data.user) navigate({ to: "/today", replace: true });
+      if (!data.user) return;
+      if (nextPath) {
+        window.location.replace(nextPath);
+        return;
+      }
+      navigate({ to: "/today", replace: true });
     });
-  }, [navigate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate, nextPath]);
 
   useEffect(() => {
     if (mode === "signup") {
@@ -198,6 +221,10 @@ function AuthPage() {
 
     if (isNewAccount) track("signup_completed", {});
     if (isNewAccount) logStep("signup_completed");
+    if (nextPath) {
+      window.location.replace(nextPath);
+      return;
+    }
     navigate({ to: "/today", replace: true });
   }
 
@@ -223,9 +250,9 @@ function AuthPage() {
     }, 8000);
     try {
       const result = isEmbeddedLovableShell()
-        ? await signInWithOAuthPopup(provider, window.location.origin)
+        ? await signInWithOAuthPopup(provider, returnUrl)
         : await lovable.auth.signInWithOAuth(provider, {
-            redirect_uri: window.location.origin,
+            redirect_uri: returnUrl,
           });
       completed = true;
       window.clearTimeout(reminderId);
@@ -324,7 +351,7 @@ function AuthPage() {
           email: emailValue,
           password: passwordValue,
           options: {
-            emailRedirectTo: window.location.origin,
+            emailRedirectTo: returnUrl,
             data: { display_name: emailValue.split("@")[0] },
           },
         });

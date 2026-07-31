@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "sdk_version": "0.26.1",
+  "path": "/mcp",
+  "auth": {
+    "type": "oauth",
+    "issuer": "https://vqcugocdbapmljtozfpo.supabase.co/auth/v1",
+    "accepted_audiences": [
+      "authenticated"
+    ]
+  },
+  "mcp": {
+    "server": {
+      "name": "kain-track",
+      "version": "0.1.0",
+      "title": "Kain Track"
+    },
+    "tools": [
+      {
+        "name": "search_food_database",
+        "title": "Search the food database",
+        "description": "Search KainFit's Filipino-first verified food database by name, brand or barcode. Returns per-100g nutrition so an amount can be scaled before logging.",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Food name, local name, or brand."
+            },
+            "barcode": {
+              "type": "string",
+              "description": "Exact product barcode, if known."
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Max results, 1-20. Defaults to 8."
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "log_food",
+        "title": "Log a food entry",
+        "description": "Add a food entry with its macros to the signed-in user's KainFit log. Use search_food_database first to get accurate per-100g nutrition, then scale it to the eaten amount.",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": false,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "display_name": {
+              "type": "string",
+              "minLength": 1,
+              "description": "What was eaten, e.g. 'Chicken adobo'."
+            },
+            "quantity": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "description": "Amount eaten, in the given unit."
+            },
+            "unit": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Unit for the quantity, e.g. 'g', 'ml', 'piece'."
+            },
+            "calories": {
+              "type": "number",
+              "minimum": 0
+            },
+            "protein_g": {
+              "type": "number",
+              "minimum": 0
+            },
+            "carbs_g": {
+              "type": "number",
+              "minimum": 0
+            },
+            "fat_g": {
+              "type": "number",
+              "minimum": 0
+            },
+            "meal_type": {
+              "type": "string",
+              "enum": [
+                "breakfast",
+                "lunch",
+                "dinner",
+                "snacks"
+              ],
+              "description": "Defaults to snacks."
+            },
+            "preparation": {
+              "type": "string",
+              "description": "e.g. 'raw' or 'cooked' — important for rice, pasta and meat."
+            },
+            "is_estimate": {
+              "type": "boolean",
+              "description": "True when the macros are an estimate."
+            }
+          },
+          "required": [
+            "display_name",
+            "quantity",
+            "unit",
+            "calories",
+            "protein_g",
+            "carbs_g",
+            "fat_g"
+          ],
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "list_food_entries",
+        "title": "List food entries",
+        "description": "List the signed-in user's KainFit food entries for one Manila calendar day (defaults to today).",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Manila calendar day as YYYY-MM-DD. Defaults to today."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      },
+      {
+        "name": "daily_totals",
+        "title": "Daily macro totals",
+        "description": "Total calories, protein, carbs and fat the signed-in user logged on one Manila calendar day (defaults to today).",
+        "annotations": {
+          "readOnlyHint": true,
+          "idempotentHint": true,
+          "openWorldHint": false
+        },
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "date": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "description": "Manila calendar day as YYYY-MM-DD. Defaults to today."
+            }
+          },
+          "additionalProperties": false,
+          "$schema": "http://json-schema.org/draft-07/schema#"
+        },
+        "outputSchema": null
+      }
+    ]
+  }
+}
