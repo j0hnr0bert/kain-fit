@@ -364,6 +364,14 @@ export type ReactionContent = {
   headline: string;
   body: string;
   taglish: string;
+  /** Optional fourth line. Only the first-meal celebration sets this today
+   * (see first-meal-celebration.ts) — ordinary save reactions omit it and
+   * render exactly as before. */
+  nextAction?: string;
+  /** Shows an explicit close control when true. Ordinary save reactions
+   * already auto-dismiss quickly and omit this; the first-meal celebration
+   * sets it so the user isn't forced to wait even its own short timer out. */
+  dismissible?: boolean;
 };
 
 export const REACTION_THEME: Record<ReactionQuality, Theme> = {

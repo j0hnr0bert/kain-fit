@@ -27,6 +27,10 @@ type CoachingCardProps = {
    * coaching hierarchy takes back over on its own. Never changes what
    * evaluateCoaching() decides — purely a display-layer overlay. */
   reaction?: ReactionContent | null;
+  /** Called when the reaction's explicit dismiss control (shown only when
+   * reaction.dismissible is true) is activated. today.tsx wires this to
+   * the same state clear its own auto-dismiss timer already performs. */
+  onDismissReaction?: () => void;
 };
 
 const ENTRANCE_CLASS =
@@ -39,12 +43,14 @@ export function CoachingCard({
   promiseEligible,
   justCompletedCelebrate,
   reaction,
+  onDismissReaction,
 }: CoachingCardProps) {
   if (reaction) {
     const theme = REACTION_THEME[reaction.quality];
     const Icon = reaction.icon;
     return (
       <div
+        role="status"
         className={cn(
           "mt-3 rounded-2xl border p-4 flex items-start gap-3",
           theme.bg,
@@ -67,8 +73,23 @@ export function CoachingCard({
         <div className="min-w-0 pt-0.5">
           <div className="text-sm font-semibold text-foreground">{reaction.headline}</div>
           <div className="mt-0.5 text-sm text-foreground/85">{reaction.body}</div>
+          {reaction.nextAction && (
+            <div className="mt-1.5 text-xs font-medium text-foreground/70">
+              {reaction.nextAction}
+            </div>
+          )}
           <div className="mt-1 text-xs text-muted-foreground">{reaction.taglish}</div>
         </div>
+        {reaction.dismissible && (
+          <button
+            type="button"
+            onClick={onDismissReaction}
+            aria-label="Dismiss"
+            className="shrink-0 -m-1 p-1 text-foreground/50 hover:text-foreground/80"
+          >
+            <span aria-hidden="true">&times;</span>
+          </button>
+        )}
       </div>
     );
   }

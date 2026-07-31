@@ -923,6 +923,7 @@ export type Database = {
           age: number | null
           created_at: string
           display_name: string | null
+          first_meal_celebrated_at: string | null
           first_touch_source: string | null
           first_touch_utm: Json | null
           first_touched_at: string | null
@@ -947,6 +948,7 @@ export type Database = {
           age?: number | null
           created_at?: string
           display_name?: string | null
+          first_meal_celebrated_at?: string | null
           first_touch_source?: string | null
           first_touch_utm?: Json | null
           first_touched_at?: string | null
@@ -971,6 +973,7 @@ export type Database = {
           age?: number | null
           created_at?: string
           display_name?: string | null
+          first_meal_celebrated_at?: string | null
           first_touch_source?: string | null
           first_touch_utm?: Json | null
           first_touched_at?: string | null
@@ -1325,6 +1328,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_first_meal_celebration: { Args: never; Returns: boolean }
       get_food_parse_cache: {
         Args: { _key: string }
         Returns: {

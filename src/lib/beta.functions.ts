@@ -45,6 +45,7 @@ const ALLOWED_EVENTS = [
   "auth_method_chosen",
   "signup_failed",
   "first_food_logged",
+  "first_meal_saved",
   "auth_attempt_completed",
   "scale_guide_opened",
   "scale_guide_completed",
