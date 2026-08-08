@@ -56,6 +56,7 @@ import { TargetRings, type JustAdded } from "@/components/TargetRings";
 import { formatQuantity, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
 import { getKainSignalToday } from "@/lib/kain-signal.functions";
+import { tapHaptic } from "@/lib/haptics";
 
 // Lazy-loaded: Radix Tooltip is only needed once a food entry actually
 // renders (after the entries query resolves), never for the initial
@@ -570,6 +571,7 @@ function TodayPage() {
             setInput("");
             await invalidateAfterFoodMutation();
             await qc.invalidateQueries({ queryKey: ["beta-usage"] });
+            void tapHaptic();
             toast.success("Added to Today");
             return true;
           }
@@ -762,6 +764,7 @@ function TodayPage() {
       }
       setPending(null);
       setInput("");
+      void tapHaptic();
       const showFirstSaveExplainer = isFirstEverSave && options.automatic;
       toast.success(
         showFirstSaveExplainer
