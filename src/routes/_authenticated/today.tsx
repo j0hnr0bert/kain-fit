@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { sumNutrients } from "@/lib/nutrient-totals";
@@ -36,17 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { BottomNav } from "@/components/BottomNav";
 import { toast } from "sonner";
-import {
-  ArrowUp,
-  Mic,
-  Sparkles,
-  Trash2,
-  Pencil,
-  Loader2,
-  AlertCircle,
-  Flag,
-  Flame,
-} from "lucide-react";
+import { ArrowUp, Mic, Sparkles, Trash2, Pencil, Loader2, Flag, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { track, markReturned } from "@/lib/analytics";
 import { mark, elapsed } from "@/lib/perf";
@@ -63,10 +53,14 @@ import {
 } from "@/lib/first-meal-celebration";
 import { KainSignalCard } from "@/components/KainSignalCard";
 import { TargetRings, type JustAdded } from "@/components/TargetRings";
-import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
+import { formatQuantity, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
 import { getKainSignalToday } from "@/lib/kain-signal.functions";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
+// Lazy-loaded: Radix Tooltip is only needed once a food entry actually
+// renders (after the entries query resolves), never for the initial
+// food-input-ready paint — see src/components/StatusBadge.tsx.
+const StatusBadge = lazy(() => import("@/components/StatusBadge"));
 
 export const Route = createFileRoute("/_authenticated/today")({
   component: TodayPage,
@@ -1394,11 +1388,13 @@ function TodayPage() {
                     </span>
                   </div>
                   <div className="mt-1">
-                    <StatusBadge
-                      data_source={e.data_source}
-                      is_estimate={e.is_estimate}
-                      preparation={e.preparation ?? null}
-                    />
+                    <Suspense fallback={null}>
+                      <StatusBadge
+                        data_source={e.data_source}
+                        is_estimate={e.is_estimate}
+                        preparation={e.preparation ?? null}
+                      />
+                    </Suspense>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal · P{" "}
@@ -1765,11 +1761,13 @@ function PendingRow({
         </div>
       )}
       <div className="mt-3 flex items-center gap-2 text-[11px] flex-wrap">
-        <StatusBadge
-          data_source={item.data_source}
-          is_estimate={item.is_estimate}
-          preparation={item.preparation}
-        />
+        <Suspense fallback={null}>
+          <StatusBadge
+            data_source={item.data_source}
+            is_estimate={item.is_estimate}
+            preparation={item.preparation}
+          />
+        </Suspense>
         {item.confidence < 0.6 && <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>}
         <button
           type="button"
@@ -1808,47 +1806,6 @@ function NumCell({
         <div className="mt-0.5 font-semibold">{Math.round(value)}</div>
       )}
     </div>
-  );
-}
-
-function StatusBadge({
-  data_source,
-  is_estimate,
-  preparation,
-}: {
-  data_source: string;
-  is_estimate?: boolean;
-  preparation?: string | null;
-}) {
-  const info = foodStatus({ data_source, is_estimate, preparation });
-  const tone =
-    info.tone === "verified"
-      ? "bg-primary/10 text-primary"
-      : info.tone === "recipe"
-        ? "bg-muted text-foreground/80"
-        : info.tone === "user"
-          ? "bg-muted text-muted-foreground"
-          : "bg-amber-brand/15 text-[oklch(0.5_0.16_75)]";
-  return (
-    <TooltipProvider delayDuration={150}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="button"
-            tabIndex={0}
-            aria-label={`Nutrition status: ${info.label}. ${info.tooltip}`}
-            className={cn(
-              "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full cursor-help focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              tone,
-            )}
-          >
-            {info.tone === "estimated" && <AlertCircle className="h-3 w-3" />}
-            {info.label}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-xs text-xs leading-relaxed">{info.tooltip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }
 
