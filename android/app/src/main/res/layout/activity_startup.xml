@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:background="#F9F7F5"
+    android:padding="32dp">
+
+    <TextView
+        android:id="@+id/kf_logo"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:gravity="center"
+        android:background="@drawable/kf_logo_bg"
+        android:text="K"
+        android:textColor="#FFFFFF"
+        android:textSize="24sp"
+        android:textStyle="bold" />
+
+    <ProgressBar
+        android:id="@+id/kf_spinner"
+        android:layout_width="24dp"
+        android:layout_height="24dp"
+        android:layout_marginTop="14dp"
+        android:indeterminateTint="#0F766E" />
+
+    <TextView
+        android:id="@+id/kf_status"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:gravity="center"
+        android:text="Preparing KainFit…"
+        android:textColor="#0F766E"
+        android:textSize="14sp"
+        android:textStyle="normal" />
+
+    <Button
+        android:id="@+id/kf_retry"
+        android:layout_width="160dp"
+        android:layout_height="44dp"
+        android:layout_marginTop="14dp"
+        android:text="Try Again"
+        android:textColor="#FFFFFF"
+        android:textAllCaps="false"
+        android:background="@drawable/kf_button_bg"
+        android:visibility="gone" />
+
+</LinearLayout>
