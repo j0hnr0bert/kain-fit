@@ -507,6 +507,34 @@ function TodayPage() {
         client_request_id: i.client_request_id,
       }));
 
+      // Optimistic UI: render the entry and updated totals immediately,
+      // before the insert round-trip resolves, keyed by the same
+      // client_request_id used for de-duplication below. Reconciled with
+      // the real row(s) on success, or rolled back on failure/mismatch —
+      // never touches the celebration/analytics logic further down, which
+      // still only ever runs after a confirmed insert.
+      const optimisticIds = new Set(rows.map((r) => `optimistic:${r.client_request_id}`));
+      const optimisticRows: Entry[] = rows.map((r) => ({
+        id: `optimistic:${r.client_request_id}`,
+        logged_at: r.logged_at,
+        created_at: r.logged_at,
+        meal_type: r.meal_type,
+        display_name: r.display_name,
+        quantity: r.quantity,
+        unit: r.unit,
+        calories: r.calories,
+        protein_g: r.protein_g,
+        carbs_g: r.carbs_g,
+        fat_g: r.fat_g,
+        data_source: r.data_source,
+        is_estimate: r.is_estimate,
+        preparation: r.preparation,
+      }));
+      qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => [
+        ...optimisticRows,
+        ...current,
+      ]);
+
       const { data, error } = await supabase.from("food_entries").insert(rows).select("*");
       const database_query_duration_ms = elapsed(saveStarted);
       if (error) {
@@ -521,8 +549,12 @@ function TodayPage() {
           if (!lookupError && (existingRows?.length ?? 0) >= rows.length) {
             const existing = (existingRows ?? []) as Entry[];
             qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
-              const known = new Set(current.map((entry) => entry.id));
-              return [...existing.filter((entry) => !known.has(entry.id)), ...current].sort(
+              const withoutOptimistic = current.filter((entry) => !optimisticIds.has(entry.id));
+              const known = new Set(withoutOptimistic.map((entry) => entry.id));
+              return [
+                ...existing.filter((entry) => !known.has(entry.id)),
+                ...withoutOptimistic,
+              ].sort(
                 (a, b) =>
                   new Date(b.created_at ?? b.logged_at).getTime() -
                   new Date(a.created_at ?? a.logged_at).getTime(),
@@ -537,6 +569,9 @@ function TodayPage() {
           }
         }
 
+        qc.setQueryData<Entry[]>(["entries", "today"], (current = []) =>
+          current.filter((entry) => !optimisticIds.has(entry.id)),
+        );
         const msg = formatDbError(error);
         console.error("[today] food_entries insert failed", { error, rows });
         setSaveError(msg);
@@ -553,6 +588,9 @@ function TodayPage() {
         });
         setSaveError(msg);
         toast.error(msg);
+        qc.setQueryData<Entry[]>(["entries", "today"], (current = []) =>
+          current.filter((entry) => !optimisticIds.has(entry.id)),
+        );
         await invalidateAfterFoodMutation();
         return false;
       }
@@ -675,8 +713,9 @@ function TodayPage() {
       setPulseSeq((n) => n + 1);
 
       qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
-        const known = new Set(current.map((entry) => entry.id));
-        return [...savedRows.filter((entry) => !known.has(entry.id)), ...current].sort(
+        const withoutOptimistic = current.filter((entry) => !optimisticIds.has(entry.id));
+        const known = new Set(withoutOptimistic.map((entry) => entry.id));
+        return [...savedRows.filter((entry) => !known.has(entry.id)), ...withoutOptimistic].sort(
           (a, b) =>
             new Date(b.created_at ?? b.logged_at).getTime() -
             new Date(a.created_at ?? a.logged_at).getTime(),
@@ -1049,6 +1088,14 @@ function TodayPage() {
   }
 
   async function deleteEntry(entry: Entry) {
+    // Optimistic entries (see saveFoodItems) have a client-only id — a
+    // delete/update keyed on it would silently match nothing server-side,
+    // then have the real row reappear once the insert reconciles. Block
+    // instead of risking that "undo that didn't work" confusion.
+    if (entry.id.startsWith("optimistic:")) {
+      toast("Still saving — try again in a moment.");
+      return;
+    }
     // No auth call here — the delete itself needs no client-side identity
     // (RLS scopes it to the caller's row already); identity is only needed
     // if Undo is actually clicked, so that lookup moved into its onClick
@@ -1077,6 +1124,10 @@ function TodayPage() {
   }
 
   async function updateEntryAmount(entry: Entry, newQuantity: number) {
+    if (entry.id.startsWith("optimistic:")) {
+      toast("Still saving — try again in a moment.");
+      return false;
+    }
     const oldQ = Number(entry.quantity) || 0;
     if (!(newQuantity > 0)) {
       toast.error("Enter an amount greater than 0.");
