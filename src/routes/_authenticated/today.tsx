@@ -467,6 +467,12 @@ function TodayPage() {
     setSaving(true);
     setSaveError(null);
     const saveStarted = mark();
+    // Reassigned once the optimistic rows are seeded below. Declared here
+    // (not `const` inside the try) so the catch below can always safely
+    // roll back — including a network failure severe enough to throw
+    // before that point is reached, in which case this stays empty and
+    // the filter is a no-op.
+    let optimisticIds = new Set<string>();
     try {
       // getSession() reads the already-cached session from local storage —
       // no network round trip — instead of getUser()'s server-validated
@@ -513,7 +519,7 @@ function TodayPage() {
       // the real row(s) on success, or rolled back on failure/mismatch —
       // never touches the celebration/analytics logic further down, which
       // still only ever runs after a confirmed insert.
-      const optimisticIds = new Set(rows.map((r) => `optimistic:${r.client_request_id}`));
+      optimisticIds = new Set(rows.map((r) => `optimistic:${r.client_request_id}`));
       const optimisticRows: Entry[] = rows.map((r) => ({
         id: `optimistic:${r.client_request_id}`,
         logged_at: r.logged_at,
@@ -787,6 +793,23 @@ function TodayPage() {
       await invalidateAfterFoodMutation();
       await qc.invalidateQueries({ queryKey: ["beta-usage"] });
       return true;
+    } catch (err) {
+      // Safety net for anything above that threw rather than returning a
+      // Supabase {error} object — a hard network failure (e.g. offline mid-
+      // insert) surfaces this way, not as a handled `error` value. Without
+      // this, an optimistic entry seeded above would stay stuck in the log
+      // forever, looking saved when it never reached the database.
+      qc.setQueryData<Entry[]>(["entries", "today"], (current = []) =>
+        current.filter((entry) => !optimisticIds.has(entry.id)),
+      );
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Could not save — check your connection and try again.";
+      console.error("[today] saveFoodItems threw", err);
+      setSaveError(msg);
+      toast.error(msg, { duration: 9000 });
+      return false;
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -1096,31 +1119,45 @@ function TodayPage() {
       toast("Still saving — try again in a moment.");
       return;
     }
-    // No auth call here — the delete itself needs no client-side identity
-    // (RLS scopes it to the caller's row already); identity is only needed
-    // if Undo is actually clicked, so that lookup moved into its onClick
-    // below instead of blocking this delete.
-    const { error } = await supabase.from("food_entries").delete().eq("id", entry.id);
-    if (error) {
-      toast.error(error.message);
-      return;
-    }
-    track("food_deleted", {});
-    await invalidateAfterFoodMutation();
-    toast("Entry deleted", {
-      duration: 5000,
-      action: {
-        label: "Undo",
-        onClick: async () => {
-          const { data: sessionData } = await supabase.auth.getSession();
-          const uid = sessionData.session?.user?.id;
-          if (!uid) return;
-          const { id, ...rest } = entry;
-          await supabase.from("food_entries").insert({ ...rest, user_id: uid });
-          await invalidateAfterFoodMutation();
+    try {
+      // No auth call here — the delete itself needs no client-side
+      // identity (RLS scopes it to the caller's row already); identity is
+      // only needed if Undo is actually clicked, so that lookup moved into
+      // its onClick below instead of blocking this delete.
+      const { error } = await supabase.from("food_entries").delete().eq("id", entry.id);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      track("food_deleted", {});
+      await invalidateAfterFoodMutation();
+      toast("Entry deleted", {
+        duration: 5000,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const uid = sessionData.session?.user?.id;
+              if (!uid) return;
+              const { id, ...rest } = entry;
+              const { error: undoError } = await supabase
+                .from("food_entries")
+                .insert({ ...rest, user_id: uid });
+              if (undoError) {
+                toast.error(undoError.message);
+                return;
+              }
+              await invalidateAfterFoodMutation();
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Could not undo the delete.");
+            }
+          },
         },
-      },
-    });
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete — try again.");
+    }
   }
 
   async function updateEntryAmount(entry: Entry, newQuantity: number) {
@@ -1146,13 +1183,18 @@ function TodayPage() {
       carbs_g: Math.round(Number(entry.carbs_g) * ratio),
       fat_g: Math.round(Number(entry.fat_g) * ratio),
     };
-    const { error } = await supabase.from("food_entries").update(patch).eq("id", entry.id);
-    if (error) {
-      toast.error(error.message);
+    try {
+      const { error } = await supabase.from("food_entries").update(patch).eq("id", entry.id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+      await invalidateAfterFoodMutation();
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save — try again.");
       return false;
     }
-    await invalidateAfterFoodMutation();
-    return true;
   }
 
   async function recalcRow(idx: number, next: PendingItem) {
