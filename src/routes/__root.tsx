@@ -209,6 +209,28 @@ function RootComponent() {
   }, []);
 
   useEffect(() => {
+    // ErrorComponent above only reports errors React's own render/lifecycle
+    // catches — an error thrown inside an event handler or an unhandled
+    // promise rejection never reaches it (React doesn't wrap those), so it
+    // was previously invisible to the same Lovable error-reporting pipeline
+    // this app already uses. Reusing that existing pipeline here, not
+    // adding a second crash-reporting integration.
+    if (typeof window === "undefined") return;
+    const onError = (event: ErrorEvent) => {
+      reportLovableError(event.error ?? event.message, { mechanism: "onerror" });
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      reportLovableError(event.reason, { mechanism: "unhandledrejection" });
+    };
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+    return () => {
+      window.removeEventListener("error", onError);
+      window.removeEventListener("unhandledrejection", onRejection);
+    };
+  }, []);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     // Time from navigation start to React mount.
     let ttiMs: number | undefined;
