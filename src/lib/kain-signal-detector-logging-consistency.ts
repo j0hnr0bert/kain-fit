@@ -60,5 +60,9 @@ export function detectLoggingConsistency(input: {
     currentStreak: computeCurrentStreak(input.activeDays, input.todayManila),
     longestGapDays: longestGapDays(uniqueActiveInWindow, windowStart, input.todayManila),
     evidenceStrength,
+    // Always positive — see kain-signal-types.ts's LoggingConsistencyEvidence
+    // comment: this detector's own sample metric IS the success measure, so
+    // there is no low-activity path that produces non-null evidence here.
+    direction: "positive",
   };
 }

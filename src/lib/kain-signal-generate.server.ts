@@ -25,6 +25,7 @@ import {
 } from "./kain-signal-selection";
 import { detectBehaviorMilestone, milestoneKey } from "./kain-signal-detector-milestone";
 import { isMaterialChange, type SignalSelection } from "./kain-signal-freshness";
+import { evaluateSignalCopy } from "./kain-signal-guardrail";
 import { NOT_QUITE_LOOKBACK_DAYS, SIGNAL_LOOKBACK_DAYS } from "./kain-signal-config";
 import type {
   FoodEntryLite,
@@ -188,7 +189,29 @@ export async function generateTodaySignal(
     lifetimeDistinctLoggingDays,
     recordedMilestoneKeys,
   };
-  const candidates = SIGNAL_REGISTRY.map((module) => module.buildCandidate(signalCtx));
+  // Contradiction guardrail (2026-08-08 recalibration, Phase 11): a
+  // candidate whose evidence and rendered copy would contradict each other
+  // (the exact production bug this recalibration fixes — a ~13% hit-rate
+  // pattern rendered as "one of your strongest nutrition patterns") is
+  // dropped here, before ranking/selection ever sees it — same as if the
+  // detector itself had returned null. This is defense in depth: under
+  // normal operation detectProteinAdherence's own direction/directionTier
+  // logic already prevents this, but a future copy-template edit or a
+  // legacy row should never be able to reintroduce the bug silently.
+  const candidates = SIGNAL_REGISTRY.map((module) => {
+    const evidence = module.buildCandidate(signalCtx);
+    if (evidence === null) return null;
+    const content = module.renderCopy(evidence);
+    const guardrail = evaluateSignalCopy(evidence, content);
+    if (!guardrail.passes) {
+      console.error("[kain-signal] guardrail rejected candidate", {
+        insightType: module.id,
+        reasons: guardrail.reasons,
+      });
+      return null;
+    }
+    return evidence;
+  });
 
   // Multi-threshold / bootstrap policy (§2): a single direct call
   // alongside the registry loop above — detectBehaviorMilestone is pure

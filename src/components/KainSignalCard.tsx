@@ -20,6 +20,12 @@ const ENTRANCE_CLASS =
 export function KainSignalCard({ selectedInsight }: KainSignalCardProps) {
   const [expanded, setExpanded] = useState(false);
   const content = copyForSelectedInsight(selectedInsight);
+  // Silence is the correct output when evidence and copy would contradict
+  // each other (see kain-signal-guardrail.ts) — never render a card that
+  // might be wrong. Should not happen in normal operation; this is the
+  // last of three defense-in-depth layers (detector direction logic,
+  // server-side guardrail before persistence, this one).
+  if (content === null) return null;
   const Icon = iconForSignal(selectedInsight.insightType);
   const theme = themeForSignal(selectedInsight.insightType);
 

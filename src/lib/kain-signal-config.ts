@@ -54,6 +54,39 @@ export const PROGRESS_LABEL_BANDS = {
 export const PROTEIN_ADHERENCE_EVIDENCE_THRESHOLDS = { early: 5, clear: 8, strong: 14 } as const;
 export const LOGGING_CONSISTENCY_EVIDENCE_THRESHOLDS = { early: 7, clear: 14, strong: 21 } as const;
 
+// Direction/tier calibration (2026-08-08 recalibration) — see
+// kain-signal-detector-protein.ts's classifyProteinDirection. Based on
+// average target-attainment percentage, never on the binary hit rate alone
+// (a 97%-average-attainment user who only hit the exact target once must
+// still read as positive — see the near-miss synthetic test case).
+//
+// Bands (non-overlapping, evaluated high-to-low):
+//   >=90%          -> positive, tier "strong" (or "clear" if attainment is
+//                     highly inconsistent day-to-day — see
+//                     PROTEIN_HIGH_VARIANCE_STDDEV_PCT below; a volatile
+//                     90% average is not the same claim as a steady one)
+//   85% to <90%     -> positive, tier "clear"
+//   80% to <85%     -> neutral, tier "borderline" ("consistently close",
+//                      never "mastered")
+//   75% to <80%     -> negative, tier "clear"
+//   <75%            -> negative, tier "strong"
+export const PROTEIN_POSITIVE_STRONG_MIN_ATTAINMENT_PCT = 90;
+export const PROTEIN_POSITIVE_CLEAR_MIN_ATTAINMENT_PCT = 85;
+export const PROTEIN_BORDERLINE_MIN_ATTAINMENT_PCT = 80;
+export const PROTEIN_NEGATIVE_CLEAR_MAX_ATTAINMENT_PCT = 80; // strictly below
+export const PROTEIN_NEGATIVE_STRONG_MAX_ATTAINMENT_PCT = 75; // strictly below
+
+// Day-to-day variance in attainment%, measured as a population standard
+// deviation. Calibrated against the two synthetic extremes: a tight cluster
+// (210/215/205/225/212g vs a 220g target) produces a stddev in the low
+// single digits; a wildly swinging pattern (40% one day, 140% another)
+// produces a stddev well past 30. These thresholds sit comfortably between
+// the two rather than at a precisely-derived statistical cutoff — there is
+// no larger dataset yet to fit one, and Phase 6 explicitly calls for a
+// "sensible starting framework," not a blindly precise one.
+export const PROTEIN_LOW_VARIANCE_STDDEV_PCT_MAX = 10;
+export const PROTEIN_MODERATE_VARIANCE_STDDEV_PCT_MAX = 25;
+
 // Ranking (kain-signal-ranking.ts).
 export const EVIDENCE_STRENGTH_BASE_SCORE: Record<EvidenceStrength, number> = {
   early_signal: 1,

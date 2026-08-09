@@ -9,6 +9,14 @@ const proteinEvidence: ProteinAdherenceEvidence = {
   adherenceRate: 0.625,
   proteinTargetG: 130,
   evidenceStrength: "clear_signal",
+  averageGramsPerDay: 130,
+  averageAttainmentPct: 100,
+  medianAttainmentPct: 100,
+  attainmentStdDevPct: 5,
+  averageShortfallG: 0,
+  consistency: "low_variance",
+  direction: "positive",
+  directionTier: "strong",
 };
 
 const loggingEvidence: LoggingConsistencyEvidence = {
@@ -19,6 +27,7 @@ const loggingEvidence: LoggingConsistencyEvidence = {
   currentStreak: 5,
   longestGapDays: 3,
   evidenceStrength: "strong_signal",
+  direction: "positive",
 };
 
 const proteinSelection: SignalSelection = {

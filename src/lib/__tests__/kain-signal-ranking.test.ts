@@ -10,6 +10,14 @@ function proteinClear(): ProteinAdherenceEvidence {
     adherenceRate: 0.625,
     proteinTargetG: 130,
     evidenceStrength: "clear_signal",
+    averageGramsPerDay: 130,
+    averageAttainmentPct: 100,
+    medianAttainmentPct: 100,
+    attainmentStdDevPct: 5,
+    averageShortfallG: 0,
+    consistency: "low_variance",
+    direction: "positive",
+    directionTier: "strong",
   };
 }
 function loggingClear(): LoggingConsistencyEvidence {
@@ -21,6 +29,7 @@ function loggingClear(): LoggingConsistencyEvidence {
     currentStreak: 5,
     longestGapDays: 3,
     evidenceStrength: "clear_signal",
+    direction: "positive",
   };
 }
 function loggingStrong(): LoggingConsistencyEvidence {

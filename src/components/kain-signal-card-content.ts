@@ -21,6 +21,7 @@ import {
   proteinAdherenceCopy,
   type SignalCardContent,
 } from "@/lib/kain-signal-copy";
+import { passesContradictionGuardrail } from "@/lib/kain-signal-guardrail";
 import type { SelectedInsightPayload } from "@/lib/kain-signal-generate.server";
 import type { InsightType } from "@/lib/kain-signal-types";
 
@@ -64,13 +65,34 @@ export function iconForSignal(insightType: InsightType): typeof TrendingUp {
 // a dispatcher from kain-signal-copy.ts) only because the client only ever
 // has a persisted SelectedInsightPayload, never the server-side-only
 // RankedCandidate shape.
-export function copyForSelectedInsight(selectedInsight: SelectedInsightPayload): SignalCardContent {
-  switch (selectedInsight.evidence.insightType) {
-    case "protein_adherence":
-      return proteinAdherenceCopy(selectedInsight.evidence);
-    case "logging_consistency":
-      return loggingConsistencyCopy(selectedInsight.evidence);
-    case "behavior_milestone":
-      return behaviorMilestoneCopy(selectedInsight.evidence);
+//
+// 2026-08-08 recalibration: returns null — rendering nothing rather than a
+// contradictory card — when the persisted evidence and its own rendered
+// copy fail the contradiction guardrail (kain-signal-guardrail.ts). Under
+// normal operation this should never trigger: kain-signal-generate.server.ts
+// already runs the same check before a candidate can ever be selected and
+// persisted. This is the client-side half of that defense-in-depth pair,
+// covering a row persisted before this recalibration shipped, or a future
+// regression that somehow slipped past the server-side check.
+export function copyForSelectedInsight(
+  selectedInsight: SelectedInsightPayload,
+): SignalCardContent | null {
+  const content = ((): SignalCardContent => {
+    switch (selectedInsight.evidence.insightType) {
+      case "protein_adherence":
+        return proteinAdherenceCopy(selectedInsight.evidence);
+      case "logging_consistency":
+        return loggingConsistencyCopy(selectedInsight.evidence);
+      case "behavior_milestone":
+        return behaviorMilestoneCopy(selectedInsight.evidence);
+    }
+  })();
+  if (!passesContradictionGuardrail(selectedInsight.evidence, content)) {
+    console.error("[kain-signal] client-side guardrail rejected a persisted insight", {
+      insightId: selectedInsight.id,
+      insightType: selectedInsight.insightType,
+    });
+    return null;
   }
+  return content;
 }

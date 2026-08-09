@@ -34,6 +34,14 @@ function copyDrivingFacts(evidence: InsightEvidence): Record<string, number | st
       proteinTargetG: evidence.proteinTargetG,
       adherencePct: Math.round(evidence.adherenceRate * 100),
       evidenceStrength: evidence.evidenceStrength,
+      // 2026-08-08 recalibration: direction/tier/attainment now drive the
+      // rendered copy (see kain-signal-copy.ts), so drift in any of these
+      // — even with the legacy fields above unchanged — must trigger a new
+      // persisted row.
+      direction: evidence.direction,
+      directionTier: evidence.directionTier,
+      attainmentPct: Math.round(evidence.averageAttainmentPct),
+      consistency: evidence.consistency,
     };
   }
   if (evidence.insightType === "logging_consistency") {

@@ -35,13 +35,49 @@ export type SignalState = "no_data" | "building" | "eligible" | "connected";
 // data_source, is_estimate, confidence — see kain-signal-confidence.ts.
 export type EntryConfidenceClass = "verified" | "provisional" | "low_trust";
 
+// 2026-08-08 recalibration: `evidenceStrength` measures sample size alone
+// (see kain-signal-evidence-strength.ts) — it must never be read as a
+// judgment of whether the underlying behavior is good or bad. `direction`
+// is the explicit, separate field that answers that question. A signal can
+// be STRONG evidence of a NEGATIVE pattern; the two are orthogonal axes,
+// not one scale. See kain-signal-guardrail.ts for the enforcement layer
+// that rejects any copy contradicting this field.
+export type SignalDirection = "positive" | "negative" | "neutral";
+
+// Magnitude/quality tier within a direction — independent of evidenceStrength
+// (sample size). "strong"/"clear" require both a large-enough effect size
+// AND enough qualified days (already guaranteed by evidenceStrength's own
+// >=5-day floor); "borderline" is the deliberately modest middle band that
+// must never be dramatized in either direction (see kain-signal-config.ts's
+// PROTEIN_* thresholds and kain-signal-copy.ts's proteinAdherenceCopy).
+export type SignalDirectionTier = "strong" | "clear" | "borderline";
+
+export type AttainmentConsistency = "low_variance" | "moderate_variance" | "high_variance";
+
 export type ProteinAdherenceEvidence = {
   insightType: "protein_adherence";
   daysEvaluated: number;
+  // Binary hit-rate fields — kept as SUPPORTING evidence only (shown in the
+  // "evidence" sentence), never the primary basis for direction/tier. A
+  // 97%-average-attainment user who hit the exact target on 1 of 5 days
+  // must not be classified as failing (see the near-miss synthetic case);
+  // a 2-of-15 hit rate at ~13% average attainment must not be classified as
+  // succeeding (the production bug this recalibration fixes).
   daysAtOrAboveTarget: number;
   adherenceRate: number;
   proteinTargetG: number;
   evidenceStrength: EvidenceStrength;
+  // Attainment-percentage analysis (Phase 4 of the recalibration) — the
+  // primary basis for direction/tier from here on.
+  averageGramsPerDay: number;
+  averageAttainmentPct: number;
+  medianAttainmentPct: number;
+  attainmentStdDevPct: number;
+  // Positive shortfallG = short of target on average; negative = surplus.
+  averageShortfallG: number;
+  consistency: AttainmentConsistency;
+  direction: SignalDirection;
+  directionTier: SignalDirectionTier;
 };
 
 export type LoggingConsistencyEvidence = {
@@ -52,6 +88,14 @@ export type LoggingConsistencyEvidence = {
   currentStreak: number;
   longestGapDays: number;
   evidenceStrength: EvidenceStrength;
+  // Unlike protein adherence, this detector's own sample metric (active
+  // days) IS the success measure — there is no way for this evidence to
+  // exist and represent a negative pattern (a low-activity user simply
+  // never clears the evidenceStrength floor to begin with — see
+  // kain-signal-detector-logging-consistency.ts). direction is always
+  // "positive" here; the field exists for a uniform contract across
+  // insight types, not because this detector needed its own calibration.
+  direction: SignalDirection;
 };
 
 // The two lifetime ladders behavior_milestone currently supports. Adding a

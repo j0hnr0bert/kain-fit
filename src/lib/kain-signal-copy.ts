@@ -55,18 +55,107 @@ export function describeAssociation(strength: EvidenceStrength): string {
   }
 }
 
+// 2026-08-08 recalibration: this function previously used
+// describeAssociation(evidenceStrength) for the headline and a single fixed
+// whyItMatters/takeaway pair, regardless of whether the underlying pattern
+// was actually good or bad — evidenceStrength measures sample size, not
+// direction (see kain-signal-types.ts's SignalDirection comment). A user
+// who hit a 220g target on 2 of 15 days (~13% hit rate, ~65-75% average
+// attainment) was rendered "one of your strongest nutrition patterns" and
+// "a workable habit." That was the production bug this rewrite fixes.
+//
+// Every branch below is driven by evidence.direction + evidence.directionTier
+// (computed in kain-signal-detector-protein.ts from average target-
+// attainment percentage, not the binary hit rate). The binary hit-rate
+// fields still appear, but only inside the "evidence" sentence, as
+// supporting detail — never as the basis for the headline or takeaway. See
+// kain-signal-guardrail.ts for the defense-in-depth check that this
+// function's output cannot contradict evidence.direction.
 export function proteinAdherenceCopy(
   evidence: Extract<InsightEvidence, { insightType: "protein_adherence" }>,
 ): SignalCardContent {
-  const adherencePct = Math.round(evidence.adherenceRate * 100);
+  const attainmentPct = Math.round(evidence.averageAttainmentPct);
+  const shortfallG = Math.round(evidence.averageShortfallG);
+  const target = evidence.proteinTargetG;
+  const days = evidence.daysEvaluated;
+  const hitDays = evidence.daysAtOrAboveTarget;
+  const highVariance = evidence.consistency === "high_variance";
+
+  const observation = `You averaged ${attainmentPct}% of your ${target}g protein target across your last ${days} qualified days.`;
+
+  // Near-miss guard: high attainment can co-exist with a low exact-hit
+  // rate (5 days at 210/215/205/225/212g against a 220g target average
+  // ~97% attainment but only 1 exact hit) — Phase 11's own guardrail rule
+  // explicitly forbids "strong habit"/"consistently hitting"/"strongest
+  // pattern" language whenever the hit rate is under 50%, regardless of how
+  // high attainment is. This branch (not the strong/clear positive
+  // branches below) is what a high-attainment-but-low-hit-rate case
+  // renders — still positive, but acknowledging the hit-rate/attainment
+  // gap rather than overclaiming habit formation.
+  if (evidence.direction === "positive" && evidence.adherenceRate < 0.5) {
+    return {
+      headline: "You're closer on protein than your streak suggests.",
+      observation,
+      evidence: `You only hit the exact target on ${hitDays} of ${days} days, but attainment averaged ${attainmentPct}%.`,
+      whyItMatters:
+        "Averaging this close to target usually still supports steadier hunger and recovery, even without hitting the exact number every day.",
+      takeaway: "This is a stronger pattern than the hit count alone would suggest.",
+    };
+  }
+
+  if (evidence.direction === "positive" && evidence.directionTier === "strong") {
+    return {
+      headline: "Protein is becoming one of your most consistent habits.",
+      observation,
+      evidence: `${hitDays} of ${days} days hit the target exactly, and attainment stayed close to target day to day.`,
+      whyItMatters:
+        "Protein that lands close to target most days, not just occasionally, is what tends to support steadier hunger and recovery.",
+      takeaway: "This is holding up as a real pattern, not just a good stretch.",
+    };
+  }
+
+  if (evidence.direction === "positive") {
+    // directionTier === "clear" — either 85-90% attainment, or 90%+ with
+    // high variance (see classifyProteinDirection).
+    return {
+      headline: "Protein is trending close to your target.",
+      observation,
+      evidence: highVariance
+        ? `${hitDays} of ${days} days hit the target exactly, though daily amounts swung well above and below that average.`
+        : `${hitDays} of ${days} days hit the target exactly — attainment averaged ${attainmentPct}%.`,
+      whyItMatters:
+        "Averaging this close to target usually still supports steadier hunger and recovery, even without hitting the exact number every day.",
+      takeaway: highVariance
+        ? "Evening out day to day, not just the average, would make this pattern more dependable."
+        : "This is trending in the right direction.",
+    };
+  }
+
+  if (evidence.direction === "neutral") {
+    return {
+      headline: "You're consistently close on protein.",
+      observation,
+      evidence: `You hit the exact target on ${hitDays} of ${days} days, but attainment averaged ${attainmentPct}% — closer than the hit count alone suggests.`,
+      whyItMatters:
+        "Being consistently close to a target, even without hitting it exactly, is a meaningfully different pattern than missing by a wide margin.",
+      takeaway: "A small, steady increase would likely close most of what's left.",
+    };
+  }
+
+  // direction === "negative" (tier "clear" or "strong").
   return {
-    headline: describeAssociation(evidence.evidenceStrength),
-    observation: `Across your last ${evidence.daysEvaluated} complete days, you reached your ${evidence.proteinTargetG}g protein target on ${evidence.daysAtOrAboveTarget} of them.`,
-    evidence: `${evidence.daysAtOrAboveTarget} of your last ${evidence.daysEvaluated} complete days met your ${evidence.proteinTargetG}g protein target (${adherencePct}%) — that's why this pattern was surfaced.`,
+    headline:
+      evidence.directionTier === "strong"
+        ? "Protein is your clearest nutrition gap right now."
+        : "Protein is a gap worth noticing.",
+    observation: `${observation} That's about ${shortfallG}g short per day on average.`,
+    evidence: `${hitDays} of ${days} days hit the target exactly; attainment averaged ${attainmentPct}%.`,
     whyItMatters:
-      "Reaching a protein target consistently, rather than occasionally, is what tends to support steadier hunger and recovery over time.",
+      evidence.directionTier === "strong"
+        ? "This isn't an occasional miss — it's the most consistent shortfall in your recent log."
+        : "Falling short of a protein target most days, rather than occasionally, is the kind of gap that tends to compound rather than average out.",
     takeaway:
-      "A pattern sustained across this many days is usually a sign protein has become a workable habit for you, not just an occasional win worth noticing.",
+      "A modest, steady increase across your usual meals would close most of this gap over time.",
   };
 }
 
