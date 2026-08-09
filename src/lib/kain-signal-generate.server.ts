@@ -100,13 +100,27 @@ export async function generateTodaySignal(
 
   const { data: profileRows, error: profileError } = await supabase
     .from("profiles")
-    .select("manual_targets_enabled,target_protein_g")
+    .select("manual_targets_enabled,target_protein_g,protein_target_updated_at")
     .eq("user_id", userId)
     .limit(1);
   if (profileError) throw new Error(profileError.message);
   const profile = profileRows?.[0];
   const proteinTargetG =
     profile?.manual_targets_enabled && profile.target_protein_g ? profile.target_protein_g : null;
+  // Target-window safety (2026-08-09 recalibration): protein_target_updated_at
+  // tracks when target_protein_g last materially changed (see the migration's
+  // trigger). A day logged before that timestamp was logged under a
+  // DIFFERENT target and must never be judged against today's number — see
+  // kain-signal-detector-protein.ts's own filtering. Conservative by
+  // design: if a target is set but this timestamp is somehow missing (should
+  // never happen given the migration's backfill + trigger, but the
+  // possibility isn't worth trusting), the window start is left null and
+  // the detector treats that as "no valid window" rather than silently
+  // evaluating unrestricted history.
+  const proteinTargetWindowStartDay =
+    proteinTargetG !== null && profile?.protein_target_updated_at
+      ? manilaDay(profile.protein_target_updated_at)
+      : null;
 
   const { data: feedbackRows, error: feedbackError } = await supabase
     .from("kain_signal_feedback")
@@ -185,6 +199,7 @@ export async function generateTodaySignal(
     todayManila,
     windowDays: SIGNAL_LOOKBACK_DAYS,
     proteinTargetG,
+    proteinTargetWindowStartDay,
     lifetimeMealCount,
     lifetimeDistinctLoggingDays,
     recordedMilestoneKeys,

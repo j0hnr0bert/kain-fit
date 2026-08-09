@@ -32,6 +32,7 @@
 // guideline.
 
 import type { EvidenceStrength, InsightEvidence, MilestoneType } from "./kain-signal-types";
+import { generateProteinAction } from "./kain-signal-protein-action";
 
 export type SignalCardContent = {
   headline: string;
@@ -71,6 +72,22 @@ export function describeAssociation(strength: EvidenceStrength): string {
 // supporting detail — never as the basis for the headline or takeaway. See
 // kain-signal-guardrail.ts for the defense-in-depth check that this
 // function's output cannot contradict evidence.direction.
+//
+// 2026-08-09 recalibration (evidence-boundary + action calibration): every
+// whyItMatters sentence below is limited to what KainFit can actually prove
+// from stored food-log data — counts, targets, rates, day-to-day
+// consistency. Earlier copy claimed protein this close to target "supports
+// steadier hunger and recovery," and a wide shortfall "compounds rather
+// than average out" — neither is something a food log can establish;
+// hunger, recovery, and compounding physiological effects aren't measured
+// anywhere in this app. Every whyItMatters line here describes the logged
+// pattern itself (how many days, how close, how consistent), never its
+// effect on the body. Separately, the neutral and negative-direction
+// takeaway lines now call generateProteinAction(evidence.averageShortfallG)
+// (kain-signal-protein-action.ts) instead of one fixed sentence, so the
+// suggested action's size actually matches the measured gap — a 5g
+// shortfall and a 58g shortfall no longer get the same "modest, steady
+// increase" language.
 export function proteinAdherenceCopy(
   evidence: Extract<InsightEvidence, { insightType: "protein_adherence" }>,
 ): SignalCardContent {
@@ -98,7 +115,7 @@ export function proteinAdherenceCopy(
       observation,
       evidence: `You only hit the exact target on ${hitDays} of ${days} days, but attainment averaged ${attainmentPct}%.`,
       whyItMatters:
-        "Averaging this close to target usually still supports steadier hunger and recovery, even without hitting the exact number every day.",
+        "Days that missed the exact target here still landed close to it — a different pattern than days that missed by a wide margin.",
       takeaway: "This is a stronger pattern than the hit count alone would suggest.",
     };
   }
@@ -109,7 +126,7 @@ export function proteinAdherenceCopy(
       observation,
       evidence: `${hitDays} of ${days} days hit the target exactly, and attainment stayed close to target day to day.`,
       whyItMatters:
-        "Protein that lands close to target most days, not just occasionally, is what tends to support steadier hunger and recovery.",
+        "Landing close to target most days, not just occasionally, is a more reliable pattern than a few good days mixed in with worse ones.",
       takeaway: "This is holding up as a real pattern, not just a good stretch.",
     };
   }
@@ -124,7 +141,7 @@ export function proteinAdherenceCopy(
         ? `${hitDays} of ${days} days hit the target exactly, though daily amounts swung well above and below that average.`
         : `${hitDays} of ${days} days hit the target exactly — attainment averaged ${attainmentPct}%.`,
       whyItMatters:
-        "Averaging this close to target usually still supports steadier hunger and recovery, even without hitting the exact number every day.",
+        "Averaging this close to target across your qualified days means most days weren't far from your goal, even the ones that missed it exactly.",
       takeaway: highVariance
         ? "Evening out day to day, not just the average, would make this pattern more dependable."
         : "This is trending in the right direction.",
@@ -138,7 +155,7 @@ export function proteinAdherenceCopy(
       evidence: `You hit the exact target on ${hitDays} of ${days} days, but attainment averaged ${attainmentPct}% — closer than the hit count alone suggests.`,
       whyItMatters:
         "Being consistently close to a target, even without hitting it exactly, is a meaningfully different pattern than missing by a wide margin.",
-      takeaway: "A small, steady increase would likely close most of what's left.",
+      takeaway: generateProteinAction(evidence.averageShortfallG),
     };
   }
 
@@ -153,9 +170,8 @@ export function proteinAdherenceCopy(
     whyItMatters:
       evidence.directionTier === "strong"
         ? "This isn't an occasional miss — it's the most consistent shortfall in your recent log."
-        : "Falling short of a protein target most days, rather than occasionally, is the kind of gap that tends to compound rather than average out.",
-    takeaway:
-      "A modest, steady increase across your usual meals would close most of this gap over time.",
+        : "This shortfall is showing up on most days, not just occasionally — a pattern, not a one-off.",
+    takeaway: generateProteinAction(evidence.averageShortfallG),
   };
 }
 

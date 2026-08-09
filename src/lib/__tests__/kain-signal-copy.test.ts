@@ -238,11 +238,30 @@ describe("copy ownership — KainSignal interprets, it never instructs (2026-07-
     }
   });
 
-  it("takeaway interprets the pattern rather than issuing an instruction (no imperative verb opening)", () => {
+  // 2026-08-09 recalibration (Task 3/Task 11): the protein detector's
+  // negative/neutral takeaway now calls generateProteinAction, which
+  // deliberately produces gram-specific, evidence-derived action language
+  // ("Try adding roughly 25-30g of protein to two meals.") — the previous
+  // blanket ban on every imperative opener would reject exactly the
+  // quantified, magnitude-calibrated guidance the recalibration spec asked
+  // for. The boundary this test now enforces: an imperative opener is only
+  // allowed when the sentence names a specific, evidence-derived gram
+  // quantity tied to the measured shortfall — never a vague, unquantified
+  // command ("try harder", "eat more protein"). This is narrower than the
+  // old rule, not looser — a takeaway that opens with an imperative verb but
+  // names no quantity still fails, exactly as before.
+  it("an imperative-opening takeaway must name a specific gram quantity from the evidence, never a vague command", () => {
     const IMPERATIVE_OPENERS =
       /^(eat|add|log|keep|choose|build|make sure|try|avoid|reduce|increase)\b/i;
+    const HAS_GRAM_QUANTITY = /\d+(-\d+)?g\b/;
     for (const content of allContent) {
-      expect(IMPERATIVE_OPENERS.test(content.takeaway.trim())).toBe(false);
+      const takeaway = content.takeaway.trim();
+      if (IMPERATIVE_OPENERS.test(takeaway)) {
+        expect(
+          HAS_GRAM_QUANTITY.test(takeaway),
+          `imperative-opening takeaway must name a specific gram quantity: "${takeaway}"`,
+        ).toBe(true);
+      }
     }
   });
 });
@@ -317,6 +336,115 @@ describe("prohibited-language enforcement", () => {
         for (const word of PROHIBITED_WORDS) {
           expect(text.toLowerCase()).not.toContain(word);
         }
+      }
+    }
+  });
+});
+
+// 2026-08-09 recalibration (Task 2/Task 6): KainFit's stored evidence is
+// food logs, calories, macros, targets, and logging behavior — never
+// hunger, recovery, muscle protein synthesis, training performance, health
+// outcomes, subjective energy, mood, metabolism, or sleep. A prior version
+// of proteinAdherenceCopy's whyItMatters claimed protein this close to
+// target "supports steadier hunger and recovery" and a wide shortfall
+// "tends to compound rather than average out" — neither is provable from a
+// food log. This is enforced by a test, not developer intention, exactly as
+// the mandate requires: "Could KainFit prove this statement from the
+// user's own stored data? If NO: remove or rewrite it."
+describe("evidence-boundary enforcement — no unsupported physiological or health claims", () => {
+  const UNSUPPORTED_CLAIM_WORDS = [
+    "hunger",
+    "recovery",
+    "muscle",
+    "training",
+    "performance",
+    "metaboli", // metabolism/metabolic
+    "energy level",
+    "mood",
+    "sleep",
+    "discipline",
+    "disciplined",
+  ];
+
+  function allStrings(content: SignalCardContent): string[] {
+    return [
+      content.headline,
+      content.observation,
+      content.evidence,
+      content.whyItMatters,
+      content.takeaway,
+    ];
+  }
+
+  it("no protein_adherence copy, across every direction/tier/near-miss combination, makes a claim KainFit's food-log data cannot prove", () => {
+    const directionFixtures: ProteinAdherenceEvidence[] = [
+      {
+        ...proteinEvidence,
+        averageAttainmentPct: 96,
+        direction: "positive",
+        directionTier: "strong",
+      },
+      {
+        ...proteinEvidence,
+        averageAttainmentPct: 95,
+        direction: "positive",
+        directionTier: "clear",
+        consistency: "high_variance",
+      },
+      {
+        ...proteinEvidence,
+        averageAttainmentPct: 87,
+        direction: "positive",
+        directionTier: "clear",
+      },
+      // Near-miss: high attainment, low exact-hit rate.
+      {
+        ...proteinEvidence,
+        averageAttainmentPct: 97,
+        adherenceRate: 0.2,
+        direction: "positive",
+        directionTier: "strong",
+      },
+      {
+        ...proteinEvidence,
+        averageAttainmentPct: 82,
+        direction: "neutral",
+        directionTier: "borderline",
+      },
+      {
+        ...proteinEvidence,
+        averageAttainmentPct: 78,
+        direction: "negative",
+        directionTier: "clear",
+        averageShortfallG: 15,
+      },
+      {
+        ...proteinEvidence,
+        averageAttainmentPct: 65,
+        direction: "negative",
+        directionTier: "strong",
+        averageShortfallG: 58,
+      },
+    ];
+
+    for (const evidence of directionFixtures) {
+      const content = proteinAdherenceCopy(evidence);
+      for (const text of allStrings(content)) {
+        for (const word of UNSUPPORTED_CLAIM_WORDS) {
+          expect(
+            text.toLowerCase(),
+            `direction=${evidence.direction}/${evidence.directionTier} field contains unsupported claim word "${word}": "${text}"`,
+          ).not.toContain(word);
+        }
+      }
+    }
+  });
+
+  it("no logging_consistency copy makes an unsupported physiological or health claim", () => {
+    const content = loggingConsistencyCopy(loggingEvidence);
+    for (const text of allStrings(content)) {
+      for (const word of UNSUPPORTED_CLAIM_WORDS) {
+        expect(text.toLowerCase()).not.toContain(word);
       }
     }
   });

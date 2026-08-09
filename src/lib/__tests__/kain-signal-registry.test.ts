@@ -48,6 +48,7 @@ const ctx: SignalContext = {
   todayManila: "2026-07-20",
   windowDays: 60,
   proteinTargetG: 130,
+  proteinTargetWindowStartDay: "2026-01-01",
   lifetimeMealCount: proteinDailyTotals.length,
   lifetimeDistinctLoggingDays: completeDays.length,
   recordedMilestoneKeys: new Set<string>(),
@@ -76,6 +77,7 @@ describe("SIGNAL_REGISTRY", () => {
       entriesByDay: ctx.entriesByDay,
       completeDays: ctx.completeDays,
       proteinTargetG: ctx.proteinTargetG,
+      proteinTargetWindowStartDay: ctx.proteinTargetWindowStartDay,
     });
     expect(viaModule).toEqual(viaDetector);
   });

@@ -934,6 +934,7 @@ export type Database = {
           preferred_language: string | null
           preferred_units: string | null
           profile_details_updated_at: string | null
+          protein_target_updated_at: string | null
           sex: string | null
           target_calories: number | null
           target_carbs_g: number | null
@@ -959,6 +960,7 @@ export type Database = {
           preferred_language?: string | null
           preferred_units?: string | null
           profile_details_updated_at?: string | null
+          protein_target_updated_at?: string | null
           sex?: string | null
           target_calories?: number | null
           target_carbs_g?: number | null
@@ -984,6 +986,7 @@ export type Database = {
           preferred_language?: string | null
           preferred_units?: string | null
           profile_details_updated_at?: string | null
+          protein_target_updated_at?: string | null
           sex?: string | null
           target_calories?: number | null
           target_carbs_g?: number | null

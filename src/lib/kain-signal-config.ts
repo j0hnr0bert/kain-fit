@@ -111,6 +111,19 @@ export const INSIGHT_TYPE_PRIORITY_TIEBREAK = {
 export const NOT_QUITE_PENALTY_PER_OCCURRENCE = 1.5;
 export const NOT_QUITE_LOOKBACK_DAYS = 30;
 
+// Quantitative protein action bands (2026-08-09 recalibration, Task 3) —
+// see kain-signal-protein-action.ts. Translates a measured average shortfall
+// (grams/day) into proportional action language instead of one fixed
+// sentence regardless of magnitude. Boundaries are deliberately simple,
+// round numbers rather than statistically fit — there's no larger dataset
+// yet to calibrate against, and the spec explicitly asked to keep them
+// simple over precise. Upper bound of each band is inclusive.
+export const PROTEIN_ACTION_SMALL_MAX_G = 10; // small top-up
+export const PROTEIN_ACTION_MODEST_MAX_G = 25; // one modest addition
+export const PROTEIN_ACTION_SUBSTANTIAL_MAX_G = 45; // one substantial addition, or split across two meals
+export const PROTEIN_ACTION_LARGE_MAX_G = 70; // ~20-35g added to each of two meals
+// Above PROTEIN_ACTION_LARGE_MAX_G: structural, meal-level change language.
+
 // Milestone ladders (kain-signal-detector-milestone.ts). Deliberately
 // small and high-value only — see the doctrine's explicit rejection of
 // weak milestones ("second meal logged", "every five meals forever").

@@ -83,6 +83,13 @@ export type SignalContext = {
   todayManila: string;
   windowDays: number;
   proteinTargetG: number | null;
+  /** Manila-day string marking when target_protein_g last materially
+   * changed (see the 2026-08-09 migration's trigger) — null if a target
+   * is set but this can't be reliably determined. detectProteinAdherence
+   * only evaluates qualified days on or after this day, so a target
+   * change can never retroactively re-judge days logged under a
+   * different target. See kain-signal-detector-protein.ts. */
+  proteinTargetWindowStartDay: string | null;
   /** All-time (not just the SIGNAL_LOOKBACK_DAYS window) meal count and
    * distinct logging-day count — milestones are lifetime facts, so they
    * must not be blind to history older than the rolling window the other
@@ -133,6 +140,7 @@ const proteinAdherenceModule: SignalModule = {
       entriesByDay: ctx.entriesByDay,
       completeDays: ctx.completeDays,
       proteinTargetG: ctx.proteinTargetG,
+      proteinTargetWindowStartDay: ctx.proteinTargetWindowStartDay,
     }),
   renderCopy: (evidence) => {
     if (evidence.insightType !== "protein_adherence") {

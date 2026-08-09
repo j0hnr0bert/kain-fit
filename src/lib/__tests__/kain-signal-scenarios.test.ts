@@ -45,7 +45,12 @@ describe("Case A — the production bug, reconstructed: 2 of 15 days hit a 220g 
     expect(dailyGrams.filter((g) => g >= 220).length).toBe(2); // sanity-check the fixture itself
     const { completeDays, entriesByDay } = buildDays(dailyGrams);
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 220 });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 220,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
 
     // Actual:
     expect(evidence).not.toBeNull();
@@ -69,7 +74,12 @@ describe("Case B — near miss: 210/215/205/225/212 against a 220g target", () =
     const dailyGrams = [210, 215, 205, 225, 212];
     const { completeDays, entriesByDay } = buildDays(dailyGrams);
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 220 });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 220,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
 
     expect(evidence).not.toBeNull();
     expect(evidence!.daysAtOrAboveTarget).toBe(1); // only 225 clears 220 — hit rate alone would look bad
@@ -90,7 +100,12 @@ describe("Case C — strong success: 8 days averaging 95-105% of a 220g target",
     const dailyGrams = [209, 220, 231, 215, 225, 210, 228, 218]; // 95%-105% of 220
     const { completeDays, entriesByDay } = buildDays(dailyGrams);
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 220 });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 220,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
 
     expect(evidence).not.toBeNull();
     expect(evidence!.direction).toBe("positive");
@@ -130,7 +145,12 @@ describe("Case D — partial logging: 15 calendar days, only 5 truly qualified",
       (entriesByDay[day] ??= []).push(e);
     }
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 220 });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 220,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
     expect(evidence).not.toBeNull();
     expect(evidence!.daysEvaluated).toBe(5); // not 15
   });
@@ -150,7 +170,12 @@ describe("Case E — changing target mid-window (documented architectural limita
     const dailyGrams = [140, 145, 150, 210, 215, 220, 225, 218]; // first half near an old ~150g target, second half near a new 220g target
     const { completeDays, entriesByDay } = buildDays(dailyGrams);
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 220 });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 220,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
     expect(evidence).not.toBeNull();
     // Applied uniformly: the early days (genuinely on-target for their own
     // 150g goal at the time) read as a shortfall against today's 220g
@@ -167,7 +192,12 @@ describe("Case F — high variance: 90% average attainment, but swinging from 40
     const dailyGrams = [88, 308, 88, 308, 198, 308, 88, 308]; // 40%,140%,40%,140%,90%,140%,40%,140%
     const { completeDays, entriesByDay } = buildDays(dailyGrams);
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 220 });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 220,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
 
     expect(evidence).not.toBeNull();
     expect(evidence!.averageAttainmentPct).toBeGreaterThanOrEqual(85);
@@ -188,7 +218,12 @@ describe("Case G — repeated negative: 7 qualified days around 60-70% attainmen
     const dailyGrams = [140, 150, 145, 135, 155, 148, 142]; // ~62-70% of 220
     const { completeDays, entriesByDay } = buildDays(dailyGrams);
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 220 });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 220,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
 
     expect(evidence).not.toBeNull();
     expect(evidence!.direction).toBe("negative");
@@ -210,7 +245,12 @@ describe("Case H — no useful pattern: sparse/noisy data -> silence", () => {
     const dailyGrams = [180, 90, 250];
     const { completeDays, entriesByDay } = buildDays(dailyGrams);
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 220 });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 220,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
     expect(evidence).toBeNull();
   });
 
@@ -218,7 +258,12 @@ describe("Case H — no useful pattern: sparse/noisy data -> silence", () => {
     const dailyGrams = [150, 160, 140, 155, 165, 148, 152, 158, 145, 162];
     const { completeDays, entriesByDay } = buildDays(dailyGrams);
 
-    const evidence = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: null });
+    const evidence = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: null,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
     expect(evidence).toBeNull();
   });
 });

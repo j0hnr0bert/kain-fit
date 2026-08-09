@@ -20,6 +20,15 @@
 // only as supporting evidence in the rendered "evidence" sentence, never as
 // the basis for direction.
 //
+// 2026-08-09 recalibration: also filters completeDays to only those on or
+// after proteinTargetWindowStartDay — profiles.target_protein_g is a
+// single current value with a companion protein_target_updated_at
+// timestamp (see the migration), so a day logged under a DIFFERENT,
+// earlier target is excluded rather than silently re-judged against
+// today's number. Evidence effectively restarts (fewer days, or null if
+// below the early-signal floor) immediately after any target change.
+//
+
 // Worked examples (used verbatim in the test suite):
 //   8 complete days, target 130g, daily totals
 //   [140,150,120,135,100,145,160,90] -> 5 days meet/exceed the target ->
@@ -104,14 +113,27 @@ export function detectProteinAdherence(input: {
   entriesByDay: Readonly<Record<string, readonly FoodEntryLite[]>>;
   completeDays: readonly string[];
   proteinTargetG: number | null;
+  // Target-window safety (2026-08-09 recalibration): a Manila-day string —
+  // only qualified days on or after this day may be evaluated against
+  // proteinTargetG. A day logged before the target last changed was
+  // logged under a DIFFERENT target; judging it against today's number
+  // would retroactively invent an adherence pattern that never happened.
+  // A target that's set but has no reliable window-start (should not
+  // happen given the migration's backfill + trigger, but not worth
+  // trusting blindly) means null here — return null rather than guess.
+  proteinTargetWindowStartDay: string | null;
 }): ProteinAdherenceEvidence | null {
   if (input.proteinTargetG == null || input.proteinTargetG <= 0) return null;
+  if (input.proteinTargetWindowStartDay === null) return null;
 
-  const daysEvaluated = input.completeDays.length;
+  const windowStart = input.proteinTargetWindowStartDay;
+  const qualifiedDays = input.completeDays.filter((day) => day >= windowStart);
+
+  const daysEvaluated = qualifiedDays.length;
   const target = input.proteinTargetG;
   const dailyGrams: number[] = [];
   let daysAtOrAboveTarget = 0;
-  for (const day of input.completeDays) {
+  for (const day of qualifiedDays) {
     const dayEntries = input.entriesByDay[day] ?? [];
     const proteinTotal = sumNutrients(dayEntries).protein;
     dailyGrams.push(proteinTotal);

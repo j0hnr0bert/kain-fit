@@ -21,14 +21,46 @@ describe("detectProteinAdherence", () => {
       entriesByDay: {},
       completeDays: ["2026-07-01", "2026-07-02"],
       proteinTargetG: null,
+      proteinTargetWindowStartDay: "2026-01-01",
     });
     expect(result).toBeNull();
   });
 
   it("returns null when the target is zero or negative", () => {
     expect(
-      detectProteinAdherence({ entriesByDay: {}, completeDays: [], proteinTargetG: 0 }),
+      detectProteinAdherence({
+        entriesByDay: {},
+        completeDays: [],
+        proteinTargetG: 0,
+        proteinTargetWindowStartDay: "2026-01-01",
+      }),
     ).toBeNull();
+  });
+
+  it("returns null when proteinTargetWindowStartDay is null (target set but window unknown)", () => {
+    const result = detectProteinAdherence({
+      entriesByDay: {},
+      completeDays: ["2026-07-01", "2026-07-02"],
+      proteinTargetG: 130,
+      proteinTargetWindowStartDay: null,
+    });
+    expect(result).toBeNull();
+  });
+
+  it("excludes complete days before proteinTargetWindowStartDay from evaluation", () => {
+    const completeDays = ["2026-07-01", "2026-07-02", "2026-07-03", "2026-07-04", "2026-07-05"];
+    const entriesByDay: Record<string, FoodEntryLite[]> = {};
+    for (const day of completeDays) entriesByDay[day] = [proteinEntry(day, 200)];
+
+    // Window starts 2026-07-04 -> only 07-04 and 07-05 qualify (2 days),
+    // below the 5-day early-signal floor -> null, not 5 days of evidence.
+    const result = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 130,
+      proteinTargetWindowStartDay: "2026-07-04",
+    });
+    expect(result).toBeNull();
   });
 
   it("the worked 8-day / 130g example: [140,150,120,135,100,145,160,90] -> 5/8 adherence, clear_signal", () => {
@@ -43,6 +75,7 @@ describe("detectProteinAdherence", () => {
       entriesByDay,
       completeDays,
       proteinTargetG: 130,
+      proteinTargetWindowStartDay: "2026-01-01",
     });
 
     expect(result).not.toBeNull();
@@ -58,7 +91,12 @@ describe("detectProteinAdherence", () => {
     const entriesByDay: Record<string, FoodEntryLite[]> = {
       "2026-07-01": [proteinEntry("2026-07-01", 20)], // one isolated low-protein day
     };
-    const result = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 130 });
+    const result = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 130,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
     expect(result).toBeNull();
   });
 
@@ -67,7 +105,12 @@ describe("detectProteinAdherence", () => {
     const entriesByDay: Record<string, FoodEntryLite[]> = {};
     for (const day of completeDays) entriesByDay[day] = [proteinEntry(day, 200)];
 
-    const result = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 130 });
+    const result = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 130,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
     expect(result).toBeNull();
   });
 
@@ -77,7 +120,12 @@ describe("detectProteinAdherence", () => {
       "2026-07-01": [proteinEntry("2026-07-01", 200)],
       // 2026-07-02..05 intentionally missing from entriesByDay
     };
-    const result = detectProteinAdherence({ entriesByDay, completeDays, proteinTargetG: 130 });
+    const result = detectProteinAdherence({
+      entriesByDay,
+      completeDays,
+      proteinTargetG: 130,
+      proteinTargetWindowStartDay: "2026-01-01",
+    });
     expect(result).not.toBeNull();
     expect(result!.daysEvaluated).toBe(5);
     expect(result!.daysAtOrAboveTarget).toBe(1);
