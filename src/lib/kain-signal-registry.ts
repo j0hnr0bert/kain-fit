@@ -82,8 +82,7 @@ export type SpecialistVoice = "scientist" | "coach" | "observer";
 // never-repeating threshold identity for a day-window requirement — see
 // kain-signal-detector-milestone.ts's recordedMilestoneKeys mechanism.
 export type EvidenceWindow =
-  | { kind: "rolling-days"; minDistinctDays: number }
-  | { kind: "milestone-identity" };
+  { kind: "rolling-days"; minDistinctDays: number } | { kind: "milestone-identity" };
 
 // The shared read-only context every module's buildCandidate receives.
 // Modules never fetch their own data — kain-signal-generate.server.ts

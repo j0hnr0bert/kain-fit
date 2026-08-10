@@ -16,13 +16,7 @@ import {
 } from "@/components/ui/dialog";
 
 type IssueType =
-  | "calories"
-  | "protein"
-  | "carbs"
-  | "fat"
-  | "serving_quantity"
-  | "wrong_food"
-  | "other";
+  "calories" | "protein" | "carbs" | "fat" | "serving_quantity" | "wrong_food" | "other";
 
 const OPTIONS: { value: IssueType; label: string }[] = [
   { value: "wrong_food", label: "Wrong food" },

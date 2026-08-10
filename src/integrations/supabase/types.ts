@@ -1380,6 +1380,12 @@ export type Database = {
           suppressed: boolean
           user_id: string
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "kain_signal_insights"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       log_product_event: {
         Args: {

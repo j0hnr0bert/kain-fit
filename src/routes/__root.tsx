@@ -236,8 +236,7 @@ function RootComponent() {
     let ttiMs: number | undefined;
     try {
       const nav = performance.getEntriesByType("navigation")[0] as
-        | PerformanceNavigationTiming
-        | undefined;
+        PerformanceNavigationTiming | undefined;
       if (nav) ttiMs = Math.round(performance.now());
     } catch {
       // ignore
