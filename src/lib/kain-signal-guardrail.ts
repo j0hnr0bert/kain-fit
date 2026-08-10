@@ -41,6 +41,31 @@ const POSITIVE_HABIT_PHRASES = [
 // symmetric mistake (calling a genuinely positive pattern a "gap").
 const NEGATIVE_GAP_PHRASES = ["clearest nutrition gap", "consistent gap", "struggling with"];
 
+// 2026-08-10 insight-quality upgrade (Phase 14): the four new relational
+// detectors report things that move TOGETHER in a user's own logs (lower
+// calories with lower protein, weekends with a protein change, a food with
+// higher-protein days) — never that one causes the other. This check runs
+// for EVERY insight type, not just the relational ones, so a future copy
+// edit anywhere in the pipeline can't quietly reintroduce an overclaimed
+// causal relationship. This is defense in depth: kain-signal-copy.ts's
+// causality-safe phrasing already avoids every one of these; a future edit
+// to any copy template should never silently start overclaiming.
+const OVERCLAIMED_CAUSALITY_PATTERNS: readonly RegExp[] = [
+  /\bcauses?\b/i,
+  /\bcausing\b/i,
+  /\bbecause of\b/i,
+  /\bleads? to\b/i,
+  /\bresults? in\b/i,
+  /\bimproves?\b/i,
+  /\bmakes? you\b/i,
+];
+
+function findCausalityViolations(text: string): string[] {
+  return OVERCLAIMED_CAUSALITY_PATTERNS.filter((pattern) => pattern.test(text)).map((pattern) =>
+    pattern.toString(),
+  );
+}
+
 export type GuardrailResult = { passes: true } | { passes: false; reasons: string[] };
 
 function fullText(content: SignalCardContent): string {
@@ -69,6 +94,11 @@ export function evaluateSignalCopy(
 ): GuardrailResult {
   const reasons: string[] = [];
   const text = fullText(content);
+
+  const causalityHits = findCausalityViolations(text);
+  if (causalityHits.length > 0) {
+    reasons.push(`copy overclaims causality (banned pattern matched): ${causalityHits.join(", ")}`);
+  }
 
   if (evidence.insightType === "protein_adherence") {
     const { direction, adherenceRate, averageAttainmentPct } = evidence;

@@ -14,11 +14,23 @@
 // means no KainSignal card" is enforced at the render-site gate, not
 // inside this component tree.
 
-import { Award, CalendarCheck, TrendingUp } from "lucide-react";
+import {
+  Award,
+  CalendarCheck,
+  Scale,
+  Clock,
+  CalendarDays,
+  LineChart,
+  TrendingUp,
+} from "lucide-react";
 import {
   behaviorMilestoneCopy,
   loggingConsistencyCopy,
   proteinAdherenceCopy,
+  proteinCalorieRelationshipCopy,
+  proteinMealPositionCopy,
+  weekdayWeekendPatternCopy,
+  trendShiftCopy,
   type SignalCardContent,
 } from "@/lib/kain-signal-copy";
 import { passesContradictionGuardrail } from "@/lib/kain-signal-guardrail";
@@ -50,6 +62,10 @@ const ICON_BY_INSIGHT_TYPE: Record<InsightType, typeof TrendingUp> = {
   protein_adherence: TrendingUp,
   logging_consistency: CalendarCheck,
   behavior_milestone: Award,
+  protein_calorie_relationship: Scale,
+  protein_meal_position: Clock,
+  weekday_weekend_pattern: CalendarDays,
+  trend_shift: LineChart,
 };
 
 export function themeForSignal(_insightType: InsightType): SignalTheme {
@@ -85,6 +101,14 @@ export function copyForSelectedInsight(
         return loggingConsistencyCopy(selectedInsight.evidence);
       case "behavior_milestone":
         return behaviorMilestoneCopy(selectedInsight.evidence);
+      case "protein_calorie_relationship":
+        return proteinCalorieRelationshipCopy(selectedInsight.evidence);
+      case "protein_meal_position":
+        return proteinMealPositionCopy(selectedInsight.evidence);
+      case "weekday_weekend_pattern":
+        return weekdayWeekendPatternCopy(selectedInsight.evidence);
+      case "trend_shift":
+        return trendShiftCopy(selectedInsight.evidence);
     }
   })();
   if (!passesContradictionGuardrail(selectedInsight.evidence, content)) {

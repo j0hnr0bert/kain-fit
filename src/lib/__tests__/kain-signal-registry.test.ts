@@ -55,11 +55,20 @@ const ctx: SignalContext = {
 };
 
 describe("SIGNAL_REGISTRY", () => {
-  it("registers exactly the three approved current categories, each with a distinct class and voice", () => {
+  // 2026-08-10 insight-quality upgrade: four new "reveal"/"scientist"
+  // relational modules joined the original three — see kain-signal-
+  // registry.ts's own header comment for why (adding a category means
+  // adding a registry entry, not touching the ranking engine or this
+  // loop).
+  it("registers exactly the seven approved current categories, each with a valid class and voice", () => {
     expect(SIGNAL_REGISTRY.map((m) => m.id).sort()).toEqual([
       "behavior_milestone",
       "logging_consistency",
       "protein_adherence",
+      "protein_calorie_relationship",
+      "protein_meal_position",
+      "trend_shift",
+      "weekday_weekend_pattern",
     ]);
     const byId = Object.fromEntries(SIGNAL_REGISTRY.map((m) => [m.id, m]));
     expect(byId.protein_adherence.signalClass).toBe("reveal");
@@ -68,6 +77,15 @@ describe("SIGNAL_REGISTRY", () => {
     expect(byId.logging_consistency.voice).toBe("coach");
     expect(byId.behavior_milestone.signalClass).toBe("milestone");
     expect(byId.behavior_milestone.voice).toBe("observer");
+    for (const id of [
+      "protein_calorie_relationship",
+      "protein_meal_position",
+      "weekday_weekend_pattern",
+      "trend_shift",
+    ]) {
+      expect(byId[id].signalClass).toBe("reveal");
+      expect(byId[id].voice).toBe("scientist");
+    }
   });
 
   it("protein_adherence module's buildCandidate matches calling detectProteinAdherence directly", () => {

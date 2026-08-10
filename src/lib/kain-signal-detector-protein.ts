@@ -39,6 +39,7 @@
 
 import { sumNutrients } from "./nutrient-totals";
 import { classifyEvidenceStrength } from "./kain-signal-evidence-strength";
+import { mean, median, stdDev } from "./kain-signal-stats";
 import {
   PROTEIN_BORDERLINE_MIN_ATTAINMENT_PCT,
   PROTEIN_LOW_VARIANCE_STDDEV_PCT_MAX,
@@ -55,26 +56,6 @@ import type {
   SignalDirection,
   SignalDirectionTier,
 } from "./kain-signal-types";
-
-function mean(values: readonly number[]): number {
-  return values.length > 0 ? values.reduce((s, v) => s + v, 0) / values.length : 0;
-}
-
-function median(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
-// Population standard deviation — this is describing the actual observed
-// window, not estimating a wider population, so population (not sample) is
-// the correct statistic.
-function stdDev(values: readonly number[], avg: number): number {
-  if (values.length === 0) return 0;
-  const variance = mean(values.map((v) => (v - avg) ** 2));
-  return Math.sqrt(variance);
-}
 
 function classifyConsistency(attainmentStdDevPct: number): AttainmentConsistency {
   if (attainmentStdDevPct <= PROTEIN_LOW_VARIANCE_STDDEV_PCT_MAX) return "low_variance";

@@ -121,8 +121,94 @@ export type MilestoneEvidence = {
   evidenceStrength: EvidenceStrength;
 };
 
+// 2026-08-10 insight-quality upgrade: four relational/comparative signal
+// types, added alongside the original three rather than replacing anything
+// (see kain-signal-insight-value.ts's header for why "reveals a
+// relationship, not merely a count" is the dividing line these exist to
+// cross). Each is a genuine relationship or comparison over the SAME
+// underlying food_entries data the original detectors already read — no new
+// data source, no invented categories (no breakfast/lunch/dinner; meal
+// position is derived from logged_at clustering, day-of-week from the
+// Manila-day string itself). Every one of these can be null — "not enough
+// data to say something real" is the common, expected outcome, not a bug.
+
+// Protein vs. calorie-intake relationship (Phase 3 "Protein vs calorie
+// intake"): whether the user's lowest-calorie days are also disproportion-
+// ately low-protein days — a tradeoff the user is unlikely to have
+// consciously noticed, since Today only ever shows one day at a time.
+export type ProteinCalorieRelationshipEvidence = {
+  insightType: "protein_calorie_relationship";
+  daysEvaluated: number;
+  lowerCalorieDayCount: number;
+  higherCalorieDayCount: number;
+  avgCaloriesLowerGroup: number;
+  avgCaloriesHigherGroup: number;
+  avgProteinLowerGroup: number;
+  avgProteinHigherGroup: number;
+  // Positive = protein is lower on the lower-calorie days (the tradeoff
+  // pattern this detector looks for). This detector never surfaces the
+  // reverse case — see its header comment for why that's not the same
+  // story.
+  proteinGapG: number;
+  evidenceStrength: EvidenceStrength;
+};
+
+// Protein by meal position (Phase 3 "Protein by meal position"): whether,
+// on the days the user falls short of target, most of the shortfall traces
+// to a low-protein first meal rather than being spread evenly across the
+// day. "First meal" is derived purely from logged_at clustering within a
+// day (a >=90-minute gap starts a new meal-group) — never an invented or
+// assumed breakfast/lunch/dinner category.
+export type ProteinMealPositionEvidence = {
+  insightType: "protein_meal_position";
+  shortfallDaysEvaluated: number;
+  avgFirstMealProteinSharePct: number;
+  proteinTargetG: number;
+  evidenceStrength: EvidenceStrength;
+};
+
+// Weekday vs. weekend comparison (Phase 3 "Weekday vs weekend"): the
+// specific, higher-value framing this repo implements — calories staying
+// roughly flat while protein drops on weekends, which contradicts the
+// obvious "weekends mean more food" assumption a user would already expect.
+// A weekday/weekend split where BOTH calories and protein move together is
+// deliberately NOT surfaced by this detector — that's the unsurprising
+// story, not the one worth an insight.
+export type WeekdayWeekendPatternEvidence = {
+  insightType: "weekday_weekend_pattern";
+  weekdayCount: number;
+  weekendCount: number;
+  avgCaloriesWeekday: number;
+  avgCaloriesWeekend: number;
+  avgProteinWeekday: number;
+  avgProteinWeekend: number;
+  calorieDiffPct: number;
+  proteinDiffG: number;
+  evidenceStrength: EvidenceStrength;
+};
+
+// Trend shift (Phase 3 "Trend shift"): the most recent qualified-day window
+// compared against the window immediately before it — surfaces a genuine
+// improvement or decline the user may not have consciously registered,
+// since Today only ever shows the single most recent day.
+export type TrendShiftEvidence = {
+  insightType: "trend_shift";
+  recentWindowDays: number;
+  priorWindowDays: number;
+  avgAttainmentPctRecent: number;
+  avgAttainmentPctPrior: number;
+  deltaPct: number;
+  direction: Extract<SignalDirection, "positive" | "negative">;
+  proteinTargetG: number;
+  evidenceStrength: EvidenceStrength;
+};
+
 export type InsightEvidence =
   | ProteinAdherenceEvidence
   | LoggingConsistencyEvidence
-  | MilestoneEvidence;
+  | MilestoneEvidence
+  | ProteinCalorieRelationshipEvidence
+  | ProteinMealPositionEvidence
+  | WeekdayWeekendPatternEvidence
+  | TrendShiftEvidence;
 export type InsightType = InsightEvidence["insightType"];

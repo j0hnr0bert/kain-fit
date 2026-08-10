@@ -52,14 +52,48 @@ function copyDrivingFacts(evidence: InsightEvidence): Record<string, number | st
       evidenceStrength: evidence.evidenceStrength,
     };
   }
-  // behavior_milestone: identity is milestoneType+threshold (never the same
-  // pair twice — see kain-signal-detector-milestone.ts's dedup), so any two
-  // milestone evidence objects that reach this comparison at all are
-  // already guaranteed to differ on at least one of these fields.
+  if (evidence.insightType === "behavior_milestone") {
+    // Identity is milestoneType+threshold (never the same pair twice — see
+    // kain-signal-detector-milestone.ts's dedup), so any two milestone
+    // evidence objects that reach this comparison at all are already
+    // guaranteed to differ on at least one of these fields.
+    return {
+      milestoneType: evidence.milestoneType,
+      threshold: evidence.threshold,
+      observedValue: evidence.observedValue,
+    };
+  }
+  // 2026-08-10 insight-quality upgrade: the four new relational types,
+  // each compared on exactly the fields their own copy function renders —
+  // same convention as every branch above.
+  if (evidence.insightType === "protein_calorie_relationship") {
+    return {
+      daysEvaluated: evidence.daysEvaluated,
+      proteinGapG: Math.round(evidence.proteinGapG),
+      evidenceStrength: evidence.evidenceStrength,
+    };
+  }
+  if (evidence.insightType === "protein_meal_position") {
+    return {
+      shortfallDaysEvaluated: evidence.shortfallDaysEvaluated,
+      avgFirstMealProteinSharePct: Math.round(evidence.avgFirstMealProteinSharePct),
+      proteinTargetG: evidence.proteinTargetG,
+      evidenceStrength: evidence.evidenceStrength,
+    };
+  }
+  if (evidence.insightType === "weekday_weekend_pattern") {
+    return {
+      proteinDiffG: Math.round(evidence.proteinDiffG),
+      calorieDiffPct: Math.round(evidence.calorieDiffPct),
+      evidenceStrength: evidence.evidenceStrength,
+    };
+  }
+  // trend_shift
   return {
-    milestoneType: evidence.milestoneType,
-    threshold: evidence.threshold,
-    observedValue: evidence.observedValue,
+    deltaPct: Math.round(evidence.deltaPct),
+    direction: evidence.direction,
+    avgAttainmentPctRecent: Math.round(evidence.avgAttainmentPctRecent),
+    evidenceStrength: evidence.evidenceStrength,
   };
 }
 
