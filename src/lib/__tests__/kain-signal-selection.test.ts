@@ -42,6 +42,14 @@ function proteinCandidate(overrides: Partial<RankedCandidate> = {}): RankedCandi
     adherenceRate: 10 / 14,
     proteinTargetG: 130,
     evidenceStrength: "strong_signal",
+    averageGramsPerDay: 130,
+    averageAttainmentPct: 100,
+    medianAttainmentPct: 100,
+    attainmentStdDevPct: 5,
+    averageShortfallG: 0,
+    consistency: "low_variance",
+    direction: "positive",
+    directionTier: "strong",
   };
   return {
     insightType: "protein_adherence",
@@ -108,6 +116,7 @@ const loggingEvidence: LoggingConsistencyEvidence = {
   currentStreak: 3,
   longestGapDays: 0,
   evidenceStrength: "early_signal",
+  direction: "positive",
 };
 
 const milestoneEvidence: MilestoneEvidence = {
@@ -140,6 +149,14 @@ describe("patternOnlyEvidenceStrengths — module-level readiness (2026-07-27 co
       adherenceRate: 0.625,
       proteinTargetG: 130,
       evidenceStrength: "clear_signal",
+      averageGramsPerDay: 130,
+      averageAttainmentPct: 100,
+      medianAttainmentPct: 100,
+      attainmentStdDevPct: 5,
+      averageShortfallG: 0,
+      consistency: "low_variance",
+      direction: "positive",
+      directionTier: "strong",
     };
     const candidates: (InsightEvidence | null)[] = [
       proteinEvidence,
@@ -189,6 +206,14 @@ describe("selectPatternTop — the connected-state transition must ignore milest
       adherenceRate: 10 / 14,
       proteinTargetG: 130,
       evidenceStrength: "strong_signal",
+      averageGramsPerDay: 130,
+      averageAttainmentPct: 100,
+      medianAttainmentPct: 100,
+      attainmentStdDevPct: 5,
+      averageShortfallG: 0,
+      consistency: "low_variance",
+      direction: "positive",
+      directionTier: "strong",
     };
     const ranked = rankInsights([proteinEvidence, milestoneEvidence], {});
     // selectWinner (display/persistence) picks the milestone...

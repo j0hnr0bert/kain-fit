@@ -19,6 +19,12 @@ export default tseslint.config(
       ".vinxi",
       "src/integrations/supabase/**",
       "src/integrations/lovable/index.ts",
+      // Capacitor native projects — no .ts/.tsx content, but their nesting
+      // makes ESLint's flat-config file-crawler pathologically slow
+      // (minutes instead of seconds) without an explicit ignore.
+      "ios/**",
+      "android/**",
+      "resources/**",
     ],
   },
   {

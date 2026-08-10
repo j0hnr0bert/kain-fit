@@ -98,8 +98,12 @@ export function QuickLogRail({ todaysEntries }: QuickLogRailProps) {
   const userIdQ = useQuery({
     queryKey: ["user-id"],
     queryFn: async () => {
-      const { data } = await supabase.auth.getUser();
-      return data.user?.id ?? null;
+      // getSession() reads the cached session from local storage instead of
+      // getUser()'s server-validated fetch — this id is only used as a query
+      // key/param here, never as a security boundary (RLS enforces that on
+      // every request regardless of which client call supplied the id).
+      const { data } = await supabase.auth.getSession();
+      return data.session?.user?.id ?? null;
     },
     staleTime: 5 * 60_000,
   });

@@ -20,6 +20,12 @@ const ENTRANCE_CLASS =
 export function KainSignalCard({ selectedInsight }: KainSignalCardProps) {
   const [expanded, setExpanded] = useState(false);
   const content = copyForSelectedInsight(selectedInsight);
+  // Silence is the correct output when evidence and copy would contradict
+  // each other (see kain-signal-guardrail.ts) — never render a card that
+  // might be wrong. Should not happen in normal operation; this is the
+  // last of three defense-in-depth layers (detector direction logic,
+  // server-side guardrail before persistence, this one).
+  if (content === null) return null;
   const Icon = iconForSignal(selectedInsight.insightType);
   const theme = themeForSignal(selectedInsight.insightType);
 
@@ -47,9 +53,14 @@ export function KainSignalCard({ selectedInsight }: KainSignalCardProps) {
       <div className="min-w-0 pt-0.5">
         <div className="text-sm font-semibold text-foreground">{content.headline}</div>
         <div className="mt-0.5 text-sm text-foreground/85">{content.observation}</div>
-        {/* takeaway interprets the pattern — never a same-day instruction,
-            never labeled as a recommendation or next action; that
-            ownership belongs exclusively to CoachingCard. */}
+        {/* takeaway interprets the pattern and, for protein's negative/
+            neutral directions, carries generateProteinAction's magnitude-
+            calibrated guidance (kain-signal-protein-action.ts) — but never a
+            same-day instruction ("today", a specific next meal); that
+            ownership belongs exclusively to CoachingCard. This is the
+            collapsed card's third and final line (2026-08-09 recalibration,
+            Task 4: headline / evidence / action, nothing else visible by
+            default). */}
         <div className="mt-1 text-sm font-medium text-foreground">{content.takeaway}</div>
         <button
           type="button"
@@ -57,7 +68,7 @@ export function KainSignalCard({ selectedInsight }: KainSignalCardProps) {
           className="mt-1.5 text-xs font-medium text-primary underline-offset-2 hover:underline"
           aria-expanded={expanded}
         >
-          What this may mean
+          Why am I seeing this?
         </button>
         {expanded && (
           <div className="mt-1.5 space-y-1 text-xs text-muted-foreground">

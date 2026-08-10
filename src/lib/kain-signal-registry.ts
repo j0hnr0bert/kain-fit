@@ -48,15 +48,27 @@
 import { detectProteinAdherence } from "./kain-signal-detector-protein";
 import { detectLoggingConsistency } from "./kain-signal-detector-logging-consistency";
 import { detectBehaviorMilestone } from "./kain-signal-detector-milestone";
+import { detectProteinCalorieRelationship } from "./kain-signal-detector-protein-calorie";
+import { detectProteinMealPosition } from "./kain-signal-detector-protein-meal-position";
+import { detectWeekdayWeekendPattern } from "./kain-signal-detector-weekday-weekend";
+import { detectTrendShift } from "./kain-signal-detector-trend-shift";
 import {
   behaviorMilestoneCopy,
   proteinAdherenceCopy,
   loggingConsistencyCopy,
+  proteinCalorieRelationshipCopy,
+  proteinMealPositionCopy,
+  weekdayWeekendPatternCopy,
+  trendShiftCopy,
   type SignalCardContent,
 } from "./kain-signal-copy";
 import {
   LOGGING_CONSISTENCY_EVIDENCE_THRESHOLDS,
   PROTEIN_ADHERENCE_EVIDENCE_THRESHOLDS,
+  PROTEIN_CALORIE_RELATIONSHIP_EVIDENCE_THRESHOLDS,
+  PROTEIN_MEAL_POSITION_EVIDENCE_THRESHOLDS,
+  WEEKDAY_WEEKEND_EVIDENCE_THRESHOLDS,
+  TREND_SHIFT_EVIDENCE_THRESHOLDS,
 } from "./kain-signal-config";
 import type { FoodEntryLite, InsightEvidence, InsightType } from "./kain-signal-types";
 
@@ -70,8 +82,7 @@ export type SpecialistVoice = "scientist" | "coach" | "observer";
 // never-repeating threshold identity for a day-window requirement — see
 // kain-signal-detector-milestone.ts's recordedMilestoneKeys mechanism.
 export type EvidenceWindow =
-  | { kind: "rolling-days"; minDistinctDays: number }
-  | { kind: "milestone-identity" };
+  { kind: "rolling-days"; minDistinctDays: number } | { kind: "milestone-identity" };
 
 // The shared read-only context every module's buildCandidate receives.
 // Modules never fetch their own data — kain-signal-generate.server.ts
@@ -83,6 +94,13 @@ export type SignalContext = {
   todayManila: string;
   windowDays: number;
   proteinTargetG: number | null;
+  /** Manila-day string marking when target_protein_g last materially
+   * changed (see the 2026-08-09 migration's trigger) — null if a target
+   * is set but this can't be reliably determined. detectProteinAdherence
+   * only evaluates qualified days on or after this day, so a target
+   * change can never retroactively re-judge days logged under a
+   * different target. See kain-signal-detector-protein.ts. */
+  proteinTargetWindowStartDay: string | null;
   /** All-time (not just the SIGNAL_LOOKBACK_DAYS window) meal count and
    * distinct logging-day count — milestones are lifetime facts, so they
    * must not be blind to history older than the rolling window the other
@@ -133,6 +151,7 @@ const proteinAdherenceModule: SignalModule = {
       entriesByDay: ctx.entriesByDay,
       completeDays: ctx.completeDays,
       proteinTargetG: ctx.proteinTargetG,
+      proteinTargetWindowStartDay: ctx.proteinTargetWindowStartDay,
     }),
   renderCopy: (evidence) => {
     if (evidence.insightType !== "protein_adherence") {
@@ -192,6 +211,106 @@ const behaviorMilestoneModule: SignalModule = {
   },
 };
 
+// 2026-08-10 insight-quality upgrade: four new "reveal"/"scientist"
+// modules, each wrapping one of the new relational detectors exactly the
+// same way proteinAdherenceModule wraps detectProteinAdherence — no new
+// SignalContext fields were needed (entriesByDay/completeDays/
+// proteinTargetG/proteinTargetWindowStartDay already cover everything these
+// four read).
+const proteinCalorieRelationshipModule: SignalModule = {
+  id: "protein_calorie_relationship",
+  signalClass: "reveal",
+  voice: "scientist",
+  version: 1,
+  evidenceWindow: {
+    kind: "rolling-days",
+    minDistinctDays: PROTEIN_CALORIE_RELATIONSHIP_EVIDENCE_THRESHOLDS.early,
+  },
+  buildCandidate: (ctx) =>
+    detectProteinCalorieRelationship({
+      entriesByDay: ctx.entriesByDay,
+      completeDays: ctx.completeDays,
+    }),
+  renderCopy: (evidence) => {
+    if (evidence.insightType !== "protein_calorie_relationship") {
+      throw new Error(
+        "proteinCalorieRelationshipModule.renderCopy: mismatched evidence.insightType",
+      );
+    }
+    return proteinCalorieRelationshipCopy(evidence);
+  },
+};
+
+const proteinMealPositionModule: SignalModule = {
+  id: "protein_meal_position",
+  signalClass: "reveal",
+  voice: "scientist",
+  version: 1,
+  evidenceWindow: {
+    kind: "rolling-days",
+    minDistinctDays: PROTEIN_MEAL_POSITION_EVIDENCE_THRESHOLDS.early,
+  },
+  buildCandidate: (ctx) =>
+    detectProteinMealPosition({
+      entriesByDay: ctx.entriesByDay,
+      completeDays: ctx.completeDays,
+      proteinTargetG: ctx.proteinTargetG,
+      proteinTargetWindowStartDay: ctx.proteinTargetWindowStartDay,
+    }),
+  renderCopy: (evidence) => {
+    if (evidence.insightType !== "protein_meal_position") {
+      throw new Error("proteinMealPositionModule.renderCopy: mismatched evidence.insightType");
+    }
+    return proteinMealPositionCopy(evidence);
+  },
+};
+
+const weekdayWeekendPatternModule: SignalModule = {
+  id: "weekday_weekend_pattern",
+  signalClass: "reveal",
+  voice: "scientist",
+  version: 1,
+  evidenceWindow: {
+    kind: "rolling-days",
+    minDistinctDays: WEEKDAY_WEEKEND_EVIDENCE_THRESHOLDS.early,
+  },
+  buildCandidate: (ctx) =>
+    detectWeekdayWeekendPattern({
+      entriesByDay: ctx.entriesByDay,
+      completeDays: ctx.completeDays,
+    }),
+  renderCopy: (evidence) => {
+    if (evidence.insightType !== "weekday_weekend_pattern") {
+      throw new Error("weekdayWeekendPatternModule.renderCopy: mismatched evidence.insightType");
+    }
+    return weekdayWeekendPatternCopy(evidence);
+  },
+};
+
+const trendShiftModule: SignalModule = {
+  id: "trend_shift",
+  signalClass: "reveal",
+  voice: "scientist",
+  version: 1,
+  evidenceWindow: {
+    kind: "rolling-days",
+    minDistinctDays: TREND_SHIFT_EVIDENCE_THRESHOLDS.early,
+  },
+  buildCandidate: (ctx) =>
+    detectTrendShift({
+      entriesByDay: ctx.entriesByDay,
+      completeDays: ctx.completeDays,
+      proteinTargetG: ctx.proteinTargetG,
+      proteinTargetWindowStartDay: ctx.proteinTargetWindowStartDay,
+    }),
+  renderCopy: (evidence) => {
+    if (evidence.insightType !== "trend_shift") {
+      throw new Error("trendShiftModule.renderCopy: mismatched evidence.insightType");
+    }
+    return trendShiftCopy(evidence);
+  },
+};
+
 const VALID_CLASSES: readonly SignalClass[] = ["reveal", "protect", "milestone"];
 const VALID_VOICES: readonly SpecialistVoice[] = ["scientist", "coach", "observer"];
 
@@ -247,6 +366,10 @@ export const SIGNAL_REGISTRY: readonly SignalModule[] = [
   proteinAdherenceModule,
   loggingConsistencyModule,
   behaviorMilestoneModule,
+  proteinCalorieRelationshipModule,
+  proteinMealPositionModule,
+  weekdayWeekendPatternModule,
+  trendShiftModule,
 ];
 
 // Fails loudly at import time, not just in a test — a broken registry

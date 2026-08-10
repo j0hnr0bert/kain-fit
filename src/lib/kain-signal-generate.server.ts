@@ -25,6 +25,7 @@ import {
 } from "./kain-signal-selection";
 import { detectBehaviorMilestone, milestoneKey } from "./kain-signal-detector-milestone";
 import { isMaterialChange, type SignalSelection } from "./kain-signal-freshness";
+import { evaluateSignalCopy } from "./kain-signal-guardrail";
 import { NOT_QUITE_LOOKBACK_DAYS, SIGNAL_LOOKBACK_DAYS } from "./kain-signal-config";
 import type {
   FoodEntryLite,
@@ -99,13 +100,27 @@ export async function generateTodaySignal(
 
   const { data: profileRows, error: profileError } = await supabase
     .from("profiles")
-    .select("manual_targets_enabled,target_protein_g")
+    .select("manual_targets_enabled,target_protein_g,protein_target_updated_at")
     .eq("user_id", userId)
     .limit(1);
   if (profileError) throw new Error(profileError.message);
   const profile = profileRows?.[0];
   const proteinTargetG =
     profile?.manual_targets_enabled && profile.target_protein_g ? profile.target_protein_g : null;
+  // Target-window safety (2026-08-09 recalibration): protein_target_updated_at
+  // tracks when target_protein_g last materially changed (see the migration's
+  // trigger). A day logged before that timestamp was logged under a
+  // DIFFERENT target and must never be judged against today's number — see
+  // kain-signal-detector-protein.ts's own filtering. Conservative by
+  // design: if a target is set but this timestamp is somehow missing (should
+  // never happen given the migration's backfill + trigger, but the
+  // possibility isn't worth trusting), the window start is left null and
+  // the detector treats that as "no valid window" rather than silently
+  // evaluating unrestricted history.
+  const proteinTargetWindowStartDay =
+    proteinTargetG !== null && profile?.protein_target_updated_at
+      ? manilaDay(profile.protein_target_updated_at)
+      : null;
 
   const { data: feedbackRows, error: feedbackError } = await supabase
     .from("kain_signal_feedback")
@@ -184,11 +199,34 @@ export async function generateTodaySignal(
     todayManila,
     windowDays: SIGNAL_LOOKBACK_DAYS,
     proteinTargetG,
+    proteinTargetWindowStartDay,
     lifetimeMealCount,
     lifetimeDistinctLoggingDays,
     recordedMilestoneKeys,
   };
-  const candidates = SIGNAL_REGISTRY.map((module) => module.buildCandidate(signalCtx));
+  // Contradiction guardrail (2026-08-08 recalibration, Phase 11): a
+  // candidate whose evidence and rendered copy would contradict each other
+  // (the exact production bug this recalibration fixes — a ~13% hit-rate
+  // pattern rendered as "one of your strongest nutrition patterns") is
+  // dropped here, before ranking/selection ever sees it — same as if the
+  // detector itself had returned null. This is defense in depth: under
+  // normal operation detectProteinAdherence's own direction/directionTier
+  // logic already prevents this, but a future copy-template edit or a
+  // legacy row should never be able to reintroduce the bug silently.
+  const candidates = SIGNAL_REGISTRY.map((module) => {
+    const evidence = module.buildCandidate(signalCtx);
+    if (evidence === null) return null;
+    const content = module.renderCopy(evidence);
+    const guardrail = evaluateSignalCopy(evidence, content);
+    if (!guardrail.passes) {
+      console.error("[kain-signal] guardrail rejected candidate", {
+        insightType: module.id,
+        reasons: guardrail.reasons,
+      });
+      return null;
+    }
+    return evidence;
+  });
 
   // Multi-threshold / bootstrap policy (§2): a single direct call
   // alongside the registry loop above — detectBehaviorMilestone is pure

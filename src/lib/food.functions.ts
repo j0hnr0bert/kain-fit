@@ -394,7 +394,7 @@ export const parseFood = createServerFn({ method: "POST" })
       const used = await getUserDailySubmissionCount(context.userId);
       if (used >= settings.beta_daily_submission_cap) {
         throw new Error(
-          "BETA_LIMIT: You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.",
+          "BETA_LIMIT: You've reached today's limit. Your allowance resets at midnight. Existing entries can still be edited.",
         );
       }
     }

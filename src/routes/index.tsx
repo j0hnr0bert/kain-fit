@@ -3,7 +3,6 @@ import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { track, getAcquisitionSource } from "@/lib/analytics";
-import { BetaBadge } from "@/components/BetaBadge";
 import { TargetRings } from "@/components/TargetRings";
 import { CoachingCard } from "@/components/CoachingCard";
 import { InstallKainFitCTA } from "@/components/InstallKainFitCTA";
@@ -48,7 +47,6 @@ function Welcome() {
             <span className="text-primary-foreground font-bold text-lg">K</span>
           </div>
           <span className="text-xl font-semibold tracking-tight">KainFit</span>
-          <BetaBadge className="ml-1" />
         </header>
 
         <h1 className="text-4xl font-bold tracking-tight leading-[1.1]">
@@ -61,7 +59,7 @@ function Welcome() {
         </p>
 
         <p className="mt-4 inline-flex items-center gap-1 text-[13px] font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5 w-fit">
-          Free beta · No credit card required
+          Free · No credit card required
         </p>
         <p className="mt-2 text-sm text-muted-foreground">Try it before creating an account.</p>
 
@@ -152,17 +150,17 @@ function Welcome() {
         </div>
       </section>
 
-      {/* ---- F. TRUST AND BETA DISCLOSURE ---- */}
+      {/* ---- F. TRUST DISCLOSURE ---- */}
       <section className="max-w-md mx-auto px-6 mt-14">
         <h2 className="text-2xl font-bold tracking-tight">Why trust KainFit</h2>
         <ul className="mt-4 space-y-2.5 text-sm text-foreground">
           {[
-            "Free beta — no credit card required",
+            "Free — no credit card required",
             "Built for Filipino food",
             "English, Filipino, and Taglish input",
             "Review before saving",
             "Edit anything that looks wrong",
-            "Beta feedback directly improves the product",
+            "Your feedback directly improves the product",
           ].map((line) => (
             <li key={line} className="flex items-start gap-2">
               <span
@@ -191,9 +189,7 @@ function Welcome() {
       <section className="max-w-md mx-auto px-6 mt-14 pb-16">
         <div className="rounded-3xl bg-primary/5 border border-primary/20 p-6 text-center">
           <h2 className="text-xl font-bold tracking-tight">Try it. It takes seconds.</h2>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            Free beta · No credit card required
-          </p>
+          <p className="mt-1.5 text-sm text-muted-foreground">Free · No credit card required</p>
           <Button asChild size="lg" className="mt-4 w-full h-14 text-base rounded-2xl">
             <Link to="/demo">Try KainFit free</Link>
           </Button>

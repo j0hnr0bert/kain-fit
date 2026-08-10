@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { sumNutrients } from "@/lib/nutrient-totals";
@@ -36,21 +36,10 @@ import {
 } from "@/components/ui/dialog";
 import { BottomNav } from "@/components/BottomNav";
 import { toast } from "sonner";
-import {
-  ArrowUp,
-  Mic,
-  Sparkles,
-  Trash2,
-  Pencil,
-  Loader2,
-  AlertCircle,
-  Flag,
-  Flame,
-} from "lucide-react";
+import { ArrowUp, Mic, Sparkles, Trash2, Pencil, Loader2, Flag, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { track, markReturned } from "@/lib/analytics";
 import { mark, elapsed } from "@/lib/perf";
-import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
@@ -63,10 +52,15 @@ import {
 } from "@/lib/first-meal-celebration";
 import { KainSignalCard } from "@/components/KainSignalCard";
 import { TargetRings, type JustAdded } from "@/components/TargetRings";
-import { formatQuantity, foodStatus, isPreparationClarification } from "@/lib/food-display";
+import { formatQuantity, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
 import { getKainSignalToday } from "@/lib/kain-signal.functions";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { tapHaptic } from "@/lib/haptics";
+
+// Lazy-loaded: Radix Tooltip is only needed once a food entry actually
+// renders (after the entries query resolves), never for the initial
+// food-input-ready paint — see src/components/StatusBadge.tsx.
+const StatusBadge = lazy(() => import("@/components/StatusBadge"));
 
 export const Route = createFileRoute("/_authenticated/today")({
   component: TodayPage,
@@ -473,6 +467,12 @@ function TodayPage() {
     setSaving(true);
     setSaveError(null);
     const saveStarted = mark();
+    // Reassigned once the optimistic rows are seeded below. Declared here
+    // (not `const` inside the try) so the catch below can always safely
+    // roll back — including a network failure severe enough to throw
+    // before that point is reached, in which case this stays empty and
+    // the filter is a no-op.
+    let optimisticIds = new Set<string>();
     try {
       // getSession() reads the already-cached session from local storage —
       // no network round trip — instead of getUser()'s server-validated
@@ -513,6 +513,34 @@ function TodayPage() {
         client_request_id: i.client_request_id,
       }));
 
+      // Optimistic UI: render the entry and updated totals immediately,
+      // before the insert round-trip resolves, keyed by the same
+      // client_request_id used for de-duplication below. Reconciled with
+      // the real row(s) on success, or rolled back on failure/mismatch —
+      // never touches the celebration/analytics logic further down, which
+      // still only ever runs after a confirmed insert.
+      optimisticIds = new Set(rows.map((r) => `optimistic:${r.client_request_id}`));
+      const optimisticRows: Entry[] = rows.map((r) => ({
+        id: `optimistic:${r.client_request_id}`,
+        logged_at: r.logged_at,
+        created_at: r.logged_at,
+        meal_type: r.meal_type,
+        display_name: r.display_name,
+        quantity: r.quantity,
+        unit: r.unit,
+        calories: r.calories,
+        protein_g: r.protein_g,
+        carbs_g: r.carbs_g,
+        fat_g: r.fat_g,
+        data_source: r.data_source,
+        is_estimate: r.is_estimate,
+        preparation: r.preparation,
+      }));
+      qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => [
+        ...optimisticRows,
+        ...current,
+      ]);
+
       const { data, error } = await supabase.from("food_entries").insert(rows).select("*");
       const database_query_duration_ms = elapsed(saveStarted);
       if (error) {
@@ -527,8 +555,12 @@ function TodayPage() {
           if (!lookupError && (existingRows?.length ?? 0) >= rows.length) {
             const existing = (existingRows ?? []) as Entry[];
             qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
-              const known = new Set(current.map((entry) => entry.id));
-              return [...existing.filter((entry) => !known.has(entry.id)), ...current].sort(
+              const withoutOptimistic = current.filter((entry) => !optimisticIds.has(entry.id));
+              const known = new Set(withoutOptimistic.map((entry) => entry.id));
+              return [
+                ...existing.filter((entry) => !known.has(entry.id)),
+                ...withoutOptimistic,
+              ].sort(
                 (a, b) =>
                   new Date(b.created_at ?? b.logged_at).getTime() -
                   new Date(a.created_at ?? a.logged_at).getTime(),
@@ -538,11 +570,15 @@ function TodayPage() {
             setInput("");
             await invalidateAfterFoodMutation();
             await qc.invalidateQueries({ queryKey: ["beta-usage"] });
+            void tapHaptic();
             toast.success("Added to Today");
             return true;
           }
         }
 
+        qc.setQueryData<Entry[]>(["entries", "today"], (current = []) =>
+          current.filter((entry) => !optimisticIds.has(entry.id)),
+        );
         const msg = formatDbError(error);
         console.error("[today] food_entries insert failed", { error, rows });
         setSaveError(msg);
@@ -559,6 +595,9 @@ function TodayPage() {
         });
         setSaveError(msg);
         toast.error(msg);
+        qc.setQueryData<Entry[]>(["entries", "today"], (current = []) =>
+          current.filter((entry) => !optimisticIds.has(entry.id)),
+        );
         await invalidateAfterFoodMutation();
         return false;
       }
@@ -681,8 +720,9 @@ function TodayPage() {
       setPulseSeq((n) => n + 1);
 
       qc.setQueryData<Entry[]>(["entries", "today"], (current = []) => {
-        const known = new Set(current.map((entry) => entry.id));
-        return [...savedRows.filter((entry) => !known.has(entry.id)), ...current].sort(
+        const withoutOptimistic = current.filter((entry) => !optimisticIds.has(entry.id));
+        const known = new Set(withoutOptimistic.map((entry) => entry.id));
+        return [...savedRows.filter((entry) => !known.has(entry.id)), ...withoutOptimistic].sort(
           (a, b) =>
             new Date(b.created_at ?? b.logged_at).getTime() -
             new Date(a.created_at ?? a.logged_at).getTime(),
@@ -723,6 +763,7 @@ function TodayPage() {
       }
       setPending(null);
       setInput("");
+      void tapHaptic();
       const showFirstSaveExplainer = isFirstEverSave && options.automatic;
       toast.success(
         showFirstSaveExplainer
@@ -754,6 +795,23 @@ function TodayPage() {
       await invalidateAfterFoodMutation();
       await qc.invalidateQueries({ queryKey: ["beta-usage"] });
       return true;
+    } catch (err) {
+      // Safety net for anything above that threw rather than returning a
+      // Supabase {error} object — a hard network failure (e.g. offline mid-
+      // insert) surfaces this way, not as a handled `error` value. Without
+      // this, an optimistic entry seeded above would stay stuck in the log
+      // forever, looking saved when it never reached the database.
+      qc.setQueryData<Entry[]>(["entries", "today"], (current = []) =>
+        current.filter((entry) => !optimisticIds.has(entry.id)),
+      );
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Could not save — check your connection and try again.";
+      console.error("[today] saveFoodItems threw", err);
+      setSaveError(msg);
+      toast.error(msg, { duration: 9000 });
+      return false;
     } finally {
       savingRef.current = false;
       setSaving(false);
@@ -941,7 +999,7 @@ function TodayPage() {
     if (!input.trim() || parsing) return;
     if (betaUsage?.reachedLimit) {
       toast.error(
-        "You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.",
+        "You've reached today's limit. Your allowance resets at midnight. Existing entries can still be edited.",
       );
       return;
     }
@@ -1055,34 +1113,60 @@ function TodayPage() {
   }
 
   async function deleteEntry(entry: Entry) {
-    // No auth call here — the delete itself needs no client-side identity
-    // (RLS scopes it to the caller's row already); identity is only needed
-    // if Undo is actually clicked, so that lookup moved into its onClick
-    // below instead of blocking this delete.
-    const { error } = await supabase.from("food_entries").delete().eq("id", entry.id);
-    if (error) {
-      toast.error(error.message);
+    // Optimistic entries (see saveFoodItems) have a client-only id — a
+    // delete/update keyed on it would silently match nothing server-side,
+    // then have the real row reappear once the insert reconciles. Block
+    // instead of risking that "undo that didn't work" confusion.
+    if (entry.id.startsWith("optimistic:")) {
+      toast("Still saving — try again in a moment.");
       return;
     }
-    track("food_deleted", {});
-    await invalidateAfterFoodMutation();
-    toast("Entry deleted", {
-      duration: 5000,
-      action: {
-        label: "Undo",
-        onClick: async () => {
-          const { data: sessionData } = await supabase.auth.getSession();
-          const uid = sessionData.session?.user?.id;
-          if (!uid) return;
-          const { id, ...rest } = entry;
-          await supabase.from("food_entries").insert({ ...rest, user_id: uid });
-          await invalidateAfterFoodMutation();
+    try {
+      // No auth call here — the delete itself needs no client-side
+      // identity (RLS scopes it to the caller's row already); identity is
+      // only needed if Undo is actually clicked, so that lookup moved into
+      // its onClick below instead of blocking this delete.
+      const { error } = await supabase.from("food_entries").delete().eq("id", entry.id);
+      if (error) {
+        toast.error(error.message);
+        return;
+      }
+      track("food_deleted", {});
+      await invalidateAfterFoodMutation();
+      toast("Entry deleted", {
+        duration: 5000,
+        action: {
+          label: "Undo",
+          onClick: async () => {
+            try {
+              const { data: sessionData } = await supabase.auth.getSession();
+              const uid = sessionData.session?.user?.id;
+              if (!uid) return;
+              const { id, ...rest } = entry;
+              const { error: undoError } = await supabase
+                .from("food_entries")
+                .insert({ ...rest, user_id: uid });
+              if (undoError) {
+                toast.error(undoError.message);
+                return;
+              }
+              await invalidateAfterFoodMutation();
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Could not undo the delete.");
+            }
+          },
         },
-      },
-    });
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete — try again.");
+    }
   }
 
   async function updateEntryAmount(entry: Entry, newQuantity: number) {
+    if (entry.id.startsWith("optimistic:")) {
+      toast("Still saving — try again in a moment.");
+      return false;
+    }
     const oldQ = Number(entry.quantity) || 0;
     if (!(newQuantity > 0)) {
       toast.error("Enter an amount greater than 0.");
@@ -1101,13 +1185,18 @@ function TodayPage() {
       carbs_g: Math.round(Number(entry.carbs_g) * ratio),
       fat_g: Math.round(Number(entry.fat_g) * ratio),
     };
-    const { error } = await supabase.from("food_entries").update(patch).eq("id", entry.id);
-    if (error) {
-      toast.error(error.message);
+    try {
+      const { error } = await supabase.from("food_entries").update(patch).eq("id", entry.id);
+      if (error) {
+        toast.error(error.message);
+        return false;
+      }
+      await invalidateAfterFoodMutation();
+      return true;
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save — try again.");
       return false;
     }
-    await invalidateAfterFoodMutation();
-    return true;
   }
 
   async function recalcRow(idx: number, next: PendingItem) {
@@ -1232,7 +1321,6 @@ function TodayPage() {
                   day: "numeric",
                 })}
               </div>
-              <BetaBadge />
               {currentStreak >= 1 && (
                 <span
                   className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-2 py-0.5"
@@ -1297,12 +1385,12 @@ function TodayPage() {
           betaUsage.cap > 0 &&
           (betaUsage.reachedLimit ? (
             <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-              You've reached today's beta limit. Your allowance resets at midnight. Existing entries
-              can still be edited.
+              You've reached today's limit. Your allowance resets at midnight. Existing entries can
+              still be edited.
             </div>
           ) : betaUsage.remaining !== null && betaUsage.remaining <= 5 ? (
             <div className="mt-3 text-[11px] text-muted-foreground px-1">
-              {betaUsage.remaining} beta {betaUsage.remaining === 1 ? "entry" : "entries"} remaining
+              {betaUsage.remaining} {betaUsage.remaining === 1 ? "entry" : "entries"} remaining
               today
             </div>
           ) : null)}
@@ -1394,11 +1482,13 @@ function TodayPage() {
                     </span>
                   </div>
                   <div className="mt-1">
-                    <StatusBadge
-                      data_source={e.data_source}
-                      is_estimate={e.is_estimate}
-                      preparation={e.preparation ?? null}
-                    />
+                    <Suspense fallback={null}>
+                      <StatusBadge
+                        data_source={e.data_source}
+                        is_estimate={e.is_estimate}
+                        preparation={e.preparation ?? null}
+                      />
+                    </Suspense>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
                     {formatQuantity(e.quantity, e.unit)} · {Math.round(e.calories)} kcal · P{" "}
@@ -1765,11 +1855,13 @@ function PendingRow({
         </div>
       )}
       <div className="mt-3 flex items-center gap-2 text-[11px] flex-wrap">
-        <StatusBadge
-          data_source={item.data_source}
-          is_estimate={item.is_estimate}
-          preparation={item.preparation}
-        />
+        <Suspense fallback={null}>
+          <StatusBadge
+            data_source={item.data_source}
+            is_estimate={item.is_estimate}
+            preparation={item.preparation}
+          />
+        </Suspense>
         {item.confidence < 0.6 && <span className="text-[oklch(0.5_0.16_75)]">Low confidence</span>}
         <button
           type="button"
@@ -1808,47 +1900,6 @@ function NumCell({
         <div className="mt-0.5 font-semibold">{Math.round(value)}</div>
       )}
     </div>
-  );
-}
-
-function StatusBadge({
-  data_source,
-  is_estimate,
-  preparation,
-}: {
-  data_source: string;
-  is_estimate?: boolean;
-  preparation?: string | null;
-}) {
-  const info = foodStatus({ data_source, is_estimate, preparation });
-  const tone =
-    info.tone === "verified"
-      ? "bg-primary/10 text-primary"
-      : info.tone === "recipe"
-        ? "bg-muted text-foreground/80"
-        : info.tone === "user"
-          ? "bg-muted text-muted-foreground"
-          : "bg-amber-brand/15 text-[oklch(0.5_0.16_75)]";
-  return (
-    <TooltipProvider delayDuration={150}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="button"
-            tabIndex={0}
-            aria-label={`Nutrition status: ${info.label}. ${info.tooltip}`}
-            className={cn(
-              "inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full cursor-help focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              tone,
-            )}
-          >
-            {info.tone === "estimated" && <AlertCircle className="h-3 w-3" />}
-            {info.label}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent className="max-w-xs text-xs leading-relaxed">{info.tooltip}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
   );
 }
 
