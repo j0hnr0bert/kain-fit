@@ -43,10 +43,20 @@ describe("public landing page renders without gating on session resolution", () 
     expect(index).toContain('search={{ mode: "signup" }}');
   });
 
-  it("states free-beta trust without an unsupported permanent-free claim", () => {
-    expect(index).toMatch(/Free beta.*No credit card required/);
+  // 2026-08-10: "beta" branding removed for the KainFit 1.0 release — see
+  // BetaBadge.tsx's removal and the audit that drove it. The underlying
+  // concern this test guards (don't overclaim permanence) still applies.
+  it("states free trust without an unsupported permanent-free claim", () => {
+    expect(index).toMatch(/Free.*No credit card required/);
     expect(index.toLowerCase()).not.toContain("free forever");
     expect(index.toLowerCase()).not.toContain("no subscription ever");
+  });
+
+  it("no longer carries user-visible beta branding (removed for the 1.0 release)", () => {
+    // Scoped to actual UI copy/components, not internal module names like
+    // beta.functions.ts (still legitimately internal infrastructure).
+    expect(index).not.toContain("BetaBadge");
+    expect(index.toLowerCase()).not.toMatch(/free beta|beta feedback/);
   });
 
   it("does not offer phone or Apple sign-in from the landing page", () => {
@@ -85,13 +95,29 @@ describe("authentication is simplified to Google + email only", () => {
     expect(auth).toContain('handleOAuth("google")');
   });
 
-  it("the free-beta trust strip explicitly says 'required', not just 'No credit card'", () => {
+  it("the free trust strip explicitly says 'required', not just 'No credit card'", () => {
     expect(auth).toContain("No credit card required");
+  });
+
+  it("no longer carries user-visible beta branding (removed for the 1.0 release)", () => {
+    // Scoped to actual UI copy/components — beta.functions.ts is still a
+    // legitimate internal import, not user-visible branding.
+    expect(auth).not.toContain("BetaBadge");
+    expect(auth.toLowerCase()).not.toMatch(/free beta/);
   });
 
   it("signup states what the account saves", () => {
     expect(auth).toContain("What your account saves");
     expect(auth).toContain("Today's entries");
+  });
+});
+
+describe("demo no longer carries beta branding (2026-08-10, KainFit 1.0)", () => {
+  const demo = src("routes", "demo.tsx");
+
+  it("no BetaBadge component or 'Free beta' copy remains", () => {
+    expect(demo).not.toContain("BetaBadge");
+    expect(demo.toLowerCase()).not.toMatch(/free beta/);
   });
 });
 

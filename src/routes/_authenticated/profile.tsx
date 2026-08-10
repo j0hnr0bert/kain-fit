@@ -27,7 +27,6 @@ import {
   Scale as ScaleIcon,
 } from "lucide-react";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
-import { BetaBadge } from "@/components/BetaBadge";
 import { deleteOwnAccount } from "@/lib/account.functions";
 import { deriveCaloriesFromMacros } from "@/lib/target-consistency";
 
@@ -407,7 +406,6 @@ function ProfilePage() {
       >
         <div className="flex items-center gap-2 mb-4">
           <h1 className="text-2xl font-bold tracking-tight">Profile</h1>
-          <BetaBadge />
         </div>
 
         {/* Account */}

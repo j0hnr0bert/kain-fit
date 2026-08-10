@@ -40,7 +40,6 @@ import { ArrowUp, Mic, Sparkles, Trash2, Pencil, Loader2, Flag, Flame } from "lu
 import { cn } from "@/lib/utils";
 import { track, markReturned } from "@/lib/analytics";
 import { mark, elapsed } from "@/lib/perf";
-import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
 import { QuickLogRail } from "@/components/QuickLogRail";
@@ -1000,7 +999,7 @@ function TodayPage() {
     if (!input.trim() || parsing) return;
     if (betaUsage?.reachedLimit) {
       toast.error(
-        "You've reached today's beta limit. Your allowance resets at midnight. Existing entries can still be edited.",
+        "You've reached today's limit. Your allowance resets at midnight. Existing entries can still be edited.",
       );
       return;
     }
@@ -1322,7 +1321,6 @@ function TodayPage() {
                   day: "numeric",
                 })}
               </div>
-              <BetaBadge />
               {currentStreak >= 1 && (
                 <span
                   className="inline-flex items-center gap-1 rounded-full bg-primary/10 text-primary text-[10px] font-semibold px-2 py-0.5"
@@ -1387,12 +1385,12 @@ function TodayPage() {
           betaUsage.cap > 0 &&
           (betaUsage.reachedLimit ? (
             <div className="mt-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-              You've reached today's beta limit. Your allowance resets at midnight. Existing entries
-              can still be edited.
+              You've reached today's limit. Your allowance resets at midnight. Existing entries can
+              still be edited.
             </div>
           ) : betaUsage.remaining !== null && betaUsage.remaining <= 5 ? (
             <div className="mt-3 text-[11px] text-muted-foreground px-1">
-              {betaUsage.remaining} beta {betaUsage.remaining === 1 ? "entry" : "entries"} remaining
+              {betaUsage.remaining} {betaUsage.remaining === 1 ? "entry" : "entries"} remaining
               today
             </div>
           ) : null)}

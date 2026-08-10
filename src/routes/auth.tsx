@@ -444,7 +444,7 @@ function AuthPage() {
         {mode === "signup" && (
           <>
             <p className="mt-3 inline-flex flex-wrap items-center gap-1 text-[12px] font-medium text-primary bg-primary/10 border border-primary/20 rounded-full px-3 py-1.5 w-fit">
-              Free beta · No credit card required · Start in under 30 seconds
+              Free · No credit card required · Start in under 30 seconds
             </p>
             <div className="mt-4 rounded-2xl border border-border bg-muted/40 px-4 py-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -460,12 +460,12 @@ function AuthPage() {
         )}
 
         <div className="mt-6 space-y-3">
-          {/* Beta auth methods (2026-07-26): Google + email only. Phone
+          {/* Auth methods (2026-07-26): Google + email only. Phone
                 was removed entirely (unsupported backend). Apple OAuth
                 integration is intentionally left intact below
                 (handleOAuth("apple"), oauthLoading's "apple" state,
                 AppleIcon) but has no button reaching it — hidden from the
-                beta UX pending real demand, not deleted. See the
+                UX pending real demand, not deleted. See the
                 acquisition-sprint report for what remains dormant. */}
           <button
             type="button"

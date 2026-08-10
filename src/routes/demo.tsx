@@ -33,7 +33,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { track, getAcquisitionSource } from "@/lib/analytics";
-import { BetaBadge } from "@/components/BetaBadge";
 import { HighDemandBanner } from "@/components/HighDemandBanner";
 import { FeedbackDialog } from "@/components/FeedbackDialog";
 import { ReportMacrosDialog } from "@/components/ReportMacrosDialog";
@@ -415,7 +414,6 @@ function DemoPage() {
             <ArrowLeft className="h-4 w-4" /> Back
           </Link>
           <div className="flex items-center gap-2">
-            <BetaBadge />
             <Link
               to="/auth"
               search={{ mode: "signup" }}
@@ -635,7 +633,7 @@ function DemoPage() {
                 Create free account
               </Button>
               <p className="mt-2 text-center text-[11px] text-primary font-medium">
-                Free beta · No credit card required
+                Free · No credit card required
               </p>
             </div>
           ) : (
