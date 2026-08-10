@@ -122,8 +122,10 @@ describe("Case 3 — weekend difference", () => {
 
     const content = weekdayWeekendPatternCopy(evidence!);
     // Refutes, rather than reinforces, the naive "weekends are the
-    // problem" assumption a user would already expect without this data.
-    expect(content.headline).toMatch(/isn'?t|aren'?t/i);
+    // problem" assumption a user would already expect without this data —
+    // and (2026-08-10 copy calibration) hedges with "may not be" rather
+    // than a flat "aren't", since this is an association, not a certainty.
+    expect(content.headline).toMatch(/isn'?t|aren'?t|may not/i);
     expect(evaluateSignalCopy(evidence!, content).passes).toBe(true);
   });
 });

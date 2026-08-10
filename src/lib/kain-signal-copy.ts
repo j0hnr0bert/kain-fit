@@ -189,6 +189,17 @@ export function proteinAdherenceCopy(
 //      "in your weekend routine"), never a same-day/next-meal instruction
 //      ("today", "your next meal") — that remains Coaching Card's
 //      exclusive job, unchanged from the original three types' rule.
+//
+// 2026-08-10 copy calibration pass: the four functions below were rendering
+// their relational findings as flat, absolute facts ("Your lowest-calorie
+// days ARE ALSO your lowest-protein days", "Most of your protein gap IS
+// CREATED early in the day") — accurate to the computed numbers, but
+// overstating how deterministic an association drawn from a rolling window
+// of logs actually is. Every headline/observation here now uses
+// associative language ("tends to", "showing up", "recently", "appears
+// to") instead of a flat assertion, without going vague — the numbers
+// themselves stay exact. Detectors, thresholds, ranking, and scoring are
+// unchanged; this is copy wording only.
 
 export function proteinCalorieRelationshipCopy(
   evidence: Extract<InsightEvidence, { insightType: "protein_calorie_relationship" }>,
@@ -198,11 +209,11 @@ export function proteinCalorieRelationshipCopy(
   const lowerCalories = Math.round(evidence.avgCaloriesLowerGroup);
   const higherCalories = Math.round(evidence.avgCaloriesHigherGroup);
   return {
-    headline: "Your lowest-calorie days are also your lowest-protein days.",
-    observation: `On your ${evidence.lowerCalorieDayCount} lowest-calorie days (around ${lowerCalories} kcal) you averaged ${lowerProtein}g of protein — about ${gapG}g less than on your ${evidence.higherCalorieDayCount} higher-calorie days (around ${higherCalories} kcal).`,
-    evidence: `Across your last ${evidence.daysEvaluated} qualified days, protein tracked with calories rather than staying steady.`,
+    headline: "Your lower-calorie days tend to also be your lower-protein days.",
+    observation: `On your ${evidence.lowerCalorieDayCount} lower-calorie days (around ${lowerCalories} kcal) you averaged ${lowerProtein}g of protein — about ${gapG}g less than on your ${evidence.higherCalorieDayCount} higher-calorie days (around ${higherCalories} kcal).`,
+    evidence: `Across your last ${evidence.daysEvaluated} qualified days, protein has tended to track with calories rather than staying steady.`,
     whyItMatters:
-      "This shows up specifically on your lower-calorie days in your own logs — not as a claim about every day.",
+      "This shows up specifically on your lower-calorie days in your recent logs — not as a claim about every day.",
     takeaway:
       "On lower-calorie days, cutting from lower-protein foods first would help close this gap.",
   };
@@ -213,8 +224,8 @@ export function proteinMealPositionCopy(
 ): SignalCardContent {
   const sharePct = Math.round(evidence.avgFirstMealProteinSharePct);
   return {
-    headline: "Most of your protein gap is created early in the day.",
-    observation: `Your first meal contributes only about ${sharePct}% of your daily protein on the ${evidence.shortfallDaysEvaluated} days you've missed your ${evidence.proteinTargetG}g target.`,
+    headline: "A lot of your protein gap is showing up early in the day.",
+    observation: `In your recent logs, your first meal has been contributing only around ${sharePct}% of your daily protein on the ${evidence.shortfallDaysEvaluated} days you've missed your ${evidence.proteinTargetG}g target.`,
     evidence: `Measured only on shortfall days, using each day's own first logged meal — not an assumed breakfast.`,
     whyItMatters:
       "This pattern is specific to the days you fall short — it says nothing about days you already hit target.",
@@ -230,9 +241,9 @@ export function weekdayWeekendPatternCopy(
   const lower = evidence.proteinDiffG < 0;
   return {
     headline: lower
-      ? "Your weekends aren't actually your biggest problem."
-      : "Your weekend protein is actually higher, even though your food intake barely changes.",
-    observation: `Calories are about the same on weekdays and weekends, but protein averages ${proteinDiffG}g ${lower ? "lower" : "higher"} on weekends.`,
+      ? "Weekends may not be the problem you think they are."
+      : "Your weekend protein appears higher, even though your food intake barely changes.",
+    observation: `Calories tend to be about the same on weekdays and weekends, but protein has been running ${proteinDiffG}g ${lower ? "lower" : "higher"} on weekends recently.`,
     evidence: `Based on ${evidence.weekdayCount} weekdays and ${evidence.weekendCount} weekend days, with calories within ${Math.round(Math.abs(evidence.calorieDiffPct))}% of each other.`,
     whyItMatters:
       "The two usually move together — calories and protein staying this far apart from each other is the specific pattern worth noticing here.",
@@ -250,8 +261,8 @@ export function trendShiftCopy(
   const isPositive = evidence.direction === "positive";
   return {
     headline: isPositive
-      ? "You're trending better on protein than you might realize."
-      : "Your protein trend has slipped over your last few qualified days.",
+      ? "Your protein has been trending better recently than you might realize."
+      : "Your protein trend appears to be slipping over your last few qualified days.",
     observation: `Your last ${evidence.recentWindowDays} qualified days averaged ${recentPct}% of target, versus ${priorPct}% in the ${evidence.priorWindowDays} qualified days before that.`,
     evidence: `Compares two equal-length, back-to-back windows of your own qualified days against your ${evidence.proteinTargetG}g target.`,
     whyItMatters:
