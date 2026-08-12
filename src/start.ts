@@ -1,4 +1,9 @@
-import { createStart, createMiddleware } from "@tanstack/react-start";
+import { createStart } from "@tanstack/react-start";
+// Imported from the leaf package instead of the `@tanstack/react-start` barrel:
+// the barrel re-exports the server entry, which made the built worker chunk graph
+// circular (SSR entry -> start.ts -> createMiddleware chunk -> SSR entry) and left
+// `createMiddleware` undefined at module init ("createMiddleware is not a function").
+import { createMiddleware } from "@tanstack/start-client-core";
 
 import { renderErrorPage } from "./lib/error-page";
 import { attachSupabaseAuth } from "@/integrations/supabase/auth-attacher";
