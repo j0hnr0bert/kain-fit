@@ -21,4 +21,17 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
+  // src/start.ts imports createMiddleware from the leaf package
+  // @tanstack/start-client-core (see the comment there — the barrel import
+  // made the built worker's chunk graph circular). Vite's dev dep-optimizer
+  // pre-bundles that package for the browser and stubs its `node:async_hooks`
+  // import, which crashed hydration with "AsyncLocalStorage is not a
+  // constructor". Excluding it from pre-bundling keeps the dev client on the
+  // package's own browser-safe resolution while production keeps the
+  // cycle-free import.
+  vite: {
+    optimizeDeps: {
+      exclude: ["@tanstack/start-client-core"],
+    },
+  },
 });
