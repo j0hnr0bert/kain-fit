@@ -50,11 +50,9 @@ import {
   buildFirstMealCelebrationContent,
   buildFirstMealSavedEventProperties,
 } from "@/lib/first-meal-celebration";
-import { KainSignalCard } from "@/components/KainSignalCard";
 import { TargetRings, type JustAdded } from "@/components/TargetRings";
 import { formatQuantity, isPreparationClarification } from "@/lib/food-display";
 import { getBetaUsage } from "@/lib/ops.functions";
-import { getKainSignalToday } from "@/lib/kain-signal.functions";
 import { tapHaptic } from "@/lib/haptics";
 
 // Lazy-loaded: Radix Tooltip is only needed once a food entry actually
