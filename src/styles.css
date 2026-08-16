@@ -116,8 +116,8 @@
      saturated green (>=5:1, verified) purely for that purpose. */
   --celebrate: oklch(0.5 0.15 145);
   --celebrate-foreground: oklch(0.99 0.005 90);
-  /* KainSignal card state (2026-07-26) — a genuinely new token, not a reuse
-     of --primary/--reinforce, because KainSignal is a structurally
+  /* Insight/accent card state — a genuinely new token, not a reuse
+     of --primary/--reinforce, because this surface is structurally
      different surface (a personalized, evidence-backed finding) from the
      routine Coaching Card nudges and deserves to read as visually distinct
      at a glance. Hue 280 sits in the widest open gap on the existing hue
