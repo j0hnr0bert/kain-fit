@@ -14,7 +14,7 @@
     "cap:sync": "cap sync",
     "cap:ios": "cap open ios",
     "cap:android": "cap open android",
-    "typecheck": "tsgo --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "smoke": "node scripts/prod-runtime-smoke.mjs",
     "verify": "bun run lint && bun run typecheck && bun run test && bun run build && bun run smoke"
