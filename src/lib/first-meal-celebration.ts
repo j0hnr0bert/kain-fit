@@ -21,7 +21,7 @@
 // This module only decides what to do with the RPC's boolean outcome, so
 // the decision itself stays pure and unit-testable without mocking the
 // Supabase client — matching this codebase's existing convention
-// (kain-signal-*.ts, coaching.ts): database-touching code is verified
+// (coaching.ts): database-touching code is verified
 // manually against local Supabase; pure logic is unit tested.
 //
 // Demo-import eligibility is deferred, not implemented — deliberately not

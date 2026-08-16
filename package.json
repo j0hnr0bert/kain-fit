@@ -13,7 +13,11 @@
     "format": "prettier --write .",
     "cap:sync": "cap sync",
     "cap:ios": "cap open ios",
-    "cap:android": "cap open android"
+    "cap:android": "cap open android",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "smoke": "node scripts/prod-runtime-smoke.mjs",
+    "verify": "bun run lint && bun run typecheck && bun run test && bun run build && bun run smoke"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
@@ -56,7 +60,7 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@eslint/js": "^9.32.0",
-    "@lovable.dev/vite-tanstack-config": "2.9.1",
+    "@lovable.dev/vite-tanstack-config": "2.13.1",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
