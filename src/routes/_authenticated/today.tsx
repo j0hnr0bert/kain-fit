@@ -216,18 +216,10 @@ function TodayPage() {
   // entry was actually produced.
   const usedVoiceRef = useRef(false);
   // Single mutation-success boundary for every food_entries write (insert,
-  // update, delete — including undo-insert/undo-delete). KainSignal must
-  // re-evaluate after every one of these, not just inserts/deletes that
-  // happen to change entries.length — an edit that changes grams, foods,
-  // or macros while leaving the entry count unchanged must still trigger
-  // re-evaluation. Called explicitly inside each mutation's own success
-  // path below (never on a failure return), so a failed save/edit/delete
-  // can never trigger a false "successful" KainSignal refresh.
+  // update, delete — including undo-insert/undo-delete). Called explicitly
+  // inside each mutation's own success path below, never on failure.
   async function invalidateAfterFoodMutation() {
-    await Promise.all([
-      qc.invalidateQueries({ queryKey: ["entries"] }),
-      qc.invalidateQueries({ queryKey: ["kain-signal", "today"] }),
-    ]);
+    await qc.invalidateQueries({ queryKey: ["entries"] });
   }
   const parseFn = useServerFn(parseFood);
   const recalcFn = useServerFn(recalcItem);
