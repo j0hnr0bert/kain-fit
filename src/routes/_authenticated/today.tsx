@@ -867,33 +867,8 @@ function TodayPage() {
     retry: false,
   });
 
-  // KainSignal (see kain-signal.functions.ts) — an independent layer from
-  // event coaching below, never a competing alternative for one slot (see
-  // the 2026-07-27 product-architecture correction: Coaching Card answers
-  // "what should I do next," KainSignal answers "what does my repeated
-  // behavior reveal" — both may render, either may render alone, or neither
-  // may). Recomputed on every load, including after every meal save via the
-  // invalidation below, and rendered whenever it is display-eligible on its
-  // own terms. Module-level readiness (2026-07-27 correction): a milestone
-  // is an independently-certain lifetime fact, not a confidence-graded
-  // trend, so it renders the moment it's selected — it must never wait on
-  // state === "connected", which represents pattern-module (protein/
-  // logging) trust only. Pattern insights still require it, unchanged.
-  const fetchKainSignalToday = useServerFn(getKainSignalToday);
-  const { data: signalPayload } = useQuery({
-    queryKey: ["kain-signal", "today"],
-    queryFn: () => fetchKainSignalToday(),
-    retry: false,
-  });
-  const kainSignalEligible = Boolean(
-    signalPayload?.selectedInsight &&
-    (signalPayload.selectedInsight.insightType === "behavior_milestone" ||
-      signalPayload.state === "connected"),
-  );
-  // Refresh usage after each successful add. Kept keyed on entries.length —
-  // unlike KainSignal (see invalidateAfterFoodMutation above), beta-usage
-  // genuinely only needs to change when the entry count changes, and count
-  // inference was never the bug here.
+  // Refresh usage after each successful add. Keyed on entries.length —
+  // beta-usage genuinely only needs to change when the entry count changes.
   useEffect(() => {
     qc.invalidateQueries({ queryKey: ["beta-usage"] });
   }, [entries.length, qc]);
@@ -1358,15 +1333,10 @@ function TodayPage() {
             justCompletedGold={justCompletedGold}
           />
         </div>
-        {/* Two independent intelligence layers (locked 2026-07-27
-            correction) — never mutually exclusive, never one shared slot:
-            Coaching Card answers "what should I do next" (same-day
-            execution); KainSignal answers "what does my repeated behavior
-            reveal" (longitudinal). Each resolves and renders purely on its
-            own eligibility. All four combinations are valid: both, either
-            alone, or neither. CoachingCard already self-guards on
+        {/* Single same-day guidance layer. CoachingCard self-guards on
             "silence" (messageFor returns null -> CoachingCard returns
-            null), so it's rendered unconditionally here. */}
+            null), so it's rendered unconditionally here. Whitespace is the
+            correct output when there is nothing useful to say. */}
         <CoachingCard
           result={coachingResult}
           proteinRemaining={proteinRemaining}
@@ -1376,9 +1346,6 @@ function TodayPage() {
           reaction={saveReaction}
           onDismissReaction={() => setSaveReaction(null)}
         />
-        {kainSignalEligible && signalPayload?.selectedInsight ? (
-          <KainSignalCard selectedInsight={signalPayload.selectedInsight} />
-        ) : null}
         {betaUsage?.enabled &&
           betaUsage.cap > 0 &&
           (betaUsage.reachedLimit ? (
